@@ -54,6 +54,16 @@
 
 ## Current GitHub Project v2 status
 - Intended project title: `SIFTGuard MCP Build`
-- Intended status options: `Backlog | Ready | In Progress | Blocked | Review/Test | Done`
-- Intended custom fields: `Lane`, `Priority`, `Estimate`, `Risk`
-- Current blocker: `gh` token missing `read:project` scope (`gh auth refresh -s read:project` required).
+- Project URL: `https://github.com/users/OCHOLA-EDDYPHIL/projects/2`
+- Automated via `gh`:
+- Project created (`SIFTGuard MCP Build`) and verified as open.
+- Added custom single-select fields:
+- `Lane`: `build | research | docs | spike`
+- `Priority`: `P0 | P1 | P2`
+- `Estimate`: `S | M | L`
+- `Risk`: `none | scope-creep | blocker | rules-risk | evidence-risk`
+- Added issues `#1` through `#15` to the project.
+- Manual UI follow-up required:
+- Configure the built-in `Status` field options to match workflow states:
+- `Backlog | Ready | In Progress | Blocked | Review/Test | Done`
+- Optional: save/filter views that align with this workflow.
