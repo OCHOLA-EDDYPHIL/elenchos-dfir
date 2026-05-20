@@ -67,3 +67,39 @@
 - Configure the built-in `Status` field options to match workflow states:
 - `Backlog | Ready | In Progress | Blocked | Review/Test | Done`
 - Optional: save/filter views that align with this workflow.
+
+## Issue closure protocol
+1. Do not close an issue only because code was written.
+2. Before closing, fetch the issue body and verify every acceptance criterion.
+3. For every completed acceptance criterion, update `- [ ]` to `- [x]`.
+4. Leave incomplete criteria unchecked.
+5. If any required criterion remains unchecked, do not close the issue.
+6. Add an evidence comment before closure.
+7. Evidence comment must include:
+   - PR link
+   - commit SHA or merge SHA
+   - test commands and results
+   - CLI/demo output if applicable
+   - SIFT validation output if applicable
+   - explicit evidence-safety statement
+8. PRs may close multiple issues, but only issues whose checklists are fully satisfied.
+9. If a PR partially addresses an issue, use `Refs #N`, not `Closes #N`.
+10. If using `Closes #N` in a PR body, update checkboxes before merge or during the final pre-merge pass.
+11. After merge, verify:
+   - issue is closed
+   - checklist is checked
+   - evidence comment exists
+   - Project Status is Done
+   - Project fields remain populated
+
+Fetch issue body:
+`gh issue view <N> --json body --jq .body > /tmp/issue-<N>.md`
+
+Edit issue body:
+`gh issue edit <N> --body-file /tmp/issue-<N>.md`
+
+If `--body-file` is unsupported, use `gh api`:
+`gh api -X PATCH repos/OCHOLA-EDDYPHIL/siftguard-mcp/issues/<N> -f body="$(cat /tmp/issue-<N>.md)"`
+
+Close issue:
+`gh issue close <N> --reason completed`
