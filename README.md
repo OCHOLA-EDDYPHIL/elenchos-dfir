@@ -37,6 +37,14 @@ source .venv/bin/activate
 pip install -e ".[dev]"
 ```
 
+## CLI usage
+```bash
+python -m siftguard --version
+python -m siftguard hash /path/to/artifact
+python -m siftguard inventory /path/to/case --manifest-out /path/to/manifest.json
+python -m siftguard audit-read /path/to/execution_ledger.jsonl
+```
+
 ## Test command
 ```bash
 python -m pytest
@@ -55,7 +63,8 @@ python -m pytest
 
 ## Current status
 - Repository and package foundation initialized.
-- Parser wrappers and MCP runtime are scaffolded and intentionally incomplete.
+- M1 includes evidence inventory/manifesting, JSONL audit ledger, and a hardened safe subprocess runner.
+- Parser wrappers and MCP runtime remain intentionally scaffolded/incomplete.
 
 ## Devpost submission checklist
 - [ ] Make repository public before final Devpost submission.

@@ -3,6 +3,7 @@
 ## Policy
 - Evidence is not stored in Git.
 - Official FIND EVIL starter case data is handled locally only.
+- Evidence paths are expected to remain under local `cases/` directories, which are gitignored.
 
 ## Expected local layout
 - `cases/official/raw/`

@@ -18,20 +18,7 @@ REGISTRY_HIVE_NAMES = {
     "usrclass.dat",
 }
 
-
-DISK_IMAGE_EXTENSIONS = {
-    ".e01",
-    ".ex01",
-    ".raw",
-    ".img",
-    ".dd",
-    ".vmdk",
-    ".qcow2",
-    ".vhd",
-    ".vhdx",
-}
-
-
+DISK_IMAGE_EXTENSIONS = {".e01", ".ex01", ".dd", ".raw", ".img"}
 MEMORY_IMAGE_EXTENSIONS = {".mem", ".vmem", ".dmp"}
 
 
@@ -47,34 +34,38 @@ def classify_artifact(path: Path) -> str:
         return "registry_hive"
     if suffix == ".evtx":
         return "evtx"
-    if suffix in MEMORY_IMAGE_EXTENSIONS:
-        return "memory_image"
     if suffix in DISK_IMAGE_EXTENSIONS:
         return "disk_image"
+    if suffix in MEMORY_IMAGE_EXTENSIONS:
+        return "memory_image"
     return "unknown"
 
 
 def inventory_case(case_dir: Path) -> list[EvidenceArtifact]:
-    artifacts: list[EvidenceArtifact] = []
+    if not case_dir.exists():
+        raise FileNotFoundError(case_dir)
+    if not case_dir.is_dir():
+        raise NotADirectoryError(case_dir)
+
     root = case_dir.resolve()
+    artifacts: list[EvidenceArtifact] = []
 
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
 
-        rel = path.relative_to(root).as_posix()
-        digest = sha256_file(path)
-        artifact_type = classify_artifact(path)
+        relative_path = path.relative_to(root).as_posix()
+        sha256 = sha256_file(path)
         artifacts.append(
             EvidenceArtifact(
-                artifact_id=artifact_id_for(rel, digest),
+                artifact_id=artifact_id_for(relative_path, sha256),
                 path=str(path.resolve()),
-                relative_path=rel,
+                relative_path=relative_path,
                 size_bytes=path.stat().st_size,
-                sha256=digest,
-                artifact_type=artifact_type,
+                sha256=sha256,
+                artifact_type=classify_artifact(path),
                 discovered_at_utc=utc_now_z(),
             )
         )
 
-    return artifacts
+    return sorted(artifacts, key=lambda item: item.relative_path)
