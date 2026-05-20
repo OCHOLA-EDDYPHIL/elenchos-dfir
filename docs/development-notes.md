@@ -6,6 +6,15 @@
 - Never commit case data, VM images, or secrets.
 - Prefer deterministic, testable functions with explicit I/O.
 
+## M1 implementation notes
+- Evidence inventory recursively scans case roots, classifies known artifact types, hashes files, and emits deterministic artifact IDs.
+- Manifest schema is dataclass-based and written/read as deterministic JSON with UTC `Z` timestamps.
+- Audit ledger is append-only JSONL with stable keys and explicit status values (`success`, `failed`, `denied`).
+- Subprocess execution is guarded by command and path policy:
+- Commands are denylisted for destructive/network/escalation executables and shell metacharacter patterns.
+- Output files are constrained to `runs/` and blocked from evidence roots.
+- Future parser wrappers must use the same runner + audit pattern to preserve provenance.
+
 ## How to add a parser wrapper
 - Add parser module under `src/siftguard/parser/`.
 - Declare parser name and expected artifact type constants.

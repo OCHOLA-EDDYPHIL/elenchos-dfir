@@ -12,14 +12,15 @@
 flowchart LR
   A[Evidence Sources] --> B[SIFT deterministic tools]
   B --> C[SIFTGuard MCP typed tools]
-  C --> D[Correlation and validation layer]
-  C --> E[Audit ledger JSONL]
-  A --> F[Evidence manifest]
-  F --> D
-  E --> D
-  G[Claude Code / OpenClaw orchestrator] --> C
-  D --> H[Markdown reports]
-  D --> I[JSON reports]
+  A --> D[Evidence inventory + hashing]
+  D --> E[Evidence manifest JSON]
+  C --> F[Safe subprocess runner]
+  F --> G[Audit ledger JSONL]
+  E --> H[Correlation and validation layer]
+  G --> H
+  I[Claude Code / OpenClaw orchestrator] --> C
+  H --> J[Markdown reports]
+  H --> K[JSON reports]
 ```
 
 ## Read-only enforcement
@@ -36,6 +37,7 @@ flowchart LR
 - Artifacts are hashed with SHA256.
 - Manifest entries include deterministic artifact IDs.
 - Execution events are appended to JSONL ledger with stable fields.
+- Parser outputs are expected to be hashed and ledgered in later milestones.
 
 ## Self-correction target
 - M4 will add structured self-correction loops that revise hypotheses without mutating evidence.
