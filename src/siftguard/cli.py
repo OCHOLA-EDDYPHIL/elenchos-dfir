@@ -4,8 +4,9 @@ import argparse
 from pathlib import Path
 
 from siftguard import __version__
+from siftguard.audit.execution_ledger import read_events
 from siftguard.evidence.hashing import sha256_file
-from siftguard.evidence.manifest import build_manifest
+from siftguard.evidence.manifest import build_manifest, write_manifest
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -22,9 +23,12 @@ def _build_parser() -> argparse.ArgumentParser:
     inventory_parser.add_argument(
         "--manifest-out",
         type=Path,
-        default=None,
+        required=True,
         help="Write manifest JSON to this path",
     )
+
+    audit_read_parser = subparsers.add_parser("audit-read", help="Read audit JSONL ledger")
+    audit_read_parser.add_argument("ledger_path", type=Path, help="Path to audit ledger JSONL")
 
     return parser
 
@@ -39,11 +43,21 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "inventory":
-        manifest = build_manifest(args.case_dir, output_path=args.manifest_out)
-        if args.manifest_out is None:
-            print(f"artifacts={len(manifest.artifacts)}")
-        else:
-            print(f"wrote manifest: {args.manifest_out}")
+        manifest = build_manifest(args.case_dir)
+        write_manifest(manifest, args.manifest_out)
+        print(f"case_id={manifest.case_id}")
+        print(f"artifact_count={manifest.artifact_count}")
+        print(f"manifest={args.manifest_out}")
+        return 0
+
+    if args.command == "audit-read":
+        events = read_events(args.ledger_path)
+        print(f"events={len(events)}")
+        for event in events:
+            print(
+                f"{event.get('event_id')} status={event.get('status')} "
+                f"tool={event.get('tool_name')} exit_code={event.get('exit_code')}"
+            )
         return 0
 
     parser.print_help()
