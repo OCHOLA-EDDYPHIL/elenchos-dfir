@@ -3,7 +3,7 @@
 ## Milestones M0-M5
 - M0 - Repo and environment skeleton
 - M1 - Evidence inventory, hashing, audit ledger
-- M2 - Artifact parsers
+- M2 - Artifact parsers (gated by `docs/parser-tooling-matrix.md`)
 - M3 - Correlation and validation
 - M4 - Agent and self-correction loop
 - M5 - Submission polish
