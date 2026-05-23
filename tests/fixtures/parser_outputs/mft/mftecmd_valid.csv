@@ -1,0 +1,2 @@
+EntryNumber,SequenceNumber,ParentEntryNumber,InUse,FileName,FullPath,Created0x10,Modified0x10,Accessed0x10,SHA256
+42,1,5,true,payload.dll,C:\Temp\payload.dll,2026-01-01 00:00:00.0000000,2026-01-01 00:01:00.0000000,2026-01-01 00:02:00.0000000,sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
