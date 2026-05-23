@@ -15,8 +15,8 @@ evidence references, and a `RawRecordRef` back to the parser row or record.
 Stable raw record references may use values such as `csv:mft.csv:1842`,
 `json:amcache.json:/entries/12`, or `text:runkeys.txt:44`.
 
-`ParserEvent` is not a finding. It must not claim malware, compromise,
-exfiltration, or confirmed persistence. M3 owns finding and claim validation.
+`ParserEvent` is not a finding. It must not make investigative conclusions.
+M3 owns finding and claim validation.
 
 ## ParserResult
 
@@ -82,8 +82,23 @@ stdout/stderr logs under `runs/<case_id>/logs/`.
 MFT normalization emits observational `ParserEvent` records such as
 `file_record`, `file_created`, `file_modified`, and `file_accessed`. These events
 preserve parser-reported paths, timestamps, evidence references, and raw row
-references. They do not create findings or infer execution, persistence, or
-compromise.
+references. They do not create findings or interpret activity.
 
 Unit tests use synthetic MFTECmd-style CSV fixtures and fake runner injection.
 SIFT validation against the real tool is a later issue.
+
+## Registry Run Key Parser Wrapper
+
+The Registry Run Key wrapper uses the verified `RECmd` command configuration for
+supplied `SOFTWARE` and `NTUSER.DAT` hive artifact paths. It runs direct `--kn`
+lookups for `Run` and `RunOnce` targets, writes CSV outputs to
+`runs/<case_id>/parser_outputs/<artifact_id>/recmd/`, and writes stdout/stderr
+logs under `runs/<case_id>/logs/`.
+
+Registry normalization emits observational `ParserEvent` records with
+`event_type="registry_run_key"`. These events preserve key paths, value names,
+value data, hive labels, timestamps when present, evidence references, and raw
+row references. They do not create findings.
+
+Unit tests use synthetic RECmd-style CSV fixtures and fake runner injection.
+SIFT validation against the real tool is later issue #34.
