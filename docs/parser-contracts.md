@@ -71,3 +71,19 @@ complete documentation of every real parser column.
 
 Wrapper implementation, parser normalization, parser CLI commands, MCP parser
 schemas, correlation, and findings are later PRs.
+
+## MFT Parser Wrapper
+
+The MFT wrapper uses the verified `MFTECmd` command configuration for supplied
+`$MFT` artifact paths. It writes the parser CSV to
+`runs/<case_id>/parser_outputs/<artifact_id>/mftecmd/mftecmd.csv` and writes
+stdout/stderr logs under `runs/<case_id>/logs/`.
+
+MFT normalization emits observational `ParserEvent` records such as
+`file_record`, `file_created`, `file_modified`, and `file_accessed`. These events
+preserve parser-reported paths, timestamps, evidence references, and raw row
+references. They do not create findings or infer execution, persistence, or
+compromise.
+
+Unit tests use synthetic MFTECmd-style CSV fixtures and fake runner injection.
+SIFT validation against the real tool is a later issue.
