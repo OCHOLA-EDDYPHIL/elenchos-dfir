@@ -117,3 +117,20 @@ references. They do not create findings or interpret activity.
 
 Unit tests use synthetic AmcacheParser-style CSV fixtures and fake runner
 injection. SIFT validation against the real tool is later issue #34.
+
+## Parser CLI And MCP Schemas
+
+The CLI exposes constrained parser wrapper commands:
+
+- `siftguard parse-mft`
+- `siftguard parse-registry-runkeys`
+- `siftguard parse-amcache`
+
+Parser CLI commands emit `ParserResult` JSON to stdout by default. When
+`--json-out` is used, the result JSON path must resolve under `runs_root` and
+must not resolve inside `evidence_root`.
+
+MCP parser tool schemas are defined for `parse_mft`, `parse_registry_runkeys`,
+and `parse_amcache`. They describe constrained parser wrappers, not arbitrary
+process execution. Full MCP runtime wiring is outside this PR, and M2 parser
+interfaces do not generate findings.
