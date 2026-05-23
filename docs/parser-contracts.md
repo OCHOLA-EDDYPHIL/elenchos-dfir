@@ -102,3 +102,18 @@ row references. They do not create findings.
 
 Unit tests use synthetic RECmd-style CSV fixtures and fake runner injection.
 SIFT validation against the real tool is later issue #34.
+
+## Amcache Parser Wrapper
+
+The Amcache wrapper uses the verified `AmcacheParser` command configuration for
+supplied `Amcache.hve` artifact paths. It writes the parser CSV to
+`runs/<case_id>/parser_outputs/<artifact_id>/amcacheparser/amcache.csv` and
+writes stdout/stderr logs under `runs/<case_id>/logs/`.
+
+Amcache normalization emits observational `ParserEvent` records with
+`event_type="amcache_execution"`. These events preserve parser-reported program
+names, paths, hashes, timestamps when present, evidence references, and raw row
+references. They do not create findings or interpret activity.
+
+Unit tests use synthetic AmcacheParser-style CSV fixtures and fake runner
+injection. SIFT validation against the real tool is later issue #34.
