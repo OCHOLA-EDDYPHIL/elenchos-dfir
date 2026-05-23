@@ -1,0 +1,73 @@
+# Parser Contracts
+
+## Purpose
+
+M2 parser wrappers must return shared contracts before any artifact-specific
+wrapper logic is implemented. These contracts describe observations extracted
+from parser output and wrapper-level execution results. They do not perform
+correlation, create findings, or make investigative conclusions.
+
+## ParserEvent
+
+`ParserEvent` represents one normalized observation from parser output. It keeps
+the source artifact identity, parser identity, timestamp context when available,
+evidence references, and a `RawRecordRef` back to the parser row or record.
+Stable raw record references may use values such as `csv:mft.csv:1842`,
+`json:amcache.json:/entries/12`, or `text:runkeys.txt:44`.
+
+`ParserEvent` is not a finding. It must not claim malware, compromise,
+exfiltration, or confirmed persistence. M3 owns finding and claim validation.
+
+## ParserResult
+
+`ParserResult` represents the result a future parser wrapper returns. It records
+parser identity, source artifact identity, argv-style command, output files,
+output hashes, audit event IDs, normalized events, warnings, errors, timing, and
+status.
+
+Supported wrapper statuses are `success`, `partial_success`, `skipped`, and
+`failed`. A missing parser command must be visible as `skipped` or `failed`
+instead of being hidden.
+
+## Output Paths
+
+Parser outputs use this convention:
+
+```text
+runs/<case_id>/parser_outputs/<artifact_id>/<parser_name>/
+runs/<case_id>/logs/
+runs/<case_id>/normalized/
+```
+
+Path helpers reject empty identifiers, traversal, absolute identifier values,
+path separators, null bytes, newlines, and shell metacharacters.
+
+## Command Configuration
+
+Parser commands are represented as argv tuples only. Command configuration never
+accepts arbitrary shell strings, never uses shell execution, and does not split
+shell-like command text.
+
+Default parser command names are:
+
+- `mftecmd`: `MFTECmd`
+- `recmd`: `RECmd`
+- `amcacheparser`: `AmcacheParser`
+
+Local executable overrides may be supplied through:
+
+- `SIFTGUARD_MFT_PARSER`
+- `SIFTGUARD_REGISTRY_PARSER`
+- `SIFTGUARD_AMCACHE_PARSER`
+
+Overrides are validated as a single executable argv element. Shell metacharacters
+such as `;`, `&`, `|`, redirection, backticks, and `$` are rejected.
+
+## Fixture Policy
+
+Parser fixtures under `tests/fixtures/parser_outputs/` are synthetic only. They
+are not real evidence, not generated parser output from case data, and not
+complete documentation of every real parser column.
+
+Wrapper implementation, parser normalization, parser CLI commands, MCP parser
+schemas, correlation, and findings are later PRs.
