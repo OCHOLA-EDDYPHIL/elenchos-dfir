@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -49,6 +50,58 @@ def fake_runner_success(captured: dict[str, object]):
         output_dir = Path(command[command.index("--csv") + 1])
         csv_name = command[command.index("--csvf") + 1]
         shutil.copyfile(FIXTURE_DIR / "recmd_runkeys_valid.csv", output_dir / csv_name)
+
+        stdout_path = kwargs["stdout_path"]
+        stderr_path = kwargs["stderr_path"]
+        stdout_path.write_text("synthetic stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+
+        return ToolResult(
+            command=list(command),
+            cwd=None,
+            exit_code=0,
+            duration_ms=11,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            stdout_sha256=None,
+            stderr_sha256=None,
+            status="success",
+        )
+
+    return runner
+
+
+def fake_runner_success_json_only(captured: dict[str, object]):
+    def runner(command, **kwargs):
+        commands = captured.setdefault("commands", [])
+        assert isinstance(commands, list)
+        commands.append(tuple(command))
+
+        output_dir = Path(command[command.index("--json") + 1])
+        key_path = command[command.index("--kn") + 1]
+        json_name = "RunOnce.json" if key_path.endswith("RunOnce") else "Run.json"
+        output_path = output_dir / json_name
+        values = []
+        if key_path.endswith("Run"):
+            values = [
+                {
+                    "ValueName": "Updater",
+                    "ValueType": "RegSz",
+                    "ValueData": r"C:\Users\alice\AppData\Local\Temp\evil.exe",
+                }
+            ]
+        output_path.write_text(
+            json.dumps(
+                {
+                    "KeyPath": key_path,
+                    "KeyName": Path(key_path).name,
+                    "LastWriteTimestamp": "2026-01-01 00:00:00.0000000",
+                    "SubKeys": [],
+                    "Values": values,
+                }
+            ),
+            encoding="utf-8",
+        )
 
         stdout_path = kwargs["stdout_path"]
         stderr_path = kwargs["stderr_path"]
@@ -152,6 +205,8 @@ def test_parse_registry_runkeys_builds_ntuser_argv_and_success_result(tmp_path):
             str(output_dir.resolve()),
             "--csvf",
             NTUSER_RUN_CSV_NAME,
+            "--json",
+            str(output_dir.resolve()),
             "--nl",
         ),
         (
@@ -164,6 +219,8 @@ def test_parse_registry_runkeys_builds_ntuser_argv_and_success_result(tmp_path):
             str(output_dir.resolve()),
             "--csvf",
             NTUSER_RUNONCE_CSV_NAME,
+            "--json",
+            str(output_dir.resolve()),
             "--nl",
         ),
     ]
@@ -213,10 +270,33 @@ def test_parse_registry_runkeys_builds_software_targets(tmp_path):
         str(output_dir.resolve()),
         "--csvf",
         SOFTWARE_RUN_CSV_NAME,
+        "--json",
+        str(output_dir.resolve()),
         "--nl",
     )
     assert commands[1][commands[1].index("--csvf") + 1] == SOFTWARE_RUNONCE_CSV_NAME
     assert result.status == "success"
+
+
+def test_parse_registry_runkeys_normalizes_real_recmd_json_fallback(tmp_path):
+    captured: dict[str, object] = {}
+    hive_path = make_hive(tmp_path, "NTUSER.DAT")
+
+    result = parse_registry_runkeys(
+        case_id="case-001",
+        artifact_id="EV-REG-0001",
+        hive_path=hive_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=hive_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success_json_only(captured),
+    )
+
+    assert result.status == "success"
+    assert len(result.events) == 1
+    assert result.events[0].event_type == "registry_run_key"
+    assert result.events[0].value_name == "Updater"
+    assert any(path.endswith("Run.json") for path in result.output_files)
 
 
 def test_parse_registry_runkeys_returns_failed_when_runner_fails_without_csv(tmp_path):

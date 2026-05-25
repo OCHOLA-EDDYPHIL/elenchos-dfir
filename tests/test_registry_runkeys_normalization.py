@@ -4,7 +4,10 @@ import json
 from pathlib import Path
 
 from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
-from siftguard.parser.registry_runkeys import normalize_recmd_runkeys_csv
+from siftguard.parser.registry_runkeys import (
+    normalize_recmd_runkeys_csv,
+    normalize_recmd_runkeys_json,
+)
 
 FIXTURE_DIR = Path("tests/fixtures/parser_outputs/registry")
 
@@ -78,6 +81,53 @@ def test_recmd_runkeys_event_id_changes_when_stable_field_changes():
     changed = ParserEvent.from_dict(payload)
 
     assert changed.event_id != events[0].event_id
+
+
+def test_recmd_runkeys_json_normalizes_real_tool_kn_export(tmp_path):
+    json_path = tmp_path / "Run.json"
+    json_path.write_text(
+        json.dumps(
+            {
+                "KeyPath": (
+                    "CMI-CreateHive{D43B12B8-09B5-40DB-B4F6-F6DFEB78DAEC}"
+                    r"\Software\Microsoft\Windows\CurrentVersion\Run"
+                ),
+                "KeyName": "Run",
+                "LastWriteTimestamp": "2026-01-01 00:00:00.0000000",
+                "SubKeys": [],
+                "Values": [
+                    {
+                        "ValueName": "Updater",
+                        "ValueType": "RegSz",
+                        "ValueData": r"C:\Users\alice\AppData\Local\Temp\evil.exe",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    events, warnings, errors = normalize_recmd_runkeys_json(
+        json_path=json_path,
+        case_id="case-001",
+        artifact_id="EV-REG-0001",
+        hive="NTUSER.DAT",
+        key_path=r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+    )
+
+    assert warnings == []
+    assert errors == []
+    assert len(events) == 1
+    event = events[0]
+    assert event.event_type == "registry_run_key"
+    assert event.parser_name == "recmd"
+    assert event.artifact_type == "registry"
+    assert event.key_path == r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+    assert event.value_name == "Updater"
+    assert event.value_data == r"C:\Users\alice\AppData\Local\Temp\evil.exe"
+    assert event.timestamp_utc == "2026-01-01T00:00:00Z"
+    assert event.raw_record_ref is not None
+    assert event.raw_record_ref.row_number == 1
 
 
 def test_malformed_recmd_runkeys_fixture_does_not_crash_and_warns():
