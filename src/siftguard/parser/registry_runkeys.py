@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -35,6 +36,7 @@ class RunKeyTarget:
     label: str
     key_path: str
     csv_name: str
+    json_name: str
 
 
 _SOFTWARE_TARGETS = (
@@ -42,11 +44,13 @@ _SOFTWARE_TARGETS = (
         label="software-run",
         key_path=r"Microsoft\Windows\CurrentVersion\Run",
         csv_name=SOFTWARE_RUN_CSV_NAME,
+        json_name="Run.json",
     ),
     RunKeyTarget(
         label="software-runonce",
         key_path=r"Microsoft\Windows\CurrentVersion\RunOnce",
         csv_name=SOFTWARE_RUNONCE_CSV_NAME,
+        json_name="RunOnce.json",
     ),
 )
 
@@ -55,11 +59,13 @@ _NTUSER_TARGETS = (
         label="ntuser-run",
         key_path=r"Software\Microsoft\Windows\CurrentVersion\Run",
         csv_name=NTUSER_RUN_CSV_NAME,
+        json_name="Run.json",
     ),
     RunKeyTarget(
         label="ntuser-runonce",
         key_path=r"Software\Microsoft\Windows\CurrentVersion\RunOnce",
         csv_name=NTUSER_RUNONCE_CSV_NAME,
+        json_name="RunOnce.json",
     ),
 )
 
@@ -156,6 +162,12 @@ def _registry_event(
     )
 
 
+def _display_key_path(hive_path: Path, target: RunKeyTarget) -> str:
+    if hive_path.name.lower() == "software":
+        return f"HKLM\\Software\\{target.key_path}"
+    return f"HKCU\\{target.key_path}"
+
+
 def normalize_recmd_runkeys_csv(
     *,
     csv_path: Path,
@@ -230,6 +242,91 @@ def normalize_recmd_runkeys_csv(
 
         if row_count == 0:
             errors.append(f"RECmd Run Key CSV has no data rows: {csv_path}")
+
+    return events, warnings, errors
+
+
+def normalize_recmd_runkeys_json(
+    *,
+    json_path: Path,
+    case_id: str,
+    artifact_id: str,
+    hive: str,
+    key_path: str,
+) -> tuple[list[ParserEvent], list[str], list[str]]:
+    _require_non_empty(case_id, "case_id")
+    _require_non_empty(artifact_id, "artifact_id")
+
+    if not json_path.exists():
+        return [], [], [f"RECmd Run Key JSON does not exist: {json_path}"]
+    if json_path.is_dir():
+        return [], [], [f"RECmd Run Key JSON path is a directory: {json_path}"]
+
+    warnings: list[str] = []
+    errors: list[str] = []
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8-sig"))
+    except json.JSONDecodeError as exc:
+        return [], [], [f"RECmd Run Key JSON is malformed: {json_path}: {exc}"]
+
+    if not isinstance(payload, dict):
+        return [], [], [f"RECmd Run Key JSON root is not an object: {json_path}"]
+
+    values = payload.get("Values")
+    if values in (None, []):
+        return [], [], []
+    if not isinstance(values, list):
+        return [], [], [f"RECmd Run Key JSON Values field is not a list: {json_path}"]
+
+    timestamp_utc: str | None = None
+    raw_timestamp = payload.get("LastWriteTimestamp")
+    timestamp_malformed = False
+    if isinstance(raw_timestamp, str) and raw_timestamp.strip():
+        try:
+            timestamp_utc = _normalize_timestamp(raw_timestamp)
+        except ValueError:
+            warnings.append("json key: invalid timestamp in LastWriteTimestamp")
+            timestamp_malformed = True
+
+    events: list[ParserEvent] = []
+    for value_index, item in enumerate(values, start=1):
+        if not isinstance(item, dict):
+            warnings.append(f"json value {value_index}: value record is not an object")
+            continue
+
+        value_name = item.get("ValueName")
+        value_data = item.get("ValueData")
+        normalized_value_name = value_name.strip() if isinstance(value_name, str) else None
+        normalized_value_data = value_data.strip() if isinstance(value_data, str) else None
+        if not normalized_value_name and not normalized_value_data:
+            warnings.append(f"json value {value_index}: missing value context")
+            continue
+
+        metadata: dict[str, JSON_SCALAR] = {
+            "hive": hive,
+            "parser": PARSER_NAME,
+            "source_format": "json",
+            "value_data_present": normalized_value_data is not None,
+        }
+        value_type = item.get("ValueType")
+        if isinstance(value_type, str) and value_type:
+            metadata["value_type"] = value_type
+
+        events.append(
+            _registry_event(
+                case_id=case_id,
+                artifact_id=artifact_id,
+                csv_path=json_path,
+                row_number=value_index,
+                hive=hive,
+                key_path=key_path,
+                value_name=normalized_value_name,
+                value_data=normalized_value_data,
+                timestamp_utc=timestamp_utc,
+                status="malformed" if timestamp_malformed else "normalized",
+                metadata=metadata,
+            )
+        )
 
     return events, warnings, errors
 
@@ -376,9 +473,10 @@ def parse_registry_runkeys(
 
     for target in targets:
         csv_path = output_dir / target.csv_name
+        json_path = output_dir / target.json_name
         stdout_path = logs_dir / f"{PARSER_NAME}_{artifact_id}_{target.label}_stdout.log"
         stderr_path = logs_dir / f"{PARSER_NAME}_{artifact_id}_{target.label}_stderr.log"
-        candidate_files.extend((csv_path, stdout_path, stderr_path))
+        candidate_files.extend((csv_path, json_path, stdout_path, stderr_path))
         command = (
             *command_base,
             "-f",
@@ -389,6 +487,8 @@ def parse_registry_runkeys(
             str(output_dir),
             "--csvf",
             target.csv_name,
+            "--json",
+            str(output_dir),
             "--nl",
         )
         commands.append(command)
@@ -426,13 +526,32 @@ def parse_registry_runkeys(
             if target_failed:
                 warnings.append(f"RECmd command failed but {target.csv_name} was present")
                 errors.append(_tool_error(tool_result, target))
+        elif json_path.exists():
+            target_events, target_warnings, target_errors = normalize_recmd_runkeys_json(
+                json_path=json_path,
+                case_id=case_id,
+                artifact_id=artifact_id,
+                hive=resolved_hive_path.name,
+                key_path=_display_key_path(resolved_hive_path, target),
+            )
+            events.extend(target_events)
+            warnings.extend(
+                f"{target.label}: {warning}" for warning in target_warnings
+            )
+            errors.extend(f"{target.label}: {error}" for error in target_errors)
+            if target_failed:
+                warnings.append(f"RECmd command failed but {target.json_name} was present")
+                errors.append(_tool_error(tool_result, target))
         else:
             missing_csv_count += 1
-            errors.append(f"expected RECmd CSV was not created: {csv_path}")
+            errors.append(
+                f"expected RECmd CSV or JSON was not created: {csv_path} or {json_path}"
+            )
             if target_failed:
                 errors.append(_tool_error(tool_result, target))
 
-        if target_failed or not csv_path.exists():
+        target_output_exists = csv_path.exists() or json_path.exists()
+        if target_failed or not target_output_exists:
             failed_command_count += 1
         else:
             successful_command_count += 1
