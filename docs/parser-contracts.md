@@ -16,7 +16,7 @@ Stable raw record references may use values such as `csv:mft.csv:1842`,
 `json:amcache.json:/entries/12`, or `text:runkeys.txt:44`.
 
 `ParserEvent` is not a finding. It must not make investigative conclusions.
-M3 owns finding and claim validation.
+A future analysis layer owns finding and claim validation.
 
 ## ParserResult
 
