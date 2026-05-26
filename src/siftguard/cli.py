@@ -11,6 +11,7 @@ from siftguard.evidence.hashing import sha256_file
 from siftguard.evidence.manifest import build_manifest, write_manifest
 from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import validate_output_path
+from siftguard.workflows.correlation import run_correlation_workflow
 
 PARSER_STATUS_EXIT_CODES = {
     "success": 0,
@@ -172,6 +173,27 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to Amcache.hve",
     )
 
+    correlate_parser = subparsers.add_parser(
+        "correlate",
+        help="Build timelines, validated findings, and a Markdown report from normalized JSON",
+    )
+    correlate_parser.add_argument("--case-id", required=True, help="Case identifier")
+    correlate_parser.add_argument(
+        "--input",
+        type=Path,
+        required=True,
+        help="Existing normalized parser output JSON",
+    )
+    correlate_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Generated workflow output directory under runs/, outputs/, analysis/, "
+            "or reports/generated/"
+        ),
+    )
+
     return parser
 
 
@@ -204,6 +226,28 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command in {"parse-mft", "parse-registry-runkeys", "parse-amcache"}:
         return _run_parser_command(args)
+
+    if args.command == "correlate":
+        try:
+            result = run_correlation_workflow(
+                case_id=args.case_id,
+                input_path=args.input,
+                output_dir=args.output_dir,
+            )
+        except Exception as exc:
+            print(f"error={exc}", file=sys.stderr)
+            return 1
+
+        print(f"case_id={result.case_id}")
+        print(f"output_dir={result.output_dir}")
+        print(f"events={result.event_count}")
+        print(f"timelines={result.timeline_count}")
+        print(f"findings={result.finding_count}")
+        print(f"timelines_path={result.timelines_path}")
+        print(f"findings_path={result.findings_path}")
+        print(f"report_path={result.report_path}")
+        print(f"audit_path={result.audit_path}")
+        return 0
 
     parser.print_help()
     return 0
