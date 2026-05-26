@@ -124,8 +124,8 @@ Run AmcacheParser against a staged `Amcache.hve`:
 
 Parser wrappers call SIFT tools through constrained argv-based execution.
 Outputs, stdout/stderr logs, `ParserResult` JSON, and audit ledgers are written
-under `runs/`. Normalized `ParserEvent` records support later M3 correlation,
-but this project does not generate M3 findings yet.
+under `runs/`. Normalized `ParserEvent` records support a future analysis
+layer, but this project does not generate final findings yet.
 
 ## Evidence Safety Summary
 
