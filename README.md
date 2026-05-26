@@ -9,8 +9,8 @@ boundaries for the FIND EVIL hackathon.
 
 - A local-first Python workflow for SIFT Workstation.
 - A constrained wrapper layer for verified SIFT parser tools.
-- A reproducible foundation for audit trails, provenance checks, correlation,
-  validation, and reporting from normalized parser observations.
+- A reproducible foundation for audit trails, provenance checks, and
+  evidence-backed reporting from normalized parser observations.
 - An M2 parser workflow that currently supports:
   - `$MFT` parsing through MFTECmd.
   - Registry `Run` and `RunOnce` key parsing through RECmd.
@@ -124,12 +124,12 @@ Run AmcacheParser against a staged `Amcache.hve`:
 
 Parser wrappers call SIFT tools through constrained argv-based execution.
 Outputs, stdout/stderr logs, `ParserResult` JSON, and audit ledgers are written
-under `runs/`. Normalized `ParserEvent` records can feed the M3 correlation and
+under `runs/`. Normalized `ParserEvent` records can feed the correlation and
 validation workflow.
 
 ## Correlation And Validation Workflow
 
-The M3 workflow consumes normalized parser-event JSON and writes generated
+The workflow consumes normalized parser-event JSON and writes generated
 timelines, validated findings, a Markdown report, and an audit ledger under an
 ignored output directory.
 
@@ -143,8 +143,6 @@ siftguard correlate \
 Generated files include `subject_timelines.json`, `findings.json`,
 `report.md`, and `audit.jsonl`. Do not commit generated outputs. The workflow
 expects normalized parser JSON, not raw evidence images.
-
-See `docs/m3-completion-review.md`.
 
 ## Evidence Safety Summary
 
@@ -162,7 +160,6 @@ See `docs/m3-completion-review.md`.
 - `docs/dataset.md` - local evidence staging and dataset handling.
 - `docs/development-notes.md` - developer workflow for parser wrappers.
 - `docs/limitations.md` - interpretation and reproducibility limits.
-- `docs/m3-completion-review.md` - M3 correlation and validation closeout.
 - `docs/parser-contracts.md` - parser event/result contracts.
 - `docs/parser-validation.md` - SIFT validation results.
 

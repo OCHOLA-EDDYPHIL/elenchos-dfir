@@ -2,4 +2,4 @@
 
 
 def generate_json_report(*args, **kwargs):
-    raise NotImplementedError("JSON report generation will be implemented in M3/M4.")
+    raise NotImplementedError("JSON report generation is not implemented.")
