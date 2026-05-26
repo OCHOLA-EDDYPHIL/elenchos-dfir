@@ -27,7 +27,7 @@ parser wrapper
 ParserResult + normalized ParserEvent records
   |
   v
-M3 correlation and claim-proof reporting, future work
+Future analysis and reporting layer
 ```
 
 ```mermaid
@@ -41,7 +41,7 @@ flowchart TD
   D --> H[SIFT parser outputs under runs/]
   H --> I[ParserResult]
   H --> J[ParserEvent normalization]
-  I --> K[Future M3 correlation and reporting]
+  I --> K[Future analysis and reporting]
   J --> K
 ```
 
@@ -69,8 +69,8 @@ Evidence roots are inputs, not output locations. Parser wrappers must not write
 to evidence roots. The `runs/` directory is the output boundary for parser CSVs,
 logs, normalized results, and audit ledgers.
 
-Parser wrappers do not directly produce final findings. Later M3 work can use
-normalized observations as inputs to correlation and claim-proof reporting.
+Parser wrappers do not directly produce final findings. Future analysis work can
+use normalized observations as inputs to evidence-backed reporting.
 
 ## Command Safety
 

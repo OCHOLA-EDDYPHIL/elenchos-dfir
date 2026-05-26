@@ -1,4 +1,4 @@
-# Parser Phase Completion Review
+# Parser Workflow Completion Review
 
 ## Scope
 
@@ -108,7 +108,7 @@ research runs. They remain outside version control.
 
 ## Decision
 
-Parser phase completion criteria are satisfied by the verified issue closure
+Parser workflow completion criteria are satisfied by the verified issue closure
 state, passing quality gates, documented SIFT validation, evidence safety
 checks, and recorded open risks in this review.
 
