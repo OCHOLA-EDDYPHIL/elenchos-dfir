@@ -1,31 +1,16 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from siftguard.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
 
-VALID_STATUSES = {"confirmed", "inferred", "rejected", "needs_review"}
-VALID_CONFIDENCE = {"high", "medium", "low"}
+VALID_CONFIDENCE = {confidence.value for confidence in Confidence}
+VALID_STATUSES = {status.value for status in ClaimStatus}
 
-
-@dataclass(slots=True)
-class EvidenceRef:
-    artifact_id: str
-    parser: str | None = None
-    source_path: str | None = None
-
-
-@dataclass(slots=True)
-class Finding:
-    finding_id: str
-    case_id: str
-    type: str
-    status: str
-    confidence: str
-    summary: str
-    evidence_refs: list[EvidenceRef] = field(default_factory=list)
-    inference: bool = False
-
-    def __post_init__(self) -> None:
-        if self.status not in VALID_STATUSES:
-            raise ValueError(f"invalid status: {self.status}")
-        if self.confidence not in VALID_CONFIDENCE:
-            raise ValueError(f"invalid confidence: {self.confidence}")
+__all__ = [
+    "ClaimStatus",
+    "Confidence",
+    "EvidenceRef",
+    "Finding",
+    "FindingKind",
+    "VALID_CONFIDENCE",
+    "VALID_STATUSES",
+]

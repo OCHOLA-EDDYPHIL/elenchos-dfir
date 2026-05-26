@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from siftguard.validation.findings import Finding
+from siftguard.validation.models import ClaimStatus, Finding
 
 
 def validate_finding_has_evidence(finding: Finding) -> tuple[bool, str]:
-    if finding.status == "confirmed" and not finding.evidence_refs:
-        return False, "confirmed finding requires at least one evidence reference"
+    if finding.status is ClaimStatus.CONFIRMED and not finding.supports_final_report:
+        return False, "confirmed finding requires evidence, raw record, and hash support"
 
-    if finding.status == "inferred" and not finding.inference:
-        return False, "inferred finding must set inference=true"
+    if finding.status is ClaimStatus.INFERRED and not finding.supports_final_report:
+        return False, "inferred finding requires evidence and rationale"
 
     return True, "ok"
 

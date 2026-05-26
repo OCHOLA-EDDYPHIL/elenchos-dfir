@@ -1,36 +1,48 @@
 from __future__ import annotations
 
-from siftguard.validation.findings import EvidenceRef, Finding
+from siftguard.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
 from siftguard.validation.provenance import validate_finding_has_evidence
 
 
-def test_confirmed_without_evidence_fails():
+def test_supported_confirmed_finding_passes_provenance_check():
     finding = Finding(
-        finding_id="f1",
-        case_id="c1",
-        type="persistence",
-        status="confirmed",
-        confidence="high",
-        summary="test",
-        evidence_refs=[],
-        inference=False,
+        finding_id="F-SYN-PROVENANCE",
+        claim="Synthetic confirmed finding with claim-proof support.",
+        status=ClaimStatus.CONFIRMED,
+        confidence=Confidence.HIGH,
+        kind=FindingKind.CONCLUSION,
+        evidence_refs=[
+            EvidenceRef(
+                evidence_id="EV-SYN-001",
+                parser="mftecmd",
+                source="$MFT",
+                raw_record_ref="csv:mft.csv:1842",
+            )
+        ],
+        artifact_hashes=[
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        ],
+        rationale="Synthetic parser row supports the confirmed claim.",
     )
 
-    ok, _ = validate_finding_has_evidence(finding)
-    assert not ok
+    ok, reason = validate_finding_has_evidence(finding)
 
-
-def test_confirmed_with_evidence_passes():
-    finding = Finding(
-        finding_id="f2",
-        case_id="c1",
-        type="execution",
-        status="confirmed",
-        confidence="medium",
-        summary="test",
-        evidence_refs=[EvidenceRef(artifact_id="art_abc")],
-        inference=False,
-    )
-
-    ok, _ = validate_finding_has_evidence(finding)
     assert ok
+    assert reason == "ok"
+
+
+def test_rejected_finding_is_valid_but_not_report_supported():
+    finding = Finding(
+        finding_id="F-SYN-REJECTED-PROVENANCE",
+        claim="Synthetic claim rejected by contradictory records.",
+        status=ClaimStatus.REJECTED,
+        confidence=Confidence.MEDIUM,
+        kind=FindingKind.CONCLUSION,
+        rationale="Synthetic records contradict the claim.",
+    )
+
+    ok, reason = validate_finding_has_evidence(finding)
+
+    assert ok
+    assert reason == "ok"
+    assert finding.supports_final_report is False
