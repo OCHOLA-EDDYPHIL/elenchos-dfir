@@ -114,6 +114,32 @@ def fake_runner_failed_with_csv(captured: dict[str, object]):
     return runner
 
 
+def fake_runner_success_malformed_csv(captured: dict[str, object]):
+    def runner(command, **kwargs):
+        captured["command"] = tuple(command)
+        output_dir = Path(command[command.index("--csv") + 1])
+        csv_name = command[command.index("--csvf") + 1]
+        shutil.copyfile(FIXTURE_DIR / "mftecmd_malformed.csv", output_dir / csv_name)
+
+        stdout_path = kwargs["stdout_path"]
+        stderr_path = kwargs["stderr_path"]
+        stdout_path.write_text("synthetic stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return ToolResult(
+            command=list(command),
+            cwd=None,
+            exit_code=0,
+            duration_ms=12,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            stdout_sha256=None,
+            stderr_sha256=None,
+            status="success",
+        )
+
+    return runner
+
+
 def test_parse_mft_builds_expected_argv_and_success_result(tmp_path):
     captured: dict[str, object] = {}
     mft_path = make_mft(tmp_path)
@@ -167,7 +193,9 @@ def test_parse_mft_returns_failed_when_runner_fails_without_csv(tmp_path):
     assert result.status == "failed"
     assert result.events == []
     assert result.errors
+    assert any("exit_code=7" in error for error in result.errors)
     assert any(path.endswith("_stderr.log") for path in result.output_files)
+    assert any(path.endswith("_stderr.log") for path in result.output_hashes)
 
 
 def test_parse_mft_returns_partial_success_when_runner_fails_with_csv(tmp_path):
@@ -190,6 +218,27 @@ def test_parse_mft_returns_partial_success_when_runner_fails_with_csv(tmp_path):
     assert result.errors
 
 
+def test_parse_mft_returns_partial_success_for_malformed_csv(tmp_path):
+    captured: dict[str, object] = {}
+    mft_path = make_mft(tmp_path)
+
+    result = parse_mft(
+        case_id="case-001",
+        artifact_id="EV-MFT-0001",
+        mft_path=mft_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=mft_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success_malformed_csv(captured),
+    )
+
+    assert result.status == "partial_success"
+    assert result.events
+    assert result.warnings
+    assert any("invalid timestamp" in warning for warning in result.warnings)
+    assert any(event.status == "malformed" for event in result.events)
+
+
 def test_parse_mft_returns_skipped_when_command_missing(tmp_path):
     mft_path = make_mft(tmp_path)
     config = ParserCommandConfig({})
@@ -206,7 +255,7 @@ def test_parse_mft_returns_skipped_when_command_missing(tmp_path):
 
     assert result.status == "skipped"
     assert result.command is None
-    assert result.errors
+    assert any("MFTECmd command is not available" in error for error in result.errors)
 
 
 def test_parse_mft_rejects_missing_input(tmp_path):
