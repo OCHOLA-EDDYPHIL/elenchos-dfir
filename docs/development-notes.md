@@ -39,6 +39,38 @@ Run these before opening a PR:
 git diff --check
 ```
 
+## Local SIFT Integration Tests
+
+Parser integration tests are local-only and skipped by default. Enable them only
+when SIFT parser tools and local staged evidence artifacts are available:
+
+```bash
+export SIFTGUARD_RUN_SIFT_INTEGRATION=1
+export SIFTGUARD_TEST_MFT_PATH="<LOCAL_EVIDENCE_ROOT>/mft/$MFT"
+export SIFTGUARD_TEST_NTUSER_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT"
+export SIFTGUARD_TEST_SOFTWARE_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE"
+export SIFTGUARD_TEST_AMCACHE_PATH="<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve"
+
+.venv/bin/python -m pytest tests/integration
+```
+
+When the gate is enabled, missing environment variables fail with clear
+messages. The tests write generated parser output to pytest temporary
+directories and do not require or commit evidence artifacts.
+
+## Parser Failure Visibility
+
+Parser failures must be visible to callers. Missing parser commands return
+`skipped` or `failed` results with clear errors. Nonzero parser exits are not
+converted to clean success. Malformed parser output must preserve warnings or
+errors in `ParserResult`, and any usable rows may still be returned as
+observational events.
+
+The audit ledger records command execution metadata, including argv, exit code,
+duration, stdout/stderr paths, stdout/stderr hashes when files exist, and final
+runner status. Warnings and errors describe parser or data quality conditions;
+they are not incident conclusions.
+
 ## Evidence Safety for Developers
 
 - Unit tests use synthetic fixtures.

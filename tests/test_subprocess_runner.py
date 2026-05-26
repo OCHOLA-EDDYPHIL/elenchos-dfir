@@ -30,7 +30,17 @@ def test_runner_success_logs_audit(tmp_path):
 
     rows = read_events(ledger)
     assert len(rows) == 1
-    assert rows[0]["status"] == "success"
+    event = rows[0]
+    assert event["status"] == "success"
+    assert event["case_id"] == "case1"
+    assert event["tool_name"] == "python_test"
+    assert event["command"] == [sys.executable, "-c", "print('ok')"]
+    assert event["exit_code"] == 0
+    assert isinstance(event["duration_ms"], int)
+    assert event["stdout_path"] == result.stdout_path
+    assert event["stderr_path"] == result.stderr_path
+    assert event["stdout_sha256"] == result.stdout_sha256
+    assert event["stderr_sha256"] == result.stderr_sha256
 
 
 def test_runner_nonzero_logs_failed(tmp_path):
@@ -51,7 +61,21 @@ def test_runner_nonzero_logs_failed(tmp_path):
     assert result.exit_code == 3
 
     rows = read_events(ledger)
-    assert rows[-1]["status"] == "failed"
+    event = rows[-1]
+    assert event["status"] == "failed"
+    assert event["case_id"] == "case1"
+    assert event["tool_name"] == "python_fail"
+    assert event["command"] == [
+        sys.executable,
+        "-c",
+        "import sys\nprint('bad')\nsys.exit(3)",
+    ]
+    assert event["exit_code"] == 3
+    assert isinstance(event["duration_ms"], int)
+    assert event["stdout_path"] == result.stdout_path
+    assert event["stderr_path"] == result.stderr_path
+    assert event["stdout_sha256"] == result.stdout_sha256
+    assert event["stderr_sha256"] == result.stderr_sha256
 
 
 def test_runner_denied_command_logs_denied(tmp_path):
