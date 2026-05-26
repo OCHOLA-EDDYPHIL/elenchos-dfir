@@ -13,6 +13,7 @@ from siftguard.agent.models import (
     CorrectionAction,
     CorrectionTrigger,
 )
+from siftguard.agent.runner import run_agent_workflow
 
 __all__ = [
     "AgentArtifactRef",
@@ -26,4 +27,5 @@ __all__ = [
     "AgentStepStatus",
     "CorrectionAction",
     "CorrectionTrigger",
+    "run_agent_workflow",
 ]
