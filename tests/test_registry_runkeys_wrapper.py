@@ -123,6 +123,45 @@ def fake_runner_success_json_only(captured: dict[str, object]):
     return runner
 
 
+def fake_runner_success_empty_json(captured: dict[str, object]):
+    def runner(command, **kwargs):
+        commands = captured.setdefault("commands", [])
+        assert isinstance(commands, list)
+        commands.append(tuple(command))
+
+        output_dir = Path(command[command.index("--json") + 1])
+        key_path = command[command.index("--kn") + 1]
+        json_name = "RunOnce.json" if key_path.endswith("RunOnce") else "Run.json"
+        (output_dir / json_name).write_text(
+            json.dumps(
+                {
+                    "KeyPath": key_path,
+                    "LastWriteTimestamp": "2026-01-01 00:00:00.0000000",
+                    "Values": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+        stdout_path = kwargs["stdout_path"]
+        stderr_path = kwargs["stderr_path"]
+        stdout_path.write_text("synthetic stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return ToolResult(
+            command=list(command),
+            cwd=None,
+            exit_code=0,
+            duration_ms=11,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            stdout_sha256=None,
+            stderr_sha256=None,
+            status="success",
+        )
+
+    return runner
+
+
 def fake_runner_failed_without_csv(captured: dict[str, object]):
     def runner(command, **kwargs):
         commands = captured.setdefault("commands", [])
@@ -172,6 +211,35 @@ def fake_runner_failed_with_csv(captured: dict[str, object]):
             stdout_sha256=None,
             stderr_sha256=None,
             status="failed",
+        )
+
+    return runner
+
+
+def fake_runner_success_malformed_csv(captured: dict[str, object]):
+    def runner(command, **kwargs):
+        commands = captured.setdefault("commands", [])
+        assert isinstance(commands, list)
+        commands.append(tuple(command))
+
+        output_dir = Path(command[command.index("--csv") + 1])
+        csv_name = command[command.index("--csvf") + 1]
+        shutil.copyfile(FIXTURE_DIR / "recmd_runkeys_malformed.csv", output_dir / csv_name)
+
+        stdout_path = kwargs["stdout_path"]
+        stderr_path = kwargs["stderr_path"]
+        stdout_path.write_text("synthetic stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        return ToolResult(
+            command=list(command),
+            cwd=None,
+            exit_code=0,
+            duration_ms=11,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            stdout_sha256=None,
+            stderr_sha256=None,
+            status="success",
         )
 
     return runner
@@ -299,6 +367,26 @@ def test_parse_registry_runkeys_normalizes_real_recmd_json_fallback(tmp_path):
     assert any(path.endswith("Run.json") for path in result.output_files)
 
 
+def test_parse_registry_runkeys_empty_json_is_visible_failure(tmp_path):
+    captured: dict[str, object] = {}
+    hive_path = make_hive(tmp_path, "NTUSER.DAT")
+
+    result = parse_registry_runkeys(
+        case_id="case-001",
+        artifact_id="EV-REG-0001",
+        hive_path=hive_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=hive_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success_empty_json(captured),
+    )
+
+    assert result.status == "failed"
+    assert result.events == []
+    assert result.errors == ["RECmd outputs contained no normalizable Run Key values"]
+    assert any(path.endswith("Run.json") for path in result.output_files)
+
+
 def test_parse_registry_runkeys_returns_failed_when_runner_fails_without_csv(tmp_path):
     captured: dict[str, object] = {}
     hive_path = make_hive(tmp_path)
@@ -316,8 +404,10 @@ def test_parse_registry_runkeys_returns_failed_when_runner_fails_without_csv(tmp
     assert result.status == "failed"
     assert result.events == []
     assert result.errors
+    assert any("exit_code=8" in error for error in result.errors)
     assert result.metadata["failed_command_count"] == 2
     assert any(path.endswith("_stderr.log") for path in result.output_files)
+    assert any(path.endswith("_stderr.log") for path in result.output_hashes)
 
 
 def test_parse_registry_runkeys_returns_partial_success_when_runner_fails_with_csv(tmp_path):
@@ -341,6 +431,27 @@ def test_parse_registry_runkeys_returns_partial_success_when_runner_fails_with_c
     assert result.metadata["failed_command_count"] == 2
 
 
+def test_parse_registry_runkeys_returns_partial_success_for_malformed_csv(tmp_path):
+    captured: dict[str, object] = {}
+    hive_path = make_hive(tmp_path)
+
+    result = parse_registry_runkeys(
+        case_id="case-001",
+        artifact_id="EV-REG-0001",
+        hive_path=hive_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=hive_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success_malformed_csv(captured),
+    )
+
+    assert result.status == "partial_success"
+    assert result.events
+    assert result.warnings
+    assert any("invalid timestamp" in warning for warning in result.warnings)
+    assert any(event.status == "malformed" for event in result.events)
+
+
 def test_parse_registry_runkeys_returns_skipped_when_command_missing(tmp_path):
     hive_path = make_hive(tmp_path)
     config = ParserCommandConfig({})
@@ -357,7 +468,7 @@ def test_parse_registry_runkeys_returns_skipped_when_command_missing(tmp_path):
 
     assert result.status == "skipped"
     assert result.command is None
-    assert result.errors
+    assert any("RECmd command is not available" in error for error in result.errors)
 
 
 def test_parse_registry_runkeys_returns_skipped_for_unsupported_hive(tmp_path):

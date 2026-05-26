@@ -560,6 +560,9 @@ def parse_registry_runkeys(
     output_files = _existing_files(candidate_files)
     output_hashes = _existing_file_hashes(candidate_files)
 
+    if not events and not errors:
+        errors.append("RECmd outputs contained no normalizable Run Key values")
+
     if events:
         status = (
             "partial_success"
