@@ -20,8 +20,8 @@ Logs, screenshots, command output, test result, or PR link.
 ## Lane
 build / research / docs / spike
 
-## Milestone
-M0 / M1 / M2 / M3 / M4 / M5
+## Area
+build / research / docs / validation / workflow
 
 ## Estimate
 S / M / L
