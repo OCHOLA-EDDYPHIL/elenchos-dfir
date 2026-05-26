@@ -69,8 +69,8 @@ Parser fixtures under `tests/fixtures/parser_outputs/` are synthetic only. They
 are not real evidence, not generated parser output from case data, and not
 complete documentation of every real parser column.
 
-Wrapper implementation, parser normalization, parser CLI commands, MCP parser
-schemas, correlation, and findings are later PRs.
+Wrapper implementation, parser normalization, parser CLI commands, and MCP
+parser schemas are now part of M2. Correlation and findings remain later work.
 
 ## MFT Parser Wrapper
 
@@ -85,7 +85,8 @@ preserve parser-reported paths, timestamps, evidence references, and raw row
 references. They do not create findings or interpret activity.
 
 Unit tests use synthetic MFTECmd-style CSV fixtures and fake runner injection.
-SIFT validation against the real tool is a later issue.
+SIFT validation against the real tool is summarized in
+`docs/parser-validation.md`.
 
 ## Registry Run Key Parser Wrapper
 
@@ -101,7 +102,8 @@ value data, hive labels, timestamps when present, evidence references, and raw
 row references. They do not create findings.
 
 Unit tests use synthetic RECmd-style CSV fixtures and fake runner injection.
-SIFT validation against the real tool is later issue #34.
+SIFT validation against the real tool is summarized in
+`docs/parser-validation.md`.
 
 ## Amcache Parser Wrapper
 
@@ -116,7 +118,8 @@ names, paths, hashes, timestamps when present, evidence references, and raw row
 references. They do not create findings or interpret activity.
 
 Unit tests use synthetic AmcacheParser-style CSV fixtures and fake runner
-injection. SIFT validation against the real tool is later issue #34.
+injection. SIFT validation against the real tool is summarized in
+`docs/parser-validation.md`.
 
 ## Parser CLI And MCP Schemas
 
@@ -132,5 +135,5 @@ must not resolve inside `evidence_root`.
 
 MCP parser tool schemas are defined for `parse_mft`, `parse_registry_runkeys`,
 and `parse_amcache`. They describe constrained parser wrappers, not arbitrary
-process execution. Full MCP runtime wiring is outside this PR, and M2 parser
+process execution. Full MCP runtime wiring remains future work, and M2 parser
 interfaces do not generate findings.
