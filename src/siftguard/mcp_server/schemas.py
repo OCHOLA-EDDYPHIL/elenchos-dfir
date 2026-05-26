@@ -15,6 +15,7 @@ TOOL_NAMES = [
 ]
 
 PARSER_TOOL_NAMES = ("parse_mft", "parse_registry_runkeys", "parse_amcache")
+CORRELATION_TOOL_NAMES = ("correlate_timeline",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +130,58 @@ def _parser_output_schema() -> dict[str, object]:
     }
 
 
+def _correlation_input_schema() -> dict[str, object]:
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "case_id": {"type": "string", "description": "Case identifier."},
+            "normalized_events_path": _path_string(
+                "Path to an existing normalized parser output JSON file."
+            ),
+            "output_dir": _path_string(
+                "Directory where generated timeline, findings, report, and audit files are written."
+            ),
+            "include_report": {
+                "type": "boolean",
+                "default": True,
+                "description": "Whether to render the Markdown report.",
+            },
+        },
+        "required": ["case_id", "normalized_events_path", "output_dir"],
+    }
+
+
+def _correlation_output_schema() -> dict[str, object]:
+    path_or_null = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {
+            "case_id": {"type": "string"},
+            "output_dir": {"type": "string"},
+            "event_count": {"type": "integer", "minimum": 0},
+            "timeline_count": {"type": "integer", "minimum": 0},
+            "finding_count": {"type": "integer", "minimum": 0},
+            "timelines_path": {"type": "string"},
+            "findings_path": {"type": "string"},
+            "report_path": path_or_null,
+            "audit_path": {"type": "string"},
+        },
+        "required": [
+            "case_id",
+            "output_dir",
+            "event_count",
+            "timeline_count",
+            "finding_count",
+            "timelines_path",
+            "findings_path",
+            "report_path",
+            "audit_path",
+        ],
+    }
+
+
 def _placeholder_descriptor(name: str) -> ToolDescriptor:
     return ToolDescriptor(
         name=name,
@@ -195,10 +248,31 @@ def _parser_descriptors() -> dict[str, ToolDescriptor]:
     }
 
 
+def _correlation_descriptors() -> dict[str, ToolDescriptor]:
+    return {
+        "correlate_timeline": ToolDescriptor(
+            name="correlate_timeline",
+            title="Correlate Timeline",
+            description=(
+                "Build subject timelines, validate derived claims, and render generated "
+                "outputs from an existing normalized parser JSON file. The tool accepts "
+                "paths to generated parser output, not raw evidence upload data."
+            ),
+            input_schema=_correlation_input_schema(),
+            output_schema=_correlation_output_schema(),
+            annotations={"readOnlyHint": False},
+        ),
+    }
+
+
 def get_tool_descriptors() -> list[ToolDescriptor]:
     parser_descriptors = _parser_descriptors()
+    correlation_descriptors = _correlation_descriptors()
     return [
-        parser_descriptors.get(tool_name, _placeholder_descriptor(tool_name))
+        parser_descriptors.get(
+            tool_name,
+            correlation_descriptors.get(tool_name, _placeholder_descriptor(tool_name)),
+        )
         for tool_name in TOOL_NAMES
     ]
 
@@ -206,6 +280,11 @@ def get_tool_descriptors() -> list[ToolDescriptor]:
 def get_parser_tool_descriptors() -> list[ToolDescriptor]:
     parser_descriptors = _parser_descriptors()
     return [parser_descriptors[name] for name in PARSER_TOOL_NAMES]
+
+
+def get_correlation_tool_descriptors() -> list[ToolDescriptor]:
+    correlation_descriptors = _correlation_descriptors()
+    return [correlation_descriptors[name] for name in CORRELATION_TOOL_NAMES]
 
 
 def get_tool_descriptor(name: str) -> ToolDescriptor:
