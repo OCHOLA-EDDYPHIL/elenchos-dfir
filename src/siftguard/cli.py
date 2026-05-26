@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from siftguard import __version__
+from siftguard.agent.models import AgentRunStatus
+from siftguard.agent.runner import run_agent_workflow
 from siftguard.audit.execution_ledger import read_events
 from siftguard.evidence.hashing import sha256_file
 from siftguard.evidence.manifest import build_manifest, write_manifest
@@ -194,6 +196,38 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
 
+    agent_parser = subparsers.add_parser(
+        "agent",
+        help="Run constrained deterministic agent workflows",
+    )
+    agent_subparsers = agent_parser.add_subparsers(dest="agent_command")
+    agent_run_parser = agent_subparsers.add_parser(
+        "run",
+        help="Run the constrained deterministic SIFTGuard agent workflow",
+    )
+    agent_run_parser.add_argument("--case-id", required=True, help="Case identifier")
+    agent_run_parser.add_argument(
+        "--manifest",
+        type=Path,
+        required=True,
+        help="Evidence manifest or synthetic parser-output manifest JSON",
+    )
+    agent_run_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Generated agent output directory under runs/, outputs/, analysis/, "
+            "or reports/generated/"
+        ),
+    )
+    agent_run_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        required=True,
+        help="Hard cap on deterministic agent phase attempts",
+    )
+
     return parser
 
 
@@ -248,6 +282,29 @@ def main(argv: list[str] | None = None) -> int:
         print(f"report_path={result.report_path}")
         print(f"audit_path={result.audit_path}")
         return 0
+
+    if args.command == "agent":
+        if args.agent_command != "run":
+            print("error=agent subcommand is required", file=sys.stderr)
+            return 1
+
+        try:
+            run = run_agent_workflow(
+                case_id=args.case_id,
+                manifest_path=args.manifest,
+                output_dir=args.output_dir,
+                max_iterations=args.max_iterations,
+            )
+        except Exception as exc:
+            print(f"error={exc}", file=sys.stderr)
+            return 1
+
+        print(f"case_id={run.case_id}")
+        print(f"status={run.status.value}")
+        print(f"steps={len(run.steps)}")
+        print(f"agent_run={args.output_dir.resolve() / 'agent_run.json'}")
+        print(f"audit={args.output_dir.resolve() / 'audit.jsonl'}")
+        return 1 if run.status is AgentRunStatus.FAILED else 0
 
     parser.print_help()
     return 0
