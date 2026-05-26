@@ -1,32 +1,83 @@
-# Dataset Notes (Placeholder)
+# Dataset and Evidence Handling
 
-## Policy
-- Evidence is not stored in Git.
-- Official FIND EVIL starter case data is handled locally only.
-- Evidence paths are expected to remain under local `cases/` directories, which are gitignored.
+## Scope
 
-## Expected local layout
-- `cases/official/raw/`
-- `cases/official/selected/`
-- `runs/case_demo_001/`
+This page describes local evidence selection for M2 parser validation and demo
+runs. Raw evidence is not stored in Git, and committed documentation uses
+placeholders instead of private local paths.
 
-## Dataset source
-- Placeholder: add official source link or source note once evidence is acquired.
+## Required Artifact Types
 
-## Artifact selection policy
-- Keep raw source untouched in `cases/official/raw/`.
-- Copy only minimum required artifacts into `cases/official/selected/` for deterministic runs.
-- Track why each selected artifact is included.
+- `$MFT`: filesystem metadata observations, including names, paths, record
+  metadata, and parser-reported timestamps.
+- Registry hives:
+  - `NTUSER.DAT` for user-level `Run` and `RunOnce` keys.
+  - `SOFTWARE` for machine-level `Run` and `RunOnce` keys.
+- `Amcache.hve`: application compatibility cache observations.
 
-## Hash recording policy
-- Record SHA256 for each selected artifact in the manifest.
-- Recompute hashes at run start for integrity checks.
+## Why These Artifacts Are Included
 
-## Fields to complete once evidence is acquired
-- Case name:
-- Source URL or official source note:
-- Downloaded files:
-- Selected artifacts:
-- SHA256 hashes:
-- Known ground truth:
-- Assumptions:
+These artifacts provide breadth across filesystem metadata, registry autostart
+locations, and application metadata. They are sufficient to validate parser
+wrapper mechanics for M2. They do not, by themselves, establish a complete
+incident narrative.
+
+## Local Staging Layout
+
+Use a local evidence root outside the repository:
+
+```text
+<LOCAL_EVIDENCE_ROOT>/
+  mft/$MFT
+  registry/NTUSER.DAT
+  registry/SOFTWARE
+  amcache/Amcache.hve
+```
+
+## Local Config
+
+The validation harness can read local paths from an ignored `.local` file:
+
+```bash
+mkdir -p .local/sift-validation
+
+cat > .local/sift-validation/paths.env <<'EOF'
+SIFTGUARD_VALIDATION_EVIDENCE_ROOT=<LOCAL_EVIDENCE_ROOT>
+SIFTGUARD_VALIDATION_MFT_PATH=<LOCAL_EVIDENCE_ROOT>/mft/$MFT
+SIFTGUARD_VALIDATION_REGISTRY_HIVE_PATHS=<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT:<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE
+SIFTGUARD_VALIDATION_AMCACHE_PATH=<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve
+EOF
+```
+
+Do not commit `.local/`.
+
+## Hash Policy
+
+- Hash raw or staged artifacts locally when needed.
+- Do not commit hashes if they reveal private evidence provenance unless the
+  report is intentionally sanitized.
+- Parser outputs include output hashes for generated files where appropriate.
+- Evidence hash verification remains local-only unless a sanitized report
+  requires it.
+
+## Git Safety
+
+Do not commit evidence, `.local/`, `runs/`, parser outputs, audit ledgers, VM
+files, or disk images.
+
+Examples of forbidden repository content:
+
+- `*.E01`
+- `*.raw`
+- `*.vmdk`
+- `*.qcow2`
+- `Amcache.hve`
+- `NTUSER.DAT`
+- `SOFTWARE`
+- `$MFT`
+
+## Demo Dataset Note
+
+The demo can use locally staged artifacts from the provided FIND EVIL evidence
+dataset. The repository documents artifact classes and workflow, not private
+local evidence paths.
