@@ -7,6 +7,12 @@ MFTECmd, RECmd, and AmcacheParser wrappers. Parser outputs are normalized into
 observational `ParserEvent` records only. This validation does not create
 findings, perform correlation, or make maliciousness claims.
 
+Related workflow documentation:
+
+- [Architecture](architecture.md)
+- [Dataset and Evidence Handling](dataset.md)
+- [Limitations](limitations.md)
+
 ## Validation Environment
 
 Validation was run locally inside the SIFT Workstation VM against staged copies

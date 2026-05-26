@@ -1,47 +1,78 @@
-# Architecture v0
+# Architecture
 
-## Design principles
-- Read-only evidence semantics by default.
-- Deterministic orchestration and stable audit output.
-- Typed module boundaries over ad-hoc command execution.
-- Every finding traceable to evidence refs and audit events.
-- Small, testable Python modules over broad incomplete features.
+## Design Principles
 
-## System overview
-```mermaid
-flowchart LR
-  A[Evidence Sources] --> B[SIFT deterministic tools]
-  B --> C[SIFTGuard MCP typed tools]
-  A --> D[Evidence inventory + hashing]
-  D --> E[Evidence manifest JSON]
-  C --> F[Safe subprocess runner]
-  F --> G[Audit ledger JSONL]
-  E --> H[Correlation and validation layer]
-  G --> H
-  I[Claude Code / OpenClaw orchestrator] --> C
-  H --> J[Markdown reports]
-  H --> K[JSON reports]
+- Treat evidence roots as read-only inputs.
+- Keep generated outputs under `runs/`.
+- Use explicit typed interfaces instead of arbitrary shell execution.
+- Preserve parser output, warnings, errors, hashes, and audit records.
+- Normalize parser observations without producing final findings.
+
+## System Overview
+
+```text
+Local evidence outside repo
+  |
+  v
+siftguard CLI / future MCP tool schema
+  |
+  v
+parser wrapper
+  |
+  +--> safe runner + execution ledger
+  |
+  +--> SIFT tool output under runs/
+  |
+  v
+ParserResult + normalized ParserEvent records
+  |
+  v
+M3 correlation and claim-proof reporting, future work
 ```
 
-## Read-only enforcement
-- Case evidence is expected under `cases/` and treated as immutable input.
-- Output paths are constrained to `runs/` in higher-level workflows.
-- Policy modules reject risky commands and shell-style token injection.
+```mermaid
+flowchart TD
+  A[Local evidence outside repo] --> B[siftguard CLI]
+  A --> C[Evidence inventory and hashing]
+  B --> D[Parser wrappers]
+  C --> E[Evidence manifest]
+  D --> F[Safe subprocess runner]
+  F --> G[Execution ledger JSONL]
+  D --> H[SIFT parser outputs under runs/]
+  H --> I[ParserResult]
+  H --> J[ParserEvent normalization]
+  I --> K[Future M3 correlation and reporting]
+  J --> K
+```
 
-## Tool boundary
-- MCP surface is typed and explicit.
-- Arbitrary shell execution is not exposed as an MCP tool.
-- Runner wrappers only execute vetted commands via policy checks.
+## Components
 
-## Evidence provenance
-- Artifacts are hashed with SHA256.
-- Manifest entries include deterministic artifact IDs.
-- Execution events are appended to JSONL ledger with stable fields.
-- Parser outputs are expected to be hashed and ledgered in later milestones.
+- CLI entrypoints expose inventory, hashing, audit reading, and parser wrapper
+  commands.
+- MCP parser tool descriptors define constrained schemas for future MCP use.
+  Full runtime wiring is not the current parser workflow.
+- Evidence inventory and hashing create deterministic manifest records.
+- Parser wrappers call verified SIFT tools:
+  - MFTECmd for `$MFT`.
+  - RECmd for Registry Run/RunOnce keys.
+  - AmcacheParser for `Amcache.hve`.
+- The safe subprocess runner executes argv-style commands, writes stdout/stderr
+  logs under `runs/`, and appends audit events.
+- The execution ledger is JSONL.
+- `ParserResult` captures parser status, command, output files, hashes,
+  warnings, errors, timing, and normalized events.
+- `ParserEvent` records are observations extracted from parser output.
 
-## Self-correction target
-- M4 will add structured self-correction loops that revise hypotheses without mutating evidence.
+## Boundaries
 
-## Why arbitrary shell execution is not exposed
-- To reduce misuse risk, preserve reproducibility, and keep behavior auditable.
-- Explicit tool contracts are easier to test and validate than free-form shell access.
+Evidence roots are inputs, not output locations. Parser wrappers must not write
+to evidence roots. The `runs/` directory is the output boundary for parser CSVs,
+logs, normalized results, and audit ledgers.
+
+Parser wrappers do not directly produce final findings. Later M3 work can use
+normalized observations as inputs to correlation and claim-proof reporting.
+
+## Command Safety
+
+Parser commands are configured as argv elements. Public CLI and MCP schema
+surfaces do not expose arbitrary command, shell, executable, or argv fields.
