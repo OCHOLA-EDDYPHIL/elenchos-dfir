@@ -10,11 +10,12 @@ findings, perform correlation, or make maliciousness claims.
 ## Validation Environment
 
 Validation was run locally inside the SIFT Workstation VM against staged copies
-from a local extracted Windows C-drive E01 from the provided hackathon evidence
-dataset. The E01 was exposed through EWF and mounted as a direct NTFS volume in
-read-only mode; no partition offset was used.
+from provided hackathon Windows evidence sources. The source E01 images were
+exposed through EWF and mounted as direct NTFS volumes in read-only mode; no
+partition offset was used.
 
-- Date checked: 2026-05-25T20:37:16Z
+- MFT and Registry date checked: 2026-05-25T20:37:16Z
+- Amcache date checked: 2026-05-26T12:07:14Z
 - OS: Ubuntu 24.04.4 LTS
 - Kernel: Linux 6.8.0 generic family
 - Python: 3.12.3
@@ -58,14 +59,17 @@ The `.local/` directory is ignored and must remain local-only.
 ## Results
 
 Validation ran with staged artifacts under `<LOCAL_EVIDENCE_ROOT>`. The selected
-user profile hive is redacted as `<REDACTED_USER_PROFILE>`.
+user profile hive is redacted as `<REDACTED_USER_PROFILE>`. PR #45 validated
+the MFT and Registry Run Key wrappers. This follow-up validation staged
+`Amcache.hve` from a separate provided hackathon Windows evidence source and
+completed the remaining Amcache validation gap.
 
 | Artifact | Staged input | Status |
 | --- | --- | --- |
 | `$MFT` | `<LOCAL_EVIDENCE_ROOT>/mft/$MFT` | staged |
 | SOFTWARE hive | `<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE` | staged |
 | NTUSER.DAT hive | `<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT` from `<REDACTED_USER_PROFILE>` | staged |
-| Amcache.hve | `<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve` | blocked: not present in the mounted Windows C-drive image |
+| Amcache.hve | `<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve` | staged from separate Windows evidence source |
 
 Parser wrapper results:
 
@@ -74,24 +78,32 @@ Parser wrapper results:
 | `mftecmd` | MFTECmd | `$MFT` | success | 690504 | 0 | 0 |
 | `recmd` | RECmd | NTUSER.DAT Run/RunOnce keys | success | 2 | 0 | 0 |
 | `recmd` | RECmd | SOFTWARE Run/RunOnce keys | success | 4 | 0 | 0 |
-| `amcacheparser` | AmcacheParser | Amcache.hve | failed | 0 | 0 | 1 |
+| `amcacheparser` | AmcacheParser | Amcache.hve | partial_success | 128 | 1 | 0 |
 
-Validation output was written under `runs/CASE-VALIDATION-M2/`. The validation
-summary was written to
+MFT and Registry validation output was written under `runs/CASE-VALIDATION-M2/`.
+The validation summary was written to
 `runs/CASE-VALIDATION-M2/sift-parser-validation-summary.json`. The audit ledger
 was written to `runs/CASE-VALIDATION-M2/audit.jsonl` and contained 5 entries.
 
-Issue #34 remains open because the local Windows 7 C-drive evidence did not
-contain `Windows/AppCompat/Programs/Amcache.hve`, so the AmcacheParser wrapper
-could not be run against a local Amcache artifact and did not generate normalized
-Amcache events. The mounted image contained `RecentFileCache.bcf`, which is not
-the Amcache.hve artifact required for this validation.
+Amcache validation output was written under
+`runs/CASE-VALIDATION-M2-AMCACHE/`. The validation summary was written to
+`runs/CASE-VALIDATION-M2-AMCACHE/sift-parser-validation-summary.json`. The
+audit ledger was written to `runs/CASE-VALIDATION-M2-AMCACHE/audit.jsonl` and
+contained 1 entry.
+
+The AmcacheParser wrapper returned `partial_success` because one normalized row
+had parser-reported context but no `FilePath` value. The wrapper still produced
+128 normalized observational events and no validation errors.
+
+All M2 parser wrappers have now been validated in SIFT using local evidence
+subsets: MFTECmd for `$MFT`, RECmd for Registry Run Keys, and AmcacheParser for
+`Amcache.hve`.
 
 ## Limitations
 
-This validation used one Windows host image and disk artifacts only. Memory
-artifacts were out of scope. MFT timestamps are filesystem metadata
+This validation used local provided evidence subsets and disk artifacts only.
+Memory artifacts were out of scope. MFT timestamps are filesystem metadata
 observations. Run keys are autostart artifact observations; interpretation
-belongs to later correlation work. Amcache observations, when available, do not
-by themselves establish program execution. Parser output depends on the supplied
-artifacts and tool behavior.
+belongs to later correlation work. Amcache observations do not by themselves
+establish program execution. Parser output depends on the supplied artifacts and
+tool behavior.
