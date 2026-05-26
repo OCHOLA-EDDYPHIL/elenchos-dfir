@@ -26,8 +26,8 @@ _ABSENT_TIMESTAMPS = {"", "n/a", "na", "none", "null", "0"}
 _SHA1_RE = re.compile(r"^(?:sha1:)?([a-fA-F0-9]{40})$")
 _SHA256_RE = re.compile(r"^(?:sha256:)?([a-fA-F0-9]{64})$")
 
-_PATH_COLUMNS = ("FilePath", "FullPath", "Path", "ProgramPath", "FileName")
-_SUBJECT_COLUMNS = ("ProgramName", "FileName")
+_PATH_COLUMNS = ("FilePath", "FullPath", "Path", "ProgramPath", "FileName", "LnkName")
+_SUBJECT_COLUMNS = ("ProgramName", "FileName", "Name", "LnkName", "ApplicationName")
 _TIMESTAMP_COLUMNS = (
     "LastModifiedTimeUtc",
     "LastModifiedUtc",
@@ -35,6 +35,8 @@ _TIMESTAMP_COLUMNS = (
     "LinkDate",
     "CreatedUtc",
     "FirstRunTimeUtc",
+    "FileKeyLastWriteTimestamp",
+    "KeyLastWriteTimestamp",
 )
 _SHA256_COLUMNS = ("SHA256", "SHA-256", "Hash", "FileHash")
 _SHA1_COLUMNS = ("SHA1", "SHA-1")
@@ -298,6 +300,31 @@ def _existing_files(paths: Sequence[Path]) -> list[str]:
     return [str(path) for path in paths if path.exists() and path.is_file()]
 
 
+def _has_observation_columns(csv_path: Path) -> bool:
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        fieldnames = {field.lower() for field in (reader.fieldnames or [])}
+    observed_columns = {column.lower() for column in (*_PATH_COLUMNS, *_SUBJECT_COLUMNS)}
+    return bool(fieldnames & observed_columns)
+
+
+def _amcache_csv_outputs(output_dir: Path, expected_csv_path: Path) -> list[Path]:
+    if expected_csv_path.exists() and expected_csv_path.is_file():
+        return [expected_csv_path]
+
+    csv_paths: list[Path] = []
+    for csv_path in sorted(output_dir.glob("*.csv")):
+        if csv_path.is_file() and _has_observation_columns(csv_path):
+            csv_paths.append(csv_path)
+    return csv_paths
+
+
+def _all_amcache_csv_outputs(output_dir: Path, expected_csv_path: Path) -> list[Path]:
+    if expected_csv_path.exists() and expected_csv_path.is_file():
+        return [expected_csv_path]
+    return sorted(path for path in output_dir.glob("*.csv") if path.is_file())
+
+
 def _known_stdout_error(stdout_path: Path) -> str | None:
     if not stdout_path.exists() or stdout_path.is_dir():
         return None
@@ -386,6 +413,7 @@ def parse_amcache(
         str(output_dir),
         "--csvf",
         DEFAULT_AMCACHE_CSV_NAME,
+        "--nl",
     )
 
     started_at_utc = _utc_now_z()
@@ -403,9 +431,6 @@ def parse_amcache(
     )
     ended_at_utc = _utc_now_z()
 
-    candidate_files = (csv_path, stdout_path, stderr_path)
-    output_files = _existing_files(candidate_files)
-    output_hashes = _existing_file_hashes(candidate_files)
     warnings: list[str] = []
     errors: list[str] = []
     events: list[ParserEvent] = []
@@ -416,17 +441,31 @@ def parse_amcache(
         tool_failed = True
         errors.append(f"AmcacheParser stdout reported: {stdout_error}")
 
-    if csv_path.exists():
-        events, warnings, normalize_errors = normalize_amcache_csv(
-            csv_path=csv_path,
-            case_id=case_id,
-            artifact_id=artifact_id,
-        )
-        errors.extend(normalize_errors)
+    csv_paths = _amcache_csv_outputs(output_dir, csv_path)
+    all_csv_paths = _all_amcache_csv_outputs(output_dir, csv_path)
+    candidate_files = (*all_csv_paths, stdout_path, stderr_path)
+    output_files = _existing_files(candidate_files)
+    output_hashes = _existing_file_hashes(candidate_files)
+
+    if csv_paths:
+        for output_csv_path in csv_paths:
+            csv_events, csv_warnings, csv_errors = normalize_amcache_csv(
+                csv_path=output_csv_path,
+                case_id=case_id,
+                artifact_id=artifact_id,
+            )
+            events.extend(csv_events)
+            warnings.extend(
+                f"{output_csv_path.name}: {warning}" for warning in csv_warnings
+            )
+            errors.extend(f"{output_csv_path.name}: {error}" for error in csv_errors)
         if tool_failed:
             warnings.append("AmcacheParser command failed but output CSV was present")
             errors.append(_tool_error(tool_result))
             status = "partial_success"
+        elif not events:
+            errors.append("AmcacheParser CSV outputs contained no normalizable rows")
+            status = "failed"
         elif errors or warnings:
             status = "partial_success" if events else "failed"
         else:

@@ -66,6 +66,40 @@ def fake_runner_success(captured: dict[str, object]):
     return runner
 
 
+def fake_runner_success_generated_csvs(captured: dict[str, object]):
+    def runner(command, **kwargs):
+        captured["command"] = tuple(command)
+        output_dir = Path(command[command.index("--csv") + 1])
+        shutil.copyfile(
+            FIXTURE_DIR / "amcacheparser_valid.csv",
+            output_dir / "amcache_UnassociatedFileEntries.csv",
+        )
+        (output_dir / "amcache_DeviceContainers.csv").write_text(
+            "KeyName,KeyLastWriteTimestamp,FriendlyName\n"
+            "device-1,2026-01-01 00:00:00,Synthetic Device\n",
+            encoding="utf-8",
+        )
+
+        stdout_path = kwargs["stdout_path"]
+        stderr_path = kwargs["stderr_path"]
+        stdout_path.write_text("synthetic stdout\n", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+
+        return ToolResult(
+            command=list(command),
+            cwd=None,
+            exit_code=0,
+            duration_ms=13,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            stdout_sha256=None,
+            stderr_sha256=None,
+            status="success",
+        )
+
+    return runner
+
+
 def fake_runner_failed_without_csv(captured: dict[str, object]):
     def runner(command, **kwargs):
         captured["command"] = tuple(command)
@@ -141,6 +175,7 @@ def test_parse_amcache_builds_expected_argv_and_success_result(tmp_path):
         str(output_dir.resolve()),
         "--csvf",
         DEFAULT_AMCACHE_CSV_NAME,
+        "--nl",
     )
     assert isinstance(result.command, tuple)
     assert result.parser_name == PARSER_NAME
@@ -155,6 +190,31 @@ def test_parse_amcache_builds_expected_argv_and_success_result(tmp_path):
     assert result.output_hashes
     assert len(result.events) == 1
     assert result.events[0].event_type == "amcache_execution"
+
+
+def test_parse_amcache_normalizes_generated_csv_outputs_when_csvf_is_ignored(tmp_path):
+    captured: dict[str, object] = {}
+    amcache_path = make_amcache(tmp_path)
+
+    result = parse_amcache(
+        case_id="case-001",
+        artifact_id="EV-AMCACHE-0001",
+        amcache_path=amcache_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=amcache_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success_generated_csvs(captured),
+    )
+
+    assert result.status == "success"
+    assert len(result.events) == 1
+    assert result.events[0].event_type == "amcache_execution"
+    assert result.events[0].path == r"C:\Users\alice\AppData\Local\Temp\evil.exe"
+    assert any(
+        path.endswith("amcache_UnassociatedFileEntries.csv")
+        for path in result.output_files
+    )
+    assert any(path.endswith("amcache_DeviceContainers.csv") for path in result.output_files)
 
 
 def test_parse_amcache_returns_failed_when_runner_fails_without_csv(tmp_path):
