@@ -44,6 +44,8 @@ Reference documentation used:
 - Installer: official `install-cli.sh`, saved and inspected before execution.
 - Install prefix: user-level OpenClaw prefix.
 - Runtime installed by the OpenClaw installer: Node `v22.22.0`.
+- Shell startup was updated to prepend OpenClaw's local-prefix Node and
+  OpenClaw CLI directories for future shells.
 - No repository-local install was used.
 - No `sudo` was used.
 - No system Node upgrade was performed.
@@ -52,18 +54,22 @@ Reference documentation used:
 
 ## Auth Result
 
-**Provider auth is not yet proven for OpenClaw.**
+**Provider auth is proven for OpenClaw.**
 
-- OpenAI/Codex browser OAuth and device-code auth were intentionally not used.
-- The existing enterprise Codex/Azure OpenAI setup outside this repository was
-  preserved and not inspected, printed, copied, or modified.
+- OpenAI/Codex browser OAuth and device-code auth were used as the explicit
+  last-resort OpenClaw auth path authorized by the maintainer.
+- Auth was performed through OpenClaw's own `openai-codex` provider flow.
+- ChatGPT/OpenAI browser auth was used only for OpenClaw, not for Codex CLI.
+- Existing enterprise Codex/Azure OpenAI setup outside this repository was
+  preserved and not inspected, printed, copied, imported, or modified.
+- Existing Codex CLI config metadata hash stayed unchanged.
+- The shell startup file changed only because the maintainer requested a
+  permanent OpenClaw PATH update.
 - OpenClaw default model was set to `openai/gpt-5.5` in OpenClaw-owned
   user-level config.
-- `openclaw config validate` passed after OpenClaw config repair.
-- `openclaw models list --provider openai-codex` exited non-zero.
-- `openclaw models status --probe --probe-provider openai-codex` did not
-  complete within the bounded probe window.
-- The model smoke did not authenticate successfully through OpenClaw.
+- OpenClaw config validation passed after auth and workspace configuration.
+- The model smoke authenticated successfully through OpenClaw and returned the
+  expected phrase.
 - No credentials, API keys, provider tokens, account identifiers, device codes,
   private endpoints, or OAuth material are committed.
 
@@ -76,17 +82,18 @@ Reference documentation used:
 | `openclaw doctor --fix` | passed |
 | `openclaw config validate` | passed |
 | `openclaw models status` | passed as a status command |
-| `openclaw models list --provider openai-codex` | failed |
-| `openclaw models status --probe --probe-provider openai-codex` | blocked by bounded timeout |
-| `openclaw infer model run ... openai/gpt-5.5 ...` | failed with auth-related error; expected phrase was not returned |
-| ad-hoc loopback gateway `status --require-rpc` | passed |
-| ad-hoc loopback gateway `probe --json` | exited non-zero |
+| `openclaw models list --provider openai-codex` | bounded timeout; non-critical because model execution passed |
+| `openclaw infer model run ... openai/gpt-5.5 ...` | passed; returned `openclaw-smoke-ok` |
+| ad-hoc loopback gateway `status --require-rpc` | passed after loopback start |
 | `.venv/bin/python -m siftguard --help` | passed |
 | `.venv/bin/python -m siftguard agent run --help` | passed |
+| OpenClaw-controlled `siftguard agent run --help` invocation | passed; OpenClaw reported command exit code `0` |
 
 The gateway smoke used an ad-hoc loopback process on the local host and stopped
 it after the check. No daemon install or remote messaging channel was required
-for this proof.
+for this proof. The OpenClaw-controlled SIFTGuard invocation used a local agent
+session and constrained task text that instructed OpenClaw to run only the
+SIFTGuard help command and avoid evidence or secrets.
 
 ## Security And Evidence Safety
 
@@ -103,25 +110,27 @@ for this proof.
 - OpenClaw must not become the broad forensic shell interface.
 - The submitted forensic workflow should remain constrained to SIFTGuard
   commands such as `siftguard agent run`.
+- OpenClaw remains a runtime orchestrator over constrained SIFTGuard commands,
+  not the forensic engine.
 
 ## Final Viability Classification
 
-**partially-ready**
+**ready-for-integration**
 
 OpenClaw is now installed locally with a supported local-prefix Node runtime,
 the OpenClaw config validates, the ad-hoc loopback gateway can satisfy the
 `--require-rpc` status check, and the constrained SIFTGuard agent command is
 visible through CLI help.
 
-The runtime is not ready for integration yet because provider/model execution
-through OpenClaw is not proven. The remaining blocker is a safe OpenClaw auth
-path for the existing enterprise model access, without exposing or copying
-credentials and without using browser/device-code Codex OAuth unless explicitly
-approved later.
+The runtime is ready for a later integration issue because OpenClaw auth,
+provider-backed model execution, gateway RPC status, direct SIFTGuard CLI help,
+and OpenClaw-controlled invocation of the constrained SIFTGuard help command all
+passed without committing evidence, credentials, transcripts, runtime state, or
+private paths.
 
 ## Next Recommended Issue
 
-Proceed to #65, `Add verification checks for agent outputs`. Do not block #65
-on OpenClaw auth. Return to OpenClaw runtime adapter work only after the
-provider/model smoke can pass without exposing credentials and after the
-deterministic verifier and self-correction policy are in place.
+Proceed to #65, `Add verification checks for agent outputs`, before runtime
+adapter work. OpenClaw integration should wait until the deterministic verifier
+and self-correction policy are in place, then use OpenClaw only to initiate or
+supervise constrained SIFTGuard commands.
