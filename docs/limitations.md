@@ -34,6 +34,10 @@ they cannot alone establish execution, user action, or maliciousness.
 - Dirty hives, missing fields, and parser-specific output shapes can produce
   `partial_success`.
 - Parser warnings should be preserved, not hidden.
+- Large raw artifacts can exceed available VM memory if every normalized event
+  is loaded for one run. The documented final demo path uses explicit bounded
+  triage with `--max-normalized-events`; bounded outputs are reproducible but
+  are not exhaustive full-artifact analysis.
 - The agent planner is deterministic and uses fixed workflow phases; it is not
   a free-form LLM planning surface.
 - Markdown is the human-readable report. Machine-readable outputs are workflow

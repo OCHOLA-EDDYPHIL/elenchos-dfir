@@ -69,6 +69,16 @@ SUPPORTED_PARSE_ARTIFACT_TYPES = (
     | SYNTHETIC_CSV_ARTIFACT_TYPES
     | RAW_PARSER_ARTIFACT_TYPES
 )
+BOUNDED_ARTIFACT_TYPE_PRIORITY = {
+    "registry": 0,
+    "registry_hive": 0,
+    "recmd_runkeys_csv": 0,
+    "amcache": 1,
+    "amcacheparser_csv": 1,
+    "mft": 2,
+    "mftecmd_csv": 2,
+}
+EVENT_LIMIT_WARNING_MARKER = "max_events="
 
 
 @dataclass(slots=True)
@@ -89,17 +99,28 @@ class AgentWorkflowContext:
     manifest: EvidenceManifest
     paths: AgentWorkflowPaths
     clock: Clock
+    max_normalized_events: int | None = None
     artifacts: list[AgentArtifactRef] = field(default_factory=list)
     normalized_event_rows: list[dict[str, Any]] = field(default_factory=list)
     timelines: list[SubjectTimeline] = field(default_factory=list)
     validation_results: list[ClaimValidationResult] = field(default_factory=list)
     findings: list[Finding] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    normalized_event_limit_reached: bool = False
+    artifact_event_counts: dict[str, int] = field(default_factory=dict)
 
 
 def _require_non_empty_string(name: str, value: str) -> str:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string")
+    return value
+
+
+def _validate_optional_positive_int(name: str, value: int | None) -> int | None:
+    if value is None:
+        return None
+    if not isinstance(value, int) or value < 1:
+        raise ValueError(f"{name} must be a positive integer when provided")
     return value
 
 
@@ -278,6 +299,33 @@ def _artifact_type_counts(artifacts: list[EvidenceArtifact]) -> dict[str, int]:
     return dict(sorted(counts.items()))
 
 
+def _artifact_sort_key(artifact: EvidenceArtifact, *, bounded: bool) -> tuple[int, str, str]:
+    priority = (
+        BOUNDED_ARTIFACT_TYPE_PRIORITY.get(artifact.artifact_type, 1)
+        if bounded
+        else 0
+    )
+    return (priority, artifact.relative_path.casefold(), artifact.artifact_id)
+
+
+def _remaining_event_capacity(context: AgentWorkflowContext) -> int | None:
+    if context.max_normalized_events is None:
+        return None
+    return max(context.max_normalized_events - len(context.normalized_event_rows), 0)
+
+
+def _has_event_limit_warning(warnings: list[str]) -> bool:
+    return any(EVENT_LIMIT_WARNING_MARKER in warning for warning in warnings)
+
+
+def _limit_warning(context: AgentWorkflowContext) -> str:
+    return (
+        f"max_normalized_events={context.max_normalized_events} applied; "
+        f"bounded triage emitted {len(context.normalized_event_rows)} normalized "
+        "events and skipped remaining events"
+    )
+
+
 def _run_inventory_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     artifacts = sorted(context.manifest.artifacts, key=lambda item: item.relative_path)
     context.artifacts = [AgentArtifactRef.from_artifact(artifact) for artifact in artifacts]
@@ -293,6 +341,7 @@ def _parser_result_rows(
     case_id: str,
     artifact: EvidenceArtifact,
     path: Path,
+    max_events: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     result = ParserResult.from_dict(_load_json_object(path))
     if result.case_id != case_id:
@@ -306,7 +355,14 @@ def _parser_result_rows(
         errors.append(
             f"{artifact.artifact_id}: parser result status={result.status} produced no events"
         )
-    return [event.to_dict() for event in result.events], warnings, errors
+    rows = [event.to_dict() for event in result.events]
+    if max_events is not None and len(rows) > max_events:
+        rows = rows[:max_events]
+        warnings.append(
+            f"max_events={max_events} reached; remaining parser result events "
+            "were not normalized"
+        )
+    return rows, warnings, errors
 
 
 def _normalized_event_rows(
@@ -314,10 +370,19 @@ def _normalized_event_rows(
     case_id: str,
     artifact: EvidenceArtifact,
     path: Path,
+    max_events: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     payload = _load_json_object(path)
     _validate_payload_case_id(case_id, payload)
-    return _event_rows(payload), [], []
+    rows = _event_rows(payload)
+    warnings: list[str] = []
+    if max_events is not None and len(rows) > max_events:
+        rows = rows[:max_events]
+        warnings.append(
+            f"max_events={max_events} reached; remaining normalized events "
+            "were not loaded"
+        )
+    return rows, warnings, []
 
 
 def _synthetic_csv_rows(
@@ -325,24 +390,28 @@ def _synthetic_csv_rows(
     case_id: str,
     artifact: EvidenceArtifact,
     path: Path,
+    max_events: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     if artifact.artifact_type == "mftecmd_csv":
         events, warnings, errors = normalize_mftecmd_csv(
             csv_path=path,
             case_id=case_id,
             artifact_id=artifact.artifact_id,
+            max_events=max_events,
         )
     elif artifact.artifact_type == "recmd_runkeys_csv":
         events, warnings, errors = normalize_recmd_runkeys_csv(
             csv_path=path,
             case_id=case_id,
             artifact_id=artifact.artifact_id,
+            max_events=max_events,
         )
     elif artifact.artifact_type == "amcacheparser_csv":
         events, warnings, errors = normalize_amcache_csv(
             csv_path=path,
             case_id=case_id,
             artifact_id=artifact.artifact_id,
+            max_events=max_events,
         )
     else:
         raise ValueError(f"unsupported synthetic CSV artifact type: {artifact.artifact_type}")
@@ -358,6 +427,7 @@ def _raw_parser_rows(
     *,
     context: AgentWorkflowContext,
     artifact: EvidenceArtifact,
+    max_events: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     evidence_root = Path(context.manifest.case_root).resolve()
     if artifact.artifact_type == "mft":
@@ -367,6 +437,7 @@ def _raw_parser_rows(
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
+            max_events=max_events,
         )
     elif artifact.artifact_type in {"registry", "registry_hive"}:
         result = parse_registry_runkeys_artifact(
@@ -375,6 +446,7 @@ def _raw_parser_rows(
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
+            max_events=max_events,
         )
     elif artifact.artifact_type == "amcache":
         result = parse_amcache_artifact(
@@ -383,6 +455,7 @@ def _raw_parser_rows(
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
+            max_events=max_events,
         )
     else:
         raise ValueError(f"unsupported raw parser artifact type: {artifact.artifact_type}")
@@ -400,6 +473,7 @@ def _rows_for_artifact(
     *,
     context: AgentWorkflowContext,
     artifact: EvidenceArtifact,
+    max_events: int | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     artifact_path = _artifact_path(context.manifest, artifact)
     if artifact.artifact_type in PARSER_RESULT_ARTIFACT_TYPES:
@@ -407,23 +481,27 @@ def _rows_for_artifact(
             case_id=context.case_id,
             artifact=artifact,
             path=artifact_path,
+            max_events=max_events,
         )
     if artifact.artifact_type in NORMALIZED_EVENT_ARTIFACT_TYPES:
         return _normalized_event_rows(
             case_id=context.case_id,
             artifact=artifact,
             path=artifact_path,
+            max_events=max_events,
         )
     if artifact.artifact_type in SYNTHETIC_CSV_ARTIFACT_TYPES:
         return _synthetic_csv_rows(
             case_id=context.case_id,
             artifact=artifact,
             path=artifact_path,
+            max_events=max_events,
         )
     if artifact.artifact_type in RAW_PARSER_ARTIFACT_TYPES:
         return _raw_parser_rows(
             context=context,
             artifact=artifact,
+            max_events=max_events,
         )
     return [], [], []
 
@@ -431,7 +509,13 @@ def _rows_for_artifact(
 def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     supported_artifacts = [
         artifact
-        for artifact in sorted(context.manifest.artifacts, key=lambda item: item.relative_path)
+        for artifact in sorted(
+            context.manifest.artifacts,
+            key=lambda item: _artifact_sort_key(
+                item,
+                bounded=context.max_normalized_events is not None,
+            ),
+        )
         if artifact.artifact_type in SUPPORTED_PARSE_ARTIFACT_TYPES
     ]
     if not supported_artifacts:
@@ -443,37 +527,66 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     warnings: list[str] = []
     errors: list[str] = []
-    for artifact in supported_artifacts:
+    artifact_event_counts: dict[str, int] = {}
+    context.normalized_event_rows = rows
+    for index, artifact in enumerate(supported_artifacts):
+        remaining = _remaining_event_capacity(context)
+        if remaining == 0:
+            context.normalized_event_limit_reached = True
+            break
+
         artifact_rows, artifact_warnings, artifact_errors = _rows_for_artifact(
             context=context,
             artifact=artifact,
+            max_events=remaining,
         )
         rows.extend(artifact_rows)
+        artifact_event_counts[artifact.artifact_id] = len(artifact_rows)
         warnings.extend(artifact_warnings)
         errors.extend(artifact_errors)
+        if _has_event_limit_warning(artifact_warnings):
+            context.normalized_event_limit_reached = True
+        if (
+            context.max_normalized_events is not None
+            and len(rows) >= context.max_normalized_events
+            and index < len(supported_artifacts) - 1
+        ):
+            context.normalized_event_limit_reached = True
+            break
 
     if errors and not rows:
         raise ValueError("parser phase produced no events: " + "; ".join(errors))
     if errors:
         warnings.extend(errors)
+    if context.normalized_event_limit_reached:
+        warnings.append(_limit_warning(context))
 
     context.normalized_event_rows = rows
+    context.artifact_event_counts = artifact_event_counts
     context.warnings.extend(warnings)
     _write_json(
         context.paths.normalized_events_path,
         {
+            "bounded": context.max_normalized_events is not None,
             "case_id": context.case_id,
             "event_count": len(rows),
             "events": rows,
+            "limit_reached": context.normalized_event_limit_reached,
+            "max_normalized_events": context.max_normalized_events,
+            "parser_artifact_event_counts": artifact_event_counts,
         },
     )
 
     return {
+        "bounded": context.max_normalized_events is not None,
         "event_count": len(rows),
+        "limit_reached": context.normalized_event_limit_reached,
+        "max_normalized_events": context.max_normalized_events,
         "normalized_events": _output_ref(
             context.paths.normalized_events_path,
             context.paths.output_dir,
         ),
+        "parser_artifact_event_counts": artifact_event_counts,
         "parser_artifact_ids": [artifact.artifact_id for artifact in supported_artifacts],
         "warning_count": len(warnings),
     }
@@ -574,6 +687,7 @@ def _step_inputs(context: AgentWorkflowContext, phase: AgentPhase) -> dict[str, 
     if phase is AgentPhase.PARSE:
         return {
             "artifact_count": context.manifest.artifact_count,
+            "max_normalized_events": context.max_normalized_events,
             "supported_artifact_types": sorted(SUPPORTED_PARSE_ARTIFACT_TYPES),
         }
     if phase is AgentPhase.CORRELATE:
@@ -696,11 +810,16 @@ def run_agent_workflow(
     manifest_path: Path,
     output_dir: Path,
     max_iterations: int,
+    max_normalized_events: int | None = None,
     clock: Clock = utc_now,
 ) -> AgentRun:
     case_id = _require_non_empty_string("case_id", case_id)
     if not isinstance(max_iterations, int) or max_iterations <= 0:
         raise ValueError("max_iterations must be a positive integer")
+    max_normalized_events = _validate_optional_positive_int(
+        "max_normalized_events",
+        max_normalized_events,
+    )
 
     resolved_manifest_path = _validate_manifest_path(manifest_path)
     manifest = read_manifest(resolved_manifest_path)
@@ -724,6 +843,7 @@ def run_agent_workflow(
         state=state,
         started_at=started_at,
         max_iterations=max_iterations,
+        max_normalized_events=max_normalized_events,
     )
     context = AgentWorkflowContext(
         case_id=case_id,
@@ -731,6 +851,7 @@ def run_agent_workflow(
         manifest=manifest,
         paths=paths,
         clock=clock,
+        max_normalized_events=max_normalized_events,
     )
 
     _append_agent_audit(

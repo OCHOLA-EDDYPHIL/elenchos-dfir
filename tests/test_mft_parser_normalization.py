@@ -65,6 +65,20 @@ def test_mftecmd_event_ids_are_deterministic():
     assert [event.event_id for event in first] == [event.event_id for event in second]
 
 
+def test_mftecmd_normalization_respects_max_events():
+    events, warnings, errors = normalize_mftecmd_csv(
+        csv_path=FIXTURE_DIR / "mftecmd_valid.csv",
+        case_id="case-001",
+        artifact_id="EV-MFT-0001",
+        max_events=2,
+    )
+
+    assert errors == []
+    assert len(events) == 2
+    assert [event.event_type for event in events] == ["file_record", "file_created"]
+    assert any("max_events=2 reached" in warning for warning in warnings)
+
+
 def test_mftecmd_event_id_changes_when_stable_field_changes():
     events, _, _ = normalize_mftecmd_csv(
         csv_path=FIXTURE_DIR / "mftecmd_valid.csv",

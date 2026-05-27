@@ -481,6 +481,7 @@ class AgentRun:
     state: AgentState
     started_at: datetime | str
     max_iterations: int
+    max_normalized_events: int | None = None
     steps: list[AgentStep] = field(default_factory=list)
     corrections: list[AgentCorrection] = field(default_factory=list)
     completed_at: datetime | str | None = None
@@ -504,6 +505,13 @@ class AgentRun:
         self.completed_at = _utc_timestamp(self.completed_at)
         if not isinstance(self.max_iterations, int) or self.max_iterations <= 0:
             raise ValueError("max_iterations must be a positive integer")
+        if self.max_normalized_events is not None and (
+            not isinstance(self.max_normalized_events, int)
+            or self.max_normalized_events < 1
+        ):
+            raise ValueError(
+                "max_normalized_events must be a positive integer when provided"
+            )
         self.steps = _validate_steps(self.steps)
         self.corrections = _validate_corrections(self.corrections)
         self.output_refs = _validate_output_refs(self.output_refs)
@@ -520,6 +528,7 @@ class AgentRun:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "max_iterations": self.max_iterations,
+            "max_normalized_events": self.max_normalized_events,
             "steps": [step.to_dict() for step in self.steps],
             "corrections": [correction.to_dict() for correction in self.corrections],
             "output_refs": dict(self.output_refs),
@@ -540,6 +549,7 @@ class AgentRun:
             state=AgentState.from_dict(data["state"]),
             started_at=data["started_at"],
             max_iterations=data["max_iterations"],
+            max_normalized_events=data.get("max_normalized_events"),
             steps=[AgentStep.from_dict(step) for step in data.get("steps", [])],
             corrections=[
                 AgentCorrection.from_dict(correction)

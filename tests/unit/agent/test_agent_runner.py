@@ -132,6 +132,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         "completed",
     ]
     assert run.max_iterations == 6
+    assert run.max_normalized_events is None
     assert run.state.completed_steps == [
         "step_inventory",
         "step_parse",
@@ -169,6 +170,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     assert timelines["timeline_count"] == 1
     assert findings["finding_count"] == 1
     assert agent_run["status"] == "completed"
+    assert agent_run["max_normalized_events"] is None
     assert agent_run["plan"]["created_at"] == FIXED_TIME
     assert [step["phase"] for step in agent_run["plan"]["steps"]] == EXPECTED_AGENT_PHASES
     assert [step["status"] for step in agent_run["plan"]["steps"]] == ["pending"] * len(
@@ -181,6 +183,48 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     assert "command" not in json.dumps(agent_run).lower()
     assert all((output_dir / ref).exists() for ref in agent_run["output_refs"].values())
     assert {path: path.read_bytes() for path in source_files} == source_payloads
+
+
+def test_agent_runner_bounded_normalized_events_truncates_and_warns(tmp_path: Path):
+    manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run = run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=2,
+        clock=fixed_clock,
+    )
+
+    assert run.status is AgentRunStatus.COMPLETED
+    assert run.max_normalized_events == 2
+    assert any("max_normalized_events=2 applied" in warning for warning in run.warnings)
+    for filename in (
+        "agent_run.json",
+        "audit.jsonl",
+        "normalized_events.json",
+        "subject_timelines.json",
+        "findings.json",
+        "report.md",
+    ):
+        assert (output_dir / filename).is_file()
+
+    normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    agent_run = json.loads((output_dir / "agent_run.json").read_text(encoding="utf-8"))
+    parse_step = next(step for step in agent_run["steps"] if step["phase"] == "parse")
+
+    assert normalized["bounded"] is True
+    assert normalized["event_count"] == 2
+    assert normalized["limit_reached"] is True
+    assert normalized["max_normalized_events"] == 2
+    assert sum(normalized["parser_artifact_event_counts"].values()) == 2
+    assert agent_run["max_normalized_events"] == 2
+    assert parse_step["inputs"]["max_normalized_events"] == 2
+    assert parse_step["outputs"]["bounded"] is True
+    assert parse_step["outputs"]["event_count"] == 2
+    assert parse_step["outputs"]["limit_reached"] is True
 
 
 def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
@@ -336,6 +380,20 @@ def test_agent_runner_rejects_output_dir_inside_manifest_case_root(tmp_path: Pat
         )
 
 
+def test_agent_runner_rejects_invalid_max_normalized_events(tmp_path: Path):
+    manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
+
+    with pytest.raises(ValueError, match="max_normalized_events"):
+        run_agent_workflow(
+            case_id=CASE_ID,
+            manifest_path=manifest_path,
+            output_dir=tmp_path / "runs" / CASE_ID,
+            max_iterations=6,
+            max_normalized_events=0,
+            clock=fixed_clock,
+        )
+
+
 def test_agent_cli_run_succeeds_with_synthetic_manifest(tmp_path: Path, capsys):
     manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
     output_dir = tmp_path / "runs" / CASE_ID
@@ -361,6 +419,31 @@ def test_agent_cli_run_succeeds_with_synthetic_manifest(tmp_path: Path, capsys):
     out = capsys.readouterr().out
     assert "status=completed" in out
     assert f"agent_run={(output_dir / 'agent_run.json').resolve()}" in out
+
+
+def test_agent_cli_run_rejects_invalid_max_normalized_events(tmp_path: Path, capsys):
+    manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    exit_code = main(
+        [
+            "agent",
+            "run",
+            "--case-id",
+            CASE_ID,
+            "--manifest",
+            str(manifest_path),
+            "--output-dir",
+            str(output_dir),
+            "--max-iterations",
+            "6",
+            "--max-normalized-events",
+            "0",
+        ]
+    )
+
+    assert exit_code == 1
+    assert "max_normalized_events" in capsys.readouterr().err
 
 
 def test_agent_cli_run_fails_clearly_for_missing_manifest(tmp_path: Path, capsys):
@@ -391,5 +474,6 @@ def test_agent_cli_help_does_not_expose_shell_execution_options(capsys):
     help_text = capsys.readouterr().out.lower()
     assert "--manifest" in help_text
     assert "--output-dir" in help_text
+    assert "--max-normalized-events" in help_text
     for forbidden in ("--shell", "--command", "--cmd", "--argv", "--executable"):
         assert forbidden not in help_text

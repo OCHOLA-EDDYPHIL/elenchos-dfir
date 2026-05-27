@@ -22,6 +22,7 @@ PARSER_NAME = "mftecmd"
 SOURCE_TOOL = "MFTECmd"
 EXPECTED_ARTIFACT_TYPE = "mft"
 DEFAULT_MFTECMD_CSV_NAME = "mftecmd.csv"
+EVENT_LIMIT_WARNING_PREFIX = "max_events="
 
 Runner = Callable[..., ToolResult]
 
@@ -42,6 +43,14 @@ def _utc_now_z() -> str:
 def _require_non_empty(value: str, field_name: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _validate_max_events(max_events: int | None) -> int | None:
+    if max_events is None:
+        return None
+    if not isinstance(max_events, int) or max_events < 1:
+        raise ValueError("max_events must be a positive integer when provided")
+    return max_events
 
 
 def _row_get(row: dict[str, str], *names: str) -> str | None:
@@ -214,13 +223,16 @@ def normalize_mftecmd_csv(
     csv_path: Path,
     case_id: str,
     artifact_id: str,
+    max_events: int | None = None,
 ) -> tuple[list[ParserEvent], list[str], list[str]]:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
 
     events: list[ParserEvent] = []
     warnings: list[str] = []
     errors: list[str] = []
+    limit_reached = False
 
     if not csv_path.exists():
         return [], [], [f"MFTECmd CSV does not exist: {csv_path}"]
@@ -234,6 +246,10 @@ def normalize_mftecmd_csv(
 
         row_count = 0
         for row_number, row in enumerate(reader, start=2):
+            if max_events is not None and len(events) >= max_events:
+                limit_reached = True
+                break
+
             row_count += 1
             row_warnings_before = len(warnings)
             path = _row_path(row)
@@ -290,7 +306,7 @@ def normalize_mftecmd_csv(
                 if malformed_metadata or len(warnings) > row_warnings_before
                 else "normalized"
             )
-            events.append(
+            row_events = [
                 _event(
                     case_id=case_id,
                     artifact_id=artifact_id,
@@ -304,11 +320,23 @@ def normalize_mftecmd_csv(
                     metadata=metadata,
                     status=file_record_status,
                 ),
-            )
-            events.extend(timestamp_events)
+                *timestamp_events,
+            ]
+            for event in row_events:
+                if max_events is not None and len(events) >= max_events:
+                    limit_reached = True
+                    break
+                events.append(event)
+            if limit_reached:
+                break
 
         if row_count == 0:
             errors.append(f"MFTECmd CSV has no data rows: {csv_path}")
+        if limit_reached:
+            warnings.append(
+                f"{EVENT_LIMIT_WARNING_PREFIX}{max_events} reached; "
+                "remaining MFTECmd rows were not normalized"
+            )
 
     return events, warnings, errors
 
@@ -344,9 +372,11 @@ def parse_mft(
     timeout_seconds: int = 900,
     runner: Runner | None = None,
     artifact_type: str = EXPECTED_ARTIFACT_TYPE,
+    max_events: int | None = None,
 ) -> ParserResult:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
     if artifact_type != EXPECTED_ARTIFACT_TYPE:
         raise ValueError(f"expected artifact_type={EXPECTED_ARTIFACT_TYPE}, got {artifact_type}")
 
@@ -420,6 +450,7 @@ def parse_mft(
             csv_path=csv_path,
             case_id=case_id,
             artifact_id=artifact_id,
+            max_events=max_events,
         )
         if tool_failed:
             warnings.append("MFTECmd command failed but output CSV was present")
@@ -455,6 +486,7 @@ def parse_mft(
         duration_ms=getattr(tool_result, "duration_ms", None),
         metadata={
             "csv_name": DEFAULT_MFTECMD_CSV_NAME,
+            "max_events": max_events,
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
             "tool_exit_code": getattr(tool_result, "exit_code", None),
@@ -473,6 +505,7 @@ def parse_mft_artifact(
     command_config: ParserCommandConfig | None = None,
     timeout_seconds: int = 900,
     runner: Runner | None = None,
+    max_events: int | None = None,
 ) -> ParserResult:
     if artifact.artifact_type != EXPECTED_ARTIFACT_TYPE:
         raise ValueError(
@@ -489,4 +522,5 @@ def parse_mft_artifact(
         timeout_seconds=timeout_seconds,
         runner=runner,
         artifact_type=artifact.artifact_type,
+        max_events=max_events,
     )
