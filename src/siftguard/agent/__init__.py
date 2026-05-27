@@ -14,6 +14,10 @@ from siftguard.agent.models import (
     CorrectionTrigger,
 )
 from siftguard.agent.runner import run_agent_workflow
+from siftguard.agent.self_correction import (
+    SelfCorrectionResult,
+    apply_self_correction,
+)
 from siftguard.agent.verifier import (
     VerificationFailure,
     VerificationFailureKind,
@@ -40,6 +44,8 @@ __all__ = [
     "VerificationResult",
     "VerificationSeverity",
     "VerificationStatus",
+    "SelfCorrectionResult",
+    "apply_self_correction",
     "run_agent_workflow",
     "verify_agent_outputs",
 ]
