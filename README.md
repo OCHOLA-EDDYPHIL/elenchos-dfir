@@ -248,6 +248,7 @@ Read an audit ledger summary:
 | Architecture and data flow | `docs/architecture.md` |
 | Evidence dataset handling | `docs/dataset.md` |
 | Accuracy report template | `docs/accuracy-report.md` |
+| Execution-log traceability | `docs/execution-log-traceability.md` |
 | Demo script | `docs/demo-script.md` |
 | Limitations | `docs/limitations.md` |
 | Security boundaries | `docs/security-boundaries.md` |
