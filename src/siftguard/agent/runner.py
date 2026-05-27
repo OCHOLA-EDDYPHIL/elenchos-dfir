@@ -16,7 +16,16 @@ from siftguard.agent.models import (
     AgentStep,
     AgentStepStatus,
 )
-from siftguard.agent.verifier import VerificationStatus, verify_agent_outputs
+from siftguard.agent.self_correction import (
+    apply_self_correction,
+    record_max_iterations_correction,
+)
+from siftguard.agent.verifier import (
+    VerificationFailure,
+    VerificationResult,
+    VerificationStatus,
+    verify_agent_outputs,
+)
 from siftguard.audit.execution_ledger import append_event, make_event_id, read_events, utc_now
 from siftguard.correlation.models import SubjectTimeline
 from siftguard.correlation.timeline import build_subject_timelines
@@ -625,13 +634,15 @@ def _make_step(
     inputs: dict[str, Any],
     outputs: dict[str, Any] | None = None,
     error: str | None = None,
+    attempt: int = 1,
+    max_attempts: int = 1,
 ) -> AgentStep:
     return AgentStep(
         step_id=f"step_{phase.value}",
         phase=phase,
         status=status,
-        attempt=1,
-        max_attempts=1,
+        attempt=attempt,
+        max_attempts=max_attempts,
         started_at=timestamp,
         completed_at=timestamp if status is not AgentStepStatus.RUNNING else None,
         inputs=inputs,
@@ -662,6 +673,28 @@ def _run_output_refs(paths: AgentWorkflowPaths) -> dict[str, str]:
 
 def _write_agent_run(run: AgentRun, agent_run_path: Path) -> None:
     _write_json(agent_run_path, run.to_dict())
+
+
+def _verification_failed(outputs: dict[str, Any]) -> bool:
+    return outputs.get("status") == VerificationStatus.FAILED.value
+
+
+def _verification_failure_error(outputs: dict[str, Any], *, after_correction: bool = False) -> str:
+    failure_count = outputs.get("failure_count", 0)
+    if after_correction:
+        return f"verification failed after correction with {failure_count} failure(s)"
+    return f"verification failed with {failure_count} failure(s)"
+
+
+def _retry_parser_output_for_failure(
+    context: AgentWorkflowContext,
+    failure: VerificationFailure,
+) -> bool:
+    expected = _output_ref(context.paths.normalized_events_path, context.paths.output_dir)
+    if failure.path != expected:
+        return False
+    _run_parse_phase(context)
+    return context.paths.normalized_events_path.exists()
 
 
 def _finalize_run(
@@ -772,36 +805,129 @@ def run_agent_workflow(
 
         try:
             outputs = _run_phase(context, phase, run)
+            if phase is AgentPhase.VERIFY and _verification_failed(outputs):
+                verification_error = _verification_failure_error(outputs)
+                failed_verify_step = _make_step(
+                    phase=phase,
+                    status=AgentStepStatus.FAILED,
+                    timestamp=timestamp,
+                    inputs=inputs,
+                    outputs=outputs,
+                    error=verification_error,
+                    max_attempts=2 if iteration < max_iterations else 1,
+                )
+                run.steps.append(failed_verify_step)
+                _append_agent_audit(
+                    context,
+                    action="agent_step_failed",
+                    run_id=run.run_id,
+                    step=failed_verify_step,
+                    status=failed_verify_step.status.value,
+                    error=verification_error,
+                )
+
+                if iteration >= max_iterations:
+                    max_iteration_error = (
+                        f"max_iterations={max_iterations} reached before self-correction"
+                    )
+                    record_max_iterations_correction(
+                        case_id=context.case_id,
+                        agent_run=run,
+                        audit_log_path=context.paths.audit_path,
+                        clock=context.clock,
+                    )
+                    state.errors.append(max_iteration_error)
+                    run.errors.append(max_iteration_error)
+                    continue
+
+                correction_result = apply_self_correction(
+                    case_id=context.case_id,
+                    output_dir=context.paths.output_dir,
+                    agent_run=run,
+                    verification_result=VerificationResult.from_dict(outputs),
+                    audit_log_path=context.paths.audit_path,
+                    inventory_recheck=lambda: _run_inventory_phase(context),
+                    parser_retry=lambda failure: _retry_parser_output_for_failure(
+                        context,
+                        failure,
+                    ),
+                    clock=context.clock,
+                )
+                for error in correction_result.errors:
+                    state.errors.append(error)
+                    run.errors.append(error)
+
+                retry_timestamp = clock()
+                retry_step = _make_step(
+                    phase=phase,
+                    status=AgentStepStatus.RUNNING,
+                    timestamp=retry_timestamp,
+                    inputs=inputs,
+                    attempt=2,
+                    max_attempts=2,
+                )
+                state.attempts[retry_step.step_id] = 2
+                _append_agent_audit(
+                    context,
+                    action="agent_step_started",
+                    run_id=run.run_id,
+                    step=retry_step,
+                    status=retry_step.status.value,
+                )
+                retry_outputs = _run_verify_phase(context, run)
+                retry_error = (
+                    _verification_failure_error(retry_outputs, after_correction=True)
+                    if _verification_failed(retry_outputs)
+                    else None
+                )
+                retry_completed_step = _make_step(
+                    phase=phase,
+                    status=(
+                        AgentStepStatus.FAILED
+                        if retry_error is not None
+                        else AgentStepStatus.COMPLETED
+                    ),
+                    timestamp=retry_timestamp,
+                    inputs=inputs,
+                    outputs=retry_outputs,
+                    error=retry_error,
+                    attempt=2,
+                    max_attempts=2,
+                )
+                run.steps.append(retry_completed_step)
+                if retry_error is None:
+                    state.completed_steps.append(retry_completed_step.step_id)
+                else:
+                    state.errors.append(retry_error)
+                    run.errors.append(retry_error)
+                _append_agent_audit(
+                    context,
+                    action=(
+                        "agent_step_failed"
+                        if retry_error is not None
+                        else "agent_step_completed"
+                    ),
+                    run_id=run.run_id,
+                    step=retry_completed_step,
+                    status=retry_completed_step.status.value,
+                    error=retry_error,
+                )
+                continue
+
             status = AgentStepStatus.COMPLETED
-            verification_error: str | None = None
-            if (
-                phase is AgentPhase.VERIFY
-                and outputs.get("status") == VerificationStatus.FAILED.value
-            ):
-                status = AgentStepStatus.FAILED
-                failure_count = outputs.get("failure_count", 0)
-                verification_error = f"verification failed with {failure_count} failure(s)"
             completed_step = _make_step(
                 phase=phase,
                 status=status,
                 timestamp=timestamp,
                 inputs=inputs,
                 outputs=outputs,
-                error=verification_error,
             )
             run.steps.append(completed_step)
             if status is AgentStepStatus.COMPLETED:
                 state.completed_steps.append(completed_step.step_id)
-            if verification_error is not None:
-                state.errors.append(verification_error)
-                run.errors.append(verification_error)
             _append_agent_audit(
                 context,
-                action=(
-                    "agent_step_failed"
-                    if status is AgentStepStatus.FAILED
-                    else "agent_step_completed"
-                ),
+                action="agent_step_completed",
                 run_id=run.run_id,
                 step=completed_step,
                 status=completed_step.status.value,
@@ -811,7 +937,6 @@ def run_agent_workflow(
                     if key in {"normalized_events", "subject_timelines", "findings", "report"}
                     and isinstance(value, str)
                 },
-                error=verification_error,
             )
         except Exception as exc:
             error = str(exc)

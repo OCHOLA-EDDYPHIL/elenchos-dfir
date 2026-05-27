@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import siftguard.agent.runner as agent_runner
 from siftguard.agent.models import AgentRun, AgentRunStatus
 from siftguard.agent.runner import run_agent_workflow
 from siftguard.audit.execution_ledger import read_events
@@ -235,6 +236,77 @@ def test_agent_runner_stops_cleanly_when_max_iterations_is_reached(tmp_path: Pat
     assert (output_dir / "audit.jsonl").is_file()
     assert not (output_dir / "subject_timelines.json").exists()
     assert read_events(output_dir / "audit.jsonl")[-1]["action"] == "agent_run_failed"
+
+
+def test_agent_runner_corrects_induced_report_failure_without_human_input(
+    tmp_path: Path,
+    monkeypatch,
+):
+    manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+    original_renderer = agent_runner.render_markdown_report
+
+    def report_with_ghost_finding(*args, **kwargs):
+        report = original_renderer(*args, **kwargs)
+        return report + "\n## Synthetic Induced Failure\n- `F-SYN-GHOST` Unsupported ghost.\n"
+
+    monkeypatch.setattr(agent_runner, "render_markdown_report", report_with_ghost_finding)
+
+    run = run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=7,
+        clock=fixed_clock,
+    )
+
+    assert run.status is AgentRunStatus.COMPLETED
+    assert [step.status.value for step in run.steps if step.phase.value == "verify"] == [
+        "failed",
+        "completed",
+    ]
+    assert run.state.attempts["step_verify"] == 2
+    assert run.corrections
+    assert run.corrections[0].action.value == "retry"
+    assert "F-SYN-GHOST" not in (output_dir / "report.md").read_text(encoding="utf-8")
+
+    agent_run = json.loads((output_dir / "agent_run.json").read_text(encoding="utf-8"))
+    assert agent_run["status"] == "completed"
+    assert agent_run["corrections"][0]["action"] == "retry"
+    events = read_events(output_dir / "audit.jsonl")
+    assert "correction_applied" in [event["action"] for event in events]
+
+
+def test_agent_runner_blocks_correction_when_max_iterations_is_exhausted(
+    tmp_path: Path,
+    monkeypatch,
+):
+    manifest_path, _case_dir, _source_files = write_synthetic_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+    original_renderer = agent_runner.render_markdown_report
+
+    def report_with_ghost_finding(*args, **kwargs):
+        report = original_renderer(*args, **kwargs)
+        return report + "\n## Synthetic Induced Failure\n- `F-SYN-GHOST` Unsupported ghost.\n"
+
+    monkeypatch.setattr(agent_runner, "render_markdown_report", report_with_ghost_finding)
+
+    run = run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        clock=fixed_clock,
+    )
+
+    assert run.status is AgentRunStatus.NEEDS_REVIEW
+    assert [step.status.value for step in run.steps if step.phase.value == "verify"] == ["failed"]
+    assert run.corrections[0].trigger.value == "max_iterations"
+    assert run.corrections[0].action.value == "block_finalization"
+    assert run.errors == ["max_iterations=6 reached before self-correction"]
+    assert "F-SYN-GHOST" in (output_dir / "report.md").read_text(encoding="utf-8")
+    events = read_events(output_dir / "audit.jsonl")
+    assert "correction_not_applicable" in [event["action"] for event in events]
 
 
 def test_agent_runner_rejects_output_dir_inside_manifest_case_root(tmp_path: Path):
