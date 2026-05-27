@@ -112,7 +112,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         clock=fixed_clock,
     )
 
-    assert run.status is AgentRunStatus.NEEDS_REVIEW
+    assert run.status is AgentRunStatus.COMPLETED
     assert [step.phase.value for step in run.steps] == [
         "inventory",
         "parse",
@@ -127,7 +127,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         "completed",
         "completed",
         "completed",
-        "skipped",
+        "completed",
     ]
     assert run.max_iterations == 6
     assert run.state.completed_steps == [
@@ -136,6 +136,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         "step_correlate",
         "step_validate",
         "step_report",
+        "step_verify",
     ]
     assert run.state.attempts == {
         "step_inventory": 1,
@@ -145,7 +146,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         "step_report": 1,
         "step_verify": 1,
     }
-    assert "Output verification checks are deferred to issue #65." in run.warnings
+    assert run.warnings == []
 
     for filename in (
         "agent_run.json",
@@ -165,7 +166,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     assert normalized["event_count"] == 4
     assert timelines["timeline_count"] == 1
     assert findings["finding_count"] == 1
-    assert agent_run["status"] == "needs_review"
+    assert agent_run["status"] == "completed"
     assert AgentRun.from_dict(agent_run).to_dict() == agent_run
     assert "command" not in json.dumps(agent_run).lower()
     assert all((output_dir / ref).exists() for ref in agent_run["output_refs"].values())
@@ -198,6 +199,8 @@ def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
         "agent_step_started",
         "agent_step_completed",
         "agent_step_started",
+        "verification_started",
+        "verification_completed",
         "agent_step_completed",
         "agent_run_completed",
     ]
@@ -209,8 +212,8 @@ def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
         "report",
         "verify",
     ]
-    assert events[-2]["status"] == "skipped"
-    assert events[-1]["status"] == "needs_review"
+    assert events[-2]["status"] == "completed"
+    assert events[-1]["status"] == "completed"
 
 
 def test_agent_runner_stops_cleanly_when_max_iterations_is_reached(tmp_path: Path):
@@ -270,7 +273,7 @@ def test_agent_cli_run_succeeds_with_synthetic_manifest(tmp_path: Path, capsys):
     assert (output_dir / "agent_run.json").is_file()
     assert (output_dir / "audit.jsonl").is_file()
     out = capsys.readouterr().out
-    assert "status=needs_review" in out
+    assert "status=completed" in out
     assert f"agent_run={(output_dir / 'agent_run.json').resolve()}" in out
 
 
