@@ -205,6 +205,12 @@ def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
         "agent_step_completed",
         "agent_run_completed",
     ]
+    for event in events:
+        assert event["event_type"] == event["action"]
+        assert event["timestamp_utc"] == FIXED_TIME
+        assert event["case_id"] == CASE_ID
+        assert isinstance(event["duration_ms"], int)
+        assert isinstance(event["output_refs"], dict)
     assert [event["phase"] for event in events if event["action"] == "agent_step_started"] == [
         "inventory",
         "parse",
@@ -274,7 +280,11 @@ def test_agent_runner_corrects_induced_report_failure_without_human_input(
     assert agent_run["status"] == "completed"
     assert agent_run["corrections"][0]["action"] == "retry"
     events = read_events(output_dir / "audit.jsonl")
-    assert "correction_applied" in [event["action"] for event in events]
+    correction_events = [event for event in events if event["action"] == "correction_applied"]
+    assert correction_events
+    assert correction_events[0]["correction_id"] == "correction_000001"
+    assert correction_events[0]["correction_action"] == "retry"
+    assert correction_events[0]["correction_trigger"] == "invalid_output"
 
 
 def test_agent_runner_blocks_correction_when_max_iterations_is_exhausted(
