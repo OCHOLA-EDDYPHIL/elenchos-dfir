@@ -160,6 +160,7 @@ expects normalized parser JSON, not raw evidence images.
 - `docs/dataset.md` - local evidence staging and dataset handling.
 - `docs/development-notes.md` - developer workflow for parser wrappers.
 - `docs/limitations.md` - interpretation and reproducibility limits.
+- `docs/openclaw-agent-workflow.md` - constrained OpenClaw agent workflow path.
 - `docs/parser-contracts.md` - parser event/result contracts.
 - `docs/parser-validation.md` - SIFT validation results.
 
