@@ -26,7 +26,7 @@ def run_smoke_script(run_root: Path) -> subprocess.CompletedProcess[str]:
 def test_openclaw_agent_smoke_script_runs_constrained_synthetic_workflow(
     tmp_path: Path,
 ):
-    run_root = tmp_path / "runs" / "CASE-M4-OPENCLAW-SMOKE"
+    run_root = tmp_path / "runs" / "CASE-AGENT-OPENCLAW-SMOKE"
     result = run_smoke_script(run_root)
 
     assert result.returncode == 0, result.stdout + result.stderr
@@ -36,7 +36,7 @@ def test_openclaw_agent_smoke_script_runs_constrained_synthetic_workflow(
         assert f"{filename}" in result.stdout
 
     agent_run = json.loads((output_dir / "agent_run.json").read_text(encoding="utf-8"))
-    assert agent_run["case_id"] == "CASE-M4-OPENCLAW-SMOKE"
+    assert agent_run["case_id"] == "CASE-AGENT-OPENCLAW-SMOKE"
     assert agent_run["status"] == "completed"
     assert agent_run["output_refs"]["agent_run"] == "agent_run.json"
     assert agent_run["output_refs"]["audit"] == "audit.jsonl"

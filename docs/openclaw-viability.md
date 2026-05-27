@@ -2,12 +2,12 @@
 
 ## Scope
 
-This spike evaluates OpenClaw as the M4 runtime path for locally initiating
+This document evaluates OpenClaw as the runtime path for locally initiating
 constrained SIFTGuard agent workflows. It is a runtime viability proof only.
-It does not implement verifier logic, self-correction policy, OpenClaw adapter
-code, or new SIFTGuard features.
+It does not add verifier logic, self-correction policy, OpenClaw adapter code,
+or new SIFTGuard features.
 
-The intended M4 integration target remains the deterministic local runner:
+The intended integration target remains the deterministic local runner:
 
 ```text
 OpenClaw prompt
@@ -128,9 +128,8 @@ and OpenClaw-controlled invocation of the constrained SIFTGuard help command all
 passed without committing evidence, credentials, transcripts, runtime state, or
 private paths.
 
-## Next Recommended Issue
+## Recommended Runtime Use
 
-Proceed to #65, `Add verification checks for agent outputs`, before runtime
-adapter work. OpenClaw integration should wait until the deterministic verifier
-and self-correction policy are in place, then use OpenClaw only to initiate or
-supervise constrained SIFTGuard commands.
+OpenClaw should use the deterministic verifier and self-correction policy
+already available in SIFTGuard, then initiate or supervise only constrained
+SIFTGuard commands.

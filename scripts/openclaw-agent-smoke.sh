@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CASE_ID="${CASE_ID:-CASE-M4-OPENCLAW-SMOKE}"
+CASE_ID="${CASE_ID:-CASE-AGENT-OPENCLAW-SMOKE}"
 RUN_ROOT="${RUN_ROOT:-runs/$CASE_ID}"
 MAX_ITERATIONS="${MAX_ITERATIONS:-7}"
 PYTHON_BIN=".venv/bin/python"
@@ -122,9 +122,9 @@ write_csv(
 )
 
 artifacts = [
-    artifact(mft_csv, "mftecmd_csv", "EV-M4-SMOKE-MFT-001"),
-    artifact(amcache_csv, "amcacheparser_csv", "EV-M4-SMOKE-AMCACHE-001"),
-    artifact(runkeys_csv, "recmd_runkeys_csv", "EV-M4-SMOKE-REG-001"),
+    artifact(mft_csv, "mftecmd_csv", "EV-AGENT-SMOKE-MFT-001"),
+    artifact(amcache_csv, "amcacheparser_csv", "EV-AGENT-SMOKE-AMCACHE-001"),
+    artifact(runkeys_csv, "recmd_runkeys_csv", "EV-AGENT-SMOKE-REG-001"),
 ]
 manifest = EvidenceManifest(
     case_id=case_id,

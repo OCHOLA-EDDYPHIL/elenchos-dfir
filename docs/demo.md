@@ -2,7 +2,7 @@
 
 ## Demo Goals
 
-The M4 demo should show:
+The agent workflow demo should show:
 
 - A constrained agent run.
 - Verifier detection of an unsupported claim.
@@ -38,10 +38,10 @@ and writes generated outputs under ignored `runs/` paths:
 The smoke helper should create:
 
 ```text
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/agent_run.json
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/findings.json
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/report.md
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/findings.json
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/report.md
 ```
 
 The helper may also write deterministic intermediate outputs such as
@@ -59,7 +59,7 @@ For a local run directory, inspect audit and correction records with:
 
 ```bash
 grep -E 'verification_failed|correction_applied' \
-  runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
+  runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
 ```
 
 ```bash
@@ -67,7 +67,7 @@ grep -E 'verification_failed|correction_applied' \
 import json
 from pathlib import Path
 
-path = Path("runs/CASE-M4-OPENCLAW-SMOKE/agent-run/agent_run.json")
+path = Path("runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json")
 data = json.loads(path.read_text())
 print(json.dumps(data.get("corrections", []), indent=2))
 PY
@@ -82,7 +82,7 @@ test above when demonstrating self-correction.
 If `jq` is installed:
 
 ```bash
-jq '.corrections' runs/CASE-M4-OPENCLAW-SMOKE/agent-run/agent_run.json
+jq '.corrections' runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
 ```
 
 ## OpenClaw Runtime Demo
@@ -97,7 +97,7 @@ directory documented there.
 Remove local generated smoke outputs after the demo:
 
 ```bash
-rm -rf runs/CASE-M4-OPENCLAW-SMOKE
+rm -rf runs/CASE-AGENT-OPENCLAW-SMOKE
 ```
 
 ## Safety Reminder

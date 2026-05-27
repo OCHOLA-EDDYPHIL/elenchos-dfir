@@ -2,9 +2,9 @@
 
 ## Scope Limitations
 
-- M2 validates parser mechanics, not complete incident response.
+- Parser validation covers parser mechanics, not complete incident response.
 - The correlation and finding layer is future work.
-- Memory forensics is out of scope for M2.
+- Memory forensics is out of scope for the parser workflow.
 - Validation used local evidence subsets, not exhaustive enterprise coverage.
 
 ## Artifact Interpretation Limits

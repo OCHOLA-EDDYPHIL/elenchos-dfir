@@ -2,7 +2,7 @@
 
 ## Scope
 
-This page tracks M2 parser wrapper validation in the SIFT Workstation for the
+This page tracks parser wrapper validation in the SIFT Workstation for the
 MFTECmd, RECmd, and AmcacheParser wrappers. Parser outputs are normalized into
 observational `ParserEvent` records only. This validation does not create
 findings, perform correlation, or make maliciousness claims.
@@ -54,9 +54,9 @@ Then run:
 
 ```bash
 .venv/bin/python scripts/validate_sift_parsers.py \
-  --case-id CASE-VALIDATION-M2 \
+  --case-id CASE-PARSER-VALIDATION \
   --runs-root runs \
-  --summary-out runs/CASE-VALIDATION-M2/sift-parser-validation-summary.json
+  --summary-out runs/CASE-PARSER-VALIDATION/sift-parser-validation-summary.json
 ```
 
 Alternatively, place the same variables in `.local/sift-validation/paths.env`.
@@ -86,22 +86,22 @@ Parser wrapper results:
 | `recmd` | RECmd | SOFTWARE Run/RunOnce keys | success | 4 | 0 | 0 |
 | `amcacheparser` | AmcacheParser | Amcache.hve | partial_success | 128 | 1 | 0 |
 
-MFT and Registry validation output was written under `runs/CASE-VALIDATION-M2/`.
+MFT and Registry validation output was written under `runs/CASE-PARSER-VALIDATION/`.
 The validation summary was written to
-`runs/CASE-VALIDATION-M2/sift-parser-validation-summary.json`. The audit ledger
-was written to `runs/CASE-VALIDATION-M2/audit.jsonl` and contained 5 entries.
+`runs/CASE-PARSER-VALIDATION/sift-parser-validation-summary.json`. The audit ledger
+was written to `runs/CASE-PARSER-VALIDATION/audit.jsonl` and contained 5 entries.
 
 Amcache validation output was written under
-`runs/CASE-VALIDATION-M2-AMCACHE/`. The validation summary was written to
-`runs/CASE-VALIDATION-M2-AMCACHE/sift-parser-validation-summary.json`. The
-audit ledger was written to `runs/CASE-VALIDATION-M2-AMCACHE/audit.jsonl` and
+`runs/CASE-PARSER-VALIDATION-AMCACHE/`. The validation summary was written to
+`runs/CASE-PARSER-VALIDATION-AMCACHE/sift-parser-validation-summary.json`. The
+audit ledger was written to `runs/CASE-PARSER-VALIDATION-AMCACHE/audit.jsonl` and
 contained 1 entry.
 
 The AmcacheParser wrapper returned `partial_success` because one normalized row
 had parser-reported context but no `FilePath` value. The wrapper still produced
 128 normalized observational events and no validation errors.
 
-All M2 parser wrappers have now been validated in SIFT using local evidence
+All parser wrappers have now been validated in SIFT using local evidence
 subsets: MFTECmd for `$MFT`, RECmd for Registry Run Keys, and AmcacheParser for
 `Amcache.hve`.
 

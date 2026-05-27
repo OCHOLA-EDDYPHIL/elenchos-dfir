@@ -11,7 +11,7 @@ boundaries for the FIND EVIL hackathon.
 - A constrained wrapper layer for verified SIFT parser tools.
 - A reproducible foundation for audit trails, provenance checks, and
   evidence-backed reporting from normalized parser observations.
-- An M2 parser workflow that currently supports:
+- A parser workflow that currently supports:
   - `$MFT` parsing through MFTECmd.
   - Registry `Run` and `RunOnce` key parsing through RECmd.
   - `Amcache.hve` parsing through AmcacheParser.
@@ -33,12 +33,12 @@ are not findings.
 | Code repository | `.` | In progress |
 | LICENSE | `LICENSE` | Present |
 | Setup instructions | `README.md#quick-start-local-development` | Present |
-| Step-by-step local run instructions | `README.md#m2-parser-workflow`, `README.md#correlation-and-validation-workflow`, and `docs/dataset.md` | Present |
+| Step-by-step local run instructions | `README.md#parser-workflow`, `README.md#correlation-and-validation-workflow`, and `docs/dataset.md` | Present |
 | Feature/functionality description | `README.md#what-this-project-is` and `docs/architecture.md` | Present |
 | Demo video | `<Devpost video URL placeholder>` | Pending final submission |
 | Architecture diagram | `docs/architecture.md` | Text architecture present; final diagram pending |
 | Evidence dataset documentation | `docs/dataset.md` | Present |
-| Accuracy report | `docs/parser-validation.md` | M2 parser validation present |
+| Accuracy report | `docs/parser-validation.md` | Parser validation present |
 | Agent execution logs | `runs/` local only; summarized in `docs/parser-validation.md` | Local only / not committed |
 
 ## Quick Start Local Development
@@ -52,9 +52,9 @@ pip install -e ".[dev]"
 .venv/bin/python -m mypy src
 ```
 
-## M2 Parser Workflow
+## Parser Workflow
 
-The M2 workflow expects evidence to be staged locally outside the repository.
+The parser workflow expects evidence to be staged locally outside the repository.
 Commands below use placeholders; replace `<LOCAL_EVIDENCE_ROOT>` with a local
 path in the SIFT VM.
 
@@ -144,7 +144,7 @@ Generated files include `subject_timelines.json`, `findings.json`,
 `report.md`, and `audit.jsonl`. Do not commit generated outputs. The workflow
 expects normalized parser JSON, not raw evidence images.
 
-## M4 Agent Workflow
+## Agent Workflow
 
 SIFTGuard now includes a deterministic agent workflow around the existing
 inventory, parser, correlation, validation, and reporting pipeline. The agent
@@ -185,7 +185,7 @@ Start with [the agent workflow](docs/agent-workflow.md), then use
 - [docs/agent-workflow.md](docs/agent-workflow.md) - deterministic agent loop and output contracts.
 - [docs/dataset.md](docs/dataset.md) - local evidence staging and dataset handling.
 - [docs/development-notes.md](docs/development-notes.md) - developer workflow for parser wrappers.
-- [docs/demo.md](docs/demo.md) - M4 demo command sequence and cleanup notes.
+- [docs/demo.md](docs/demo.md) - agent workflow demo command sequence and cleanup notes.
 - [docs/limitations.md](docs/limitations.md) - interpretation and reproducibility limits.
 - [docs/openclaw.md](docs/openclaw.md) - OpenClaw local setup and provider assumptions.
 - [docs/openclaw-agent-workflow.md](docs/openclaw-agent-workflow.md) - constrained OpenClaw agent workflow path.
