@@ -144,6 +144,31 @@ Generated files include `subject_timelines.json`, `findings.json`,
 `report.md`, and `audit.jsonl`. Do not commit generated outputs. The workflow
 expects normalized parser JSON, not raw evidence images.
 
+## M4 Agent Workflow
+
+SIFTGuard now includes a deterministic agent workflow around the existing
+inventory, parser, correlation, validation, and reporting pipeline. The agent
+loop is:
+
+```text
+plan -> execute -> verify -> correct -> report
+```
+
+The forensic logic remains deterministic Python code inside SIFTGuard.
+OpenClaw is used only as a runtime orchestrator over constrained SIFTGuard
+commands, not as the forensic engine. A normal agent run writes local generated
+artifacts such as `agent_run.json`, `audit.jsonl`, `findings.json`, and
+`report.md` under ignored output paths.
+
+The verifier prevents unsupported claims from being treated as final findings.
+When confirmed or inferred findings lack evidence references, self-correction
+downgrades them to `needs_review` instead of pretending certainty. Generated
+outputs and raw OpenClaw traces stay local under ignored paths such as `runs/`.
+
+Start with [the agent workflow](docs/agent-workflow.md), then use
+[the demo guide](docs/demo.md) and
+[the OpenClaw setup notes](docs/openclaw.md) for reproduction.
+
 ## Evidence Safety Summary
 
 - Evidence is local-only.
@@ -156,13 +181,17 @@ expects normalized parser JSON, not raw evidence images.
 
 ## Documentation Map
 
-- `docs/architecture.md` - system architecture and data flow.
-- `docs/dataset.md` - local evidence staging and dataset handling.
-- `docs/development-notes.md` - developer workflow for parser wrappers.
-- `docs/limitations.md` - interpretation and reproducibility limits.
-- `docs/openclaw-agent-workflow.md` - constrained OpenClaw agent workflow path.
-- `docs/parser-contracts.md` - parser event/result contracts.
-- `docs/parser-validation.md` - SIFT validation results.
+- [docs/architecture.md](docs/architecture.md) - system architecture and data flow.
+- [docs/agent-workflow.md](docs/agent-workflow.md) - deterministic agent loop and output contracts.
+- [docs/dataset.md](docs/dataset.md) - local evidence staging and dataset handling.
+- [docs/development-notes.md](docs/development-notes.md) - developer workflow for parser wrappers.
+- [docs/demo.md](docs/demo.md) - M4 demo command sequence and cleanup notes.
+- [docs/limitations.md](docs/limitations.md) - interpretation and reproducibility limits.
+- [docs/openclaw.md](docs/openclaw.md) - OpenClaw local setup and provider assumptions.
+- [docs/openclaw-agent-workflow.md](docs/openclaw-agent-workflow.md) - constrained OpenClaw agent workflow path.
+- [docs/security-boundaries.md](docs/security-boundaries.md) - evidence, execution, audit, and secret boundaries.
+- [docs/parser-contracts.md](docs/parser-contracts.md) - parser event/result contracts.
+- [docs/parser-validation.md](docs/parser-validation.md) - SIFT validation results.
 
 ## License
 
