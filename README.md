@@ -1,77 +1,122 @@
 # SIFTGuard MCP
 
-SIFTGuard MCP is a constrained DFIR workflow foundation for SANS SIFT
-Workstation. It provides deterministic evidence inventory, audited parser
-wrapper execution, normalized parser observations, and typed MCP schema
-boundaries for the FIND EVIL hackathon.
+SIFTGuard MCP is a local-first, constrained DFIR workflow for SANS SIFT
+Workstation and Linux terminal environments. It addresses Windows disk-artifact
+triage by inventorying evidence, running typed parser workflows, correlating
+drop / persistence / execution signals, validating findings, and producing
+traceable audit logs and analyst-readable reports.
 
-## What This Project Is
+The supported submission scope is intentionally narrow: `$MFT`, Registry
+`Run`/`RunOnce` keys, and `Amcache.hve`. Evidence is treated as read-only input.
+Parser and agent outputs are written to ignored generated-output directories,
+not into raw evidence locations. Public command surfaces use typed arguments and
+constrained SIFTGuard entrypoints instead of arbitrary shell execution.
 
-- A local-first Python workflow for SIFT Workstation.
-- A constrained wrapper layer for verified SIFT parser tools.
-- A reproducible foundation for audit trails, provenance checks, and
-  evidence-backed reporting from normalized parser observations.
-- A parser workflow that currently supports:
-  - `$MFT` parsing through MFTECmd.
-  - Registry `Run` and `RunOnce` key parsing through RECmd.
-  - `Amcache.hve` parsing through AmcacheParser.
+## What This Does
 
-Parser outputs are normalized into observational `ParserEvent` records. They
-are not findings.
+- Inventories locally staged evidence and records SHA256-backed manifests.
+- Runs constrained parser workflows for `$MFT`, Registry Run Keys, and Amcache.
+- Normalizes parser observations into `ParserEvent` records.
+- Correlates drop, persistence, and execution signals from normalized events.
+- Validates findings and distinguishes confirmed, inferred, rejected, and
+  needs-review claims.
+- Produces JSON, JSONL audit ledgers, and Markdown reports under generated
+  output paths such as `runs/`.
+- Supports a constrained deterministic agent workflow with verification and
+  self-correction records.
+- Exposes typed MCP schemas for the supported workflow boundaries.
 
-## What This Project Is Not
+## What This Does Not Do
 
-- Not an offensive tooling framework.
-- Not a claim of court admissibility or evidentiary certainty.
-- Not a full incident conclusion engine.
-- Not proof of malware, compromise, persistence, or execution by itself.
+- Does not certify legal admissibility or evidentiary certainty.
+- Does not modify raw evidence.
+- Does not perform offensive operations.
+- Does not claim broad DFIR coverage.
+- Does not currently support memory forensics, packet analysis, cloud incident
+  response, or remote endpoint triage.
+- Does not replace analyst review.
 
-## Submission Compliance Map
+Parser observations are not findings by themselves. SIFTGuard is triage and
+analyst-assist tooling that makes evidence references, validation status, and
+audit trail quality explicit.
 
-| Submission item | Repo-relative location | Status |
-| --- | --- | --- |
-| Code repository | `.` | In progress |
-| Final submission compliance checklist | `docs/submission-compliance-checklist.md` | Pending completion |
-| LICENSE | `LICENSE` | Present |
-| Setup instructions | `README.md#quick-start-local-development` | Present |
-| Step-by-step local run instructions | `README.md#parser-workflow`, `README.md#correlation-and-validation-workflow`, and `docs/dataset.md` | Present |
-| Feature/functionality description | `README.md#what-this-project-is` and `docs/architecture.md` | Present |
-| Demo video | `<Devpost video URL placeholder>` | Pending final submission |
-| Architecture diagram | `docs/architecture.md` | Text architecture present; final diagram pending |
-| Evidence dataset documentation | `docs/dataset.md` | Present |
-| Accuracy report | `docs/parser-validation.md` | Parser validation present |
-| Agent execution logs | `runs/` local only; summarized in `docs/parser-validation.md` | Local only / not committed |
+## Quick Start
 
-## Quick Start Local Development
+Use Python 3.10 or newer in a Linux/SIFT-compatible shell.
 
 ```bash
+git clone https://github.com/OCHOLA-EDDYPHIL/siftguard-mcp.git
+cd siftguard-mcp
+
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+.venv/bin/python -m pip install -e ".[dev]"
+
 .venv/bin/python -m pytest
 .venv/bin/python -m ruff check .
 .venv/bin/python -m mypy src
 ```
 
-## Parser Workflow
+The package also installs a `siftguard` console script. The examples below use
+`.venv/bin/python -m siftguard` so they work without relying on shell `PATH`.
 
-The parser workflow expects evidence to be staged locally outside the repository.
-Commands below use placeholders; replace `<LOCAL_EVIDENCE_ROOT>` with a local
-path in the SIFT VM.
+## Local Evidence Layout
 
-```bash
-export CASE_ID="CASE-DEMO"
-export EVIDENCE_ROOT="<LOCAL_EVIDENCE_ROOT>"
-export RUNS_ROOT="runs"
-export LEDGER_PATH="$RUNS_ROOT/$CASE_ID/audit.jsonl"
+Stage evidence outside the repository. The commands below use `/cases/demo/evidence`
+as a placeholder.
+
+```text
+/cases/demo/evidence/
+  mft/$MFT
+  registry/NTUSER.DAT
+  registry/SOFTWARE
+  amcache/Amcache.hve
 ```
 
-Inventory local evidence:
+Set reusable shell variables:
+
+```bash
+export EVIDENCE_ROOT="/cases/demo/evidence"
+export CASE_ID="case_evidence"
+export RUN_DIR="runs/demo"
+export LEDGER_PATH="$RUN_DIR/audit.jsonl"
+
+mkdir -p "$RUN_DIR"
+```
+
+For the placeholder evidence root above, the inventory command derives
+`case_id=case_evidence`. If you use a different evidence directory name, update
+`CASE_ID` to match the `case_id=` value printed by `siftguard inventory`.
+
+Raw evidence and generated parser outputs should remain uncommitted unless a
+specific sanitized example is intentionally added for documentation.
+
+## Evidence Inventory And Hashing
+
+Inventory staged evidence and write a manifest:
 
 ```bash
 .venv/bin/python -m siftguard inventory "$EVIDENCE_ROOT" \
-  --manifest-out "$RUNS_ROOT/$CASE_ID/manifest.json"
+  --manifest-out "$RUN_DIR/manifest.json"
 ```
+
+Hash a specific artifact when needed:
+
+```bash
+.venv/bin/python -m siftguard hash "$EVIDENCE_ROOT/mft/\$MFT"
+```
+
+Expected output:
+
+- `manifest.json` with artifact IDs, relative paths, sizes, SHA256 hashes, and
+  artifact classifications.
+- A printed SHA256 digest for `hash`.
+
+## Parser Workflow
+
+The parser commands are implemented, but they require locally staged artifacts
+and the documented SIFT parser tools to be available in the environment. See
+[docs/parser-tooling-matrix.md](docs/parser-tooling-matrix.md) for tool details.
 
 Run MFTECmd against a staged `$MFT`:
 
@@ -80,10 +125,10 @@ Run MFTECmd against a staged `$MFT`:
   --case-id "$CASE_ID" \
   --artifact-id "EV-MFT-0001" \
   --mft-path "$EVIDENCE_ROOT/mft/\$MFT" \
-  --runs-root "$RUNS_ROOT" \
+  --runs-root "$RUN_DIR" \
   --evidence-root "$EVIDENCE_ROOT" \
   --ledger-path "$LEDGER_PATH" \
-  --json-out "$RUNS_ROOT/$CASE_ID/normalized/EV-MFT-0001-mftecmd.json"
+  --json-out "normalized/EV-MFT-0001-mftecmd.json"
 ```
 
 Run RECmd against user and machine Run Key hives:
@@ -94,20 +139,20 @@ Run RECmd against user and machine Run Key hives:
   --artifact-id "EV-REG-USER-0001" \
   --hive-path "$EVIDENCE_ROOT/registry/NTUSER.DAT" \
   --artifact-type registry_hive \
-  --runs-root "$RUNS_ROOT" \
+  --runs-root "$RUN_DIR" \
   --evidence-root "$EVIDENCE_ROOT" \
   --ledger-path "$LEDGER_PATH" \
-  --json-out "$RUNS_ROOT/$CASE_ID/normalized/EV-REG-USER-0001-recmd.json"
+  --json-out "normalized/EV-REG-USER-0001-recmd.json"
 
 .venv/bin/python -m siftguard parse-registry-runkeys \
   --case-id "$CASE_ID" \
   --artifact-id "EV-REG-SOFTWARE-0001" \
   --hive-path "$EVIDENCE_ROOT/registry/SOFTWARE" \
   --artifact-type registry_hive \
-  --runs-root "$RUNS_ROOT" \
+  --runs-root "$RUN_DIR" \
   --evidence-root "$EVIDENCE_ROOT" \
   --ledger-path "$LEDGER_PATH" \
-  --json-out "$RUNS_ROOT/$CASE_ID/normalized/EV-REG-SOFTWARE-0001-recmd.json"
+  --json-out "normalized/EV-REG-SOFTWARE-0001-recmd.json"
 ```
 
 Run AmcacheParser against a staged `Amcache.hve`:
@@ -117,83 +162,100 @@ Run AmcacheParser against a staged `Amcache.hve`:
   --case-id "$CASE_ID" \
   --artifact-id "EV-AMCACHE-0001" \
   --amcache-path "$EVIDENCE_ROOT/amcache/Amcache.hve" \
-  --runs-root "$RUNS_ROOT" \
+  --runs-root "$RUN_DIR" \
   --evidence-root "$EVIDENCE_ROOT" \
   --ledger-path "$LEDGER_PATH" \
-  --json-out "$RUNS_ROOT/$CASE_ID/normalized/EV-AMCACHE-0001-amcacheparser.json"
+  --json-out "normalized/EV-AMCACHE-0001-amcacheparser.json"
 ```
 
-Parser wrappers call SIFT tools through constrained argv-based execution.
-Outputs, stdout/stderr logs, `ParserResult` JSON, and audit ledgers are written
-under `runs/`. Normalized `ParserEvent` records can feed the correlation and
-validation workflow.
+Expected parser outputs:
+
+- `ParserResult` JSON under `$RUN_DIR/normalized/`.
+- Tool stdout/stderr logs and parser outputs under generated run paths.
+- Audit JSONL entries at `$LEDGER_PATH`.
+- Normalized parser events embedded in each parser result JSON.
 
 ## Correlation And Validation Workflow
 
-The workflow consumes normalized parser-event JSON and writes generated
-timelines, validated findings, a Markdown report, and an audit ledger under an
-ignored output directory.
+The direct correlation command consumes one normalized parser-output JSON file
+and writes timelines, findings, a Markdown report, and an audit ledger.
 
 ```bash
-siftguard correlate \
-  --case-id CASE-SYN-001 \
-  --input normalized-events.json \
-  --output-dir runs/CASE-SYN-001
+.venv/bin/python -m siftguard correlate \
+  --case-id "$CASE_ID" \
+  --input "$RUN_DIR/normalized/EV-MFT-0001-mftecmd.json" \
+  --output-dir "$RUN_DIR/correlation"
 ```
 
-Generated files include `subject_timelines.json`, `findings.json`,
-`report.md`, and `audit.jsonl`. Do not commit generated outputs. The workflow
-expects normalized parser JSON, not raw evidence images.
+Expected correlation outputs:
+
+- `$RUN_DIR/correlation/subject_timelines.json`
+- `$RUN_DIR/correlation/findings.json`
+- `$RUN_DIR/correlation/report.md`
+- `$RUN_DIR/correlation/audit.jsonl`
+
+Use the agent workflow below for a manifest-driven run across the staged
+artifact set.
 
 ## Agent Workflow
 
-SIFTGuard now includes a deterministic agent workflow around the existing
-inventory, parser, correlation, validation, and reporting pipeline. The agent
-loop is:
+The constrained agent workflow runs the deterministic SIFTGuard pipeline around
+an evidence manifest or supported parser-output manifest. With raw artifacts, it
+requires the same staged evidence and SIFT parser tools as the parser workflow.
 
-```text
-plan -> execute -> verify -> correct -> report
+```bash
+.venv/bin/python -m siftguard agent run \
+  --case-id "$CASE_ID" \
+  --manifest "$RUN_DIR/manifest.json" \
+  --output-dir "$RUN_DIR/agent-run" \
+  --max-iterations 7
 ```
 
-The forensic logic remains deterministic Python code inside SIFTGuard.
-OpenClaw is used only as a runtime orchestrator over constrained SIFTGuard
-commands, not as the forensic engine. A normal agent run writes local generated
-artifacts such as `agent_run.json`, `audit.jsonl`, `findings.json`, and
-`report.md` under ignored output paths.
+Expected agent outputs:
 
-The verifier prevents unsupported claims from being treated as final findings.
-When confirmed or inferred findings lack evidence references, self-correction
-downgrades them to `needs_review` instead of pretending certainty. Generated
-outputs and raw OpenClaw traces stay local under ignored paths such as `runs/`.
+- `$RUN_DIR/agent-run/agent_run.json`
+- `$RUN_DIR/agent-run/audit.jsonl`
+- `$RUN_DIR/agent-run/normalized_events.json`
+- `$RUN_DIR/agent-run/subject_timelines.json`
+- `$RUN_DIR/agent-run/findings.json`
+- `$RUN_DIR/agent-run/report.md`
 
-Start with [the agent workflow](docs/agent-workflow.md), then use
-[the demo guide](docs/demo.md) and
-[the OpenClaw setup notes](docs/openclaw.md) for reproduction.
+The agent records plan, execute, verify, correct, and report phases. Unsupported
+or internally inconsistent outputs are downgraded, retried through constrained
+paths, or marked for review rather than silently treated as confirmed findings.
 
-## Evidence Safety Summary
+Read an audit ledger summary:
 
-- Evidence is local-only.
-- Raw evidence is not committed.
-- Generated parser outputs are not committed.
-- `runs/` is gitignored.
-- `.local/` is gitignored.
-- Mounted evidence should be handled read-only.
-- Only sanitized documentation is committed.
+```bash
+.venv/bin/python -m siftguard audit-read "$RUN_DIR/agent-run/audit.jsonl"
+```
 
-## Documentation Map
+## Output And Evidence Safety
 
-- [docs/architecture.md](docs/architecture.md) - system architecture and data flow.
-- [docs/submission-compliance-checklist.md](docs/submission-compliance-checklist.md) - final submission readiness checklist.
-- [docs/agent-workflow.md](docs/agent-workflow.md) - deterministic agent loop and output contracts.
-- [docs/dataset.md](docs/dataset.md) - local evidence staging and dataset handling.
-- [docs/development-notes.md](docs/development-notes.md) - developer workflow for parser wrappers.
-- [docs/demo.md](docs/demo.md) - agent workflow demo command sequence and cleanup notes.
-- [docs/limitations.md](docs/limitations.md) - interpretation and reproducibility limits.
-- [docs/openclaw.md](docs/openclaw.md) - OpenClaw local setup and provider assumptions.
-- [docs/openclaw-agent-workflow.md](docs/openclaw-agent-workflow.md) - constrained OpenClaw agent workflow path.
-- [docs/security-boundaries.md](docs/security-boundaries.md) - evidence, execution, audit, and secret boundaries.
-- [docs/parser-contracts.md](docs/parser-contracts.md) - parser event/result contracts.
-- [docs/parser-validation.md](docs/parser-validation.md) - SIFT validation results.
+- Evidence remains local-only and should be mounted or staged read-only.
+- Raw evidence must stay outside the repository.
+- Generated outputs belong under ignored paths such as `runs/`, `outputs/`,
+  `analysis/`, or `reports/generated/`.
+- Do not commit raw parser outputs, generated reports, audit ledgers, OpenClaw
+  traces, private paths, hostnames, usernames, tokens, VM files, or disk images.
+- Commit only intentionally sanitized documentation or examples.
+
+## Submission Readiness Map
+
+| Item | Repo-relative location |
+| --- | --- |
+| Final submission compliance checklist | `docs/submission-compliance-checklist.md` |
+| Architecture and data flow | `docs/architecture.md` |
+| Evidence dataset handling | `docs/dataset.md` |
+| Accuracy report template | `docs/accuracy-report.md` |
+| Demo script | `docs/demo-script.md` |
+| Limitations | `docs/limitations.md` |
+| Security boundaries | `docs/security-boundaries.md` |
+| Parser tooling matrix | `docs/parser-tooling-matrix.md` |
+| Parser validation notes | `docs/parser-validation.md` |
+| Agent workflow | `docs/agent-workflow.md` |
+| OpenClaw setup notes | `docs/openclaw.md` |
+| MCP/parser contracts | `docs/parser-contracts.md` |
 
 ## License
 
