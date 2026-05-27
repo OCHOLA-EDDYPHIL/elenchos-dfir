@@ -1,6 +1,6 @@
 ---
 name: Task
-about: Track implementation, research, documentation, or spike work
+about: Track code, research, documentation, or spike work
 title: ""
 labels: ""
 assignees: ""
@@ -18,10 +18,10 @@ What this task delivers.
 Logs, screenshots, command output, test result, or PR link.
 
 ## Lane
-build / research / docs / spike
+code / research / docs / spike
 
 ## Area
-build / research / docs / validation / workflow
+code / research / docs / validation / workflow
 
 ## Estimate
 S / M / L

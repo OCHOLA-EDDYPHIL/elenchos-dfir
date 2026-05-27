@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This is the verified SIFT Workstation parser tooling matrix for M2. Parser wrapper
-implementation must follow this document unless a later verified SIFT run updates
+This is the verified SIFT Workstation parser tooling matrix. Parser wrapper
+behavior must follow this document unless a later verified SIFT run updates
 the matrix.
 
 This document covers only `$MFT`, Registry Run Keys from `SOFTWARE` and
@@ -29,7 +29,7 @@ are intentionally omitted.
 
 ## Summary Matrix
 
-| Artifact | Parser target | Selected tool | Verified command/path | Runtime | Version/help evidence | Input artifact | Output format | Output location convention | Failure behavior | M2 implementation decision |
+| Artifact | Parser target | Selected tool | Verified command/path | Runtime | Version/help evidence | Input artifact | Output format | Output location convention | Failure behavior | Parser workflow decision |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `$MFT` | NTFS master file table | MFTECmd | `/usr/local/bin/MFTECmd` -> `dotnet /opt/zimmermantools/MFTECmd.dll` | .NET | `--version` returned `1.3.0+5eb8a7e63b5c2058be18d2784741f92cd1978879`; help reports `MFTECmd version 1.3.0.0` | `$MFT` file via `-f` | CSV selected; JSON and bodyfile are also supported | `runs/<case_id>/parsers/mft/` | Missing and invalid input returned exit code `0` with error text on stdout | Use MFTECmd for issue #22 |
 | Registry Run Keys from `SOFTWARE` | `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` and `RunOnce` | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | `--version` returned `2.1.0+b9838adf98fae6c96dd617101f0323199b1574be`; help reports `RECmd version 2.1.0.0` | `SOFTWARE` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parsers/registry_runkeys/software/` | Missing and invalid input returned exit code `0` with error text on stdout | Use RECmd direct key lookups for issue #24 |
@@ -44,7 +44,7 @@ Discovered candidates:
 - `MFTECmd.exe` and `MFTECmd.dll` were present under `/opt/zimmermantools`, but
   the verified Linux invocation is the `/usr/local/bin/MFTECmd` wrapper.
 - `log2timeline.py` was found but is a broad timeline processor, not the primary
-  narrow M2 `$MFT` wrapper.
+  narrow `$MFT` wrapper.
 - Sleuth Kit tools such as `fls`, `icat`, `mmls`, and `fsstat` were found but
   are supporting filesystem tools, not the selected `$MFT` parser wrapper.
 
@@ -55,7 +55,7 @@ Invocation style:
 - Required input flag: `-f <path-to-$MFT>`.
 - Supported output flags from installed help: `--csv <dir>`, `--json <dir>`,
   and `--body <dir>` with `--bdl`.
-- M2 should use CSV output first because it is structured and directly supported.
+- The parser workflow should use CSV output first because it is structured and directly supported.
 
 Expected command template:
 
@@ -74,15 +74,15 @@ Limitations:
 
 - No real evidence was parsed during this research PR.
 - Valid `$MFT` output columns and file creation behavior must be confirmed with
-  later synthetic fixtures during wrapper implementation.
+  later synthetic fixtures during wrapper testing.
 - Wrappers must create the output directory before invocation and must not rely
   on exit code alone.
 
-Implementation recommendation for issue #22:
+Recommended approach for issue #22:
 
 - Resolve `MFTECmd` through configuration or environment override, defaulting to
   `PATH`.
-- Execute through the M1 safe runner without `shell=True`.
+- Execute through the safe subprocess runner without `shell=True`.
 - Preserve stdout/stderr under `runs/<case_id>/logs/`.
 - Treat parser error text or missing expected CSV output as failure even when the
   process exit code is `0`.
@@ -106,19 +106,19 @@ Invocation style:
 - Selected direct lookup flag: `--kn <key-path>`.
 - Output flags from installed help: `--csv <dir>`, optional `--csvf <file>`, and
   `--json <dir>` for `--kn`.
-- `--nl` should be used for M2 wrappers so missing transaction logs do not abort
+- `--nl` should be used for parser wrappers so missing transaction logs do not abort
   parsing of available hives.
 
 Batch/plugin files:
 
-- No batch file is required for the selected M2 method.
+- No batch file is required for the selected parser workflow method.
 - Verified RECmd batch examples exist under
   `/opt/zimmermantools/RECmd/BatchExamples/`.
 - `SoftwareASEPs.reb` includes `Microsoft\Windows\CurrentVersion\Run` and
   `Runonce` entries for the `SOFTWARE` hive.
 - `RECmd_Batch_MC.reb` includes `Software\Microsoft\Windows\CurrentVersion\Run`
   and `RunOnce` entries for the `NTUSER` hive.
-- These batch files are broader than M2 Run/RunOnce scope, so direct `--kn`
+- These batch files are broader than Run/RunOnce scope, so direct `--kn`
   lookups are preferred unless fixture testing shows a batch file is required.
 - Do not use RECmd `--sync` in wrappers; it downloads batch files and is outside
   the verified local-tooling gate.
@@ -161,14 +161,14 @@ Limitations:
 - Transaction log handling policy should be finalized during wrapper contract
   work.
 
-Implementation recommendation for issue #24:
+Recommended approach for issue #24:
 
-- Use RECmd direct `--kn` lookups for the four M2 Run/RunOnce targets.
+- Use RECmd direct `--kn` lookups for the four Run/RunOnce targets.
 - Run one command per hive/key target so audit entries remain narrow and
   deterministic.
 - Resolve `RECmd` through configuration or environment override, defaulting to
   `PATH`.
-- Execute through the M1 safe runner without `shell=True`.
+- Execute through the safe subprocess runner without `shell=True`.
 - Preserve stdout/stderr and treat missing expected CSV output or bad-signature
   text as failure even when the process exit code is `0`.
 
@@ -182,7 +182,7 @@ Discovered candidates:
   selected because the dedicated AmcacheParser tool is available and the
   RegRipper plugin returned exit code `0` with stderr errors for invalid input.
 - `log2timeline.py` was found but is a broad timeline processor, not the primary
-  narrow M2 Amcache wrapper.
+  narrow Amcache wrapper.
 
 Invocation style:
 
@@ -214,11 +214,11 @@ Limitations:
 - Wrappers must create the output directory before invocation and must not rely
   on exit code alone.
 
-Implementation recommendation for issue #26:
+Recommended approach for issue #26:
 
 - Resolve `AmcacheParser` through configuration or environment override,
   defaulting to `PATH`.
-- Execute through the M1 safe runner without `shell=True`.
+- Execute through the safe subprocess runner without `shell=True`.
 - Preserve stdout/stderr under `runs/<case_id>/logs/`.
 - Treat bad-signature text, stack trace text, or missing expected CSV output as
   failure even when the process exit code is `0`.
@@ -227,19 +227,19 @@ Implementation recommendation for issue #26:
 
 - `rip.pl`: installed RegRipper CLI, useful as a fallback/reference for registry
   and Amcache plugins, but not selected because RECmd and AmcacheParser are more
-  specific for M2 structured wrapper output.
+  specific for structured wrapper output.
 - `log2timeline.py`: installed plaso timeline tool, version `20260119`, but not
-  selected because M2 needs narrow artifact parser wrappers.
+  selected because SIFTGuard uses narrow artifact parser wrappers.
 - `psort.py`: installed plaso post-processing tool, version `20260119`, but not
   selected because it depends on broader plaso timeline workflows.
 - `fls`, `icat`, `mmls`, and `fsstat`: installed Sleuth Kit tools, useful for
-  filesystem/image support but not primary parsers for the three M2 artifacts.
+  filesystem/image support but not primary parsers for the three selected artifacts.
 - `ewfmount` and `xmount`: installed image mounting/conversion support, not
-  parser wrappers for M2 artifacts.
+  parser wrappers for the selected artifacts.
 - `fiwalk`: installed filesystem metadata extraction support, not selected for
-  the narrow M2 parser wrappers.
+  the narrow parser wrappers.
 - `EvtxECmd`: installed at `/usr/local/bin/EvtxECmd`, but EVTX parsing is future
-  reference only and outside this M2 scope.
+  reference only and outside this parser workflow scope.
 - `regipy`: not found as a command or importable Python package in this VM.
 - `mono`: not found on `PATH`; not required for the selected .NET wrapper scripts.
 
@@ -259,7 +259,7 @@ depending on the parser contract. stdout/stderr paths must be preserved under
 `runs/`, and the audit ledger must capture command, exit code, duration,
 stdout/stderr paths, and hashes where applicable.
 
-## M2 Implementation Decisions
+## Parser Workflow Decisions
 
 - `$MFT` wrapper should use `MFTECmd`.
 - Registry Run Key wrapper should use `RECmd` direct `--kn` lookups for
@@ -276,7 +276,7 @@ stdout/stderr paths, and hashes where applicable.
 
 - This PR did not parse real evidence or generated fixture hives.
 - Exact output columns and generated filenames remain pending synthetic fixture
-  tests during wrapper implementation.
+  tests during wrapper testing.
 - Missing-output-directory behavior with valid artifacts remains pending fixture
   tests; wrappers should create output directories before invoking tools.
 - RECmd batch/plugin selection remains direct `--kn` by default; broader RECmd

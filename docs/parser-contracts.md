@@ -2,8 +2,8 @@
 
 ## Purpose
 
-M2 parser wrappers must return shared contracts before any artifact-specific
-wrapper logic is implemented. These contracts describe observations extracted
+Parser wrappers must return shared contracts before any artifact-specific
+wrapper logic runs. These contracts describe observations extracted
 from parser output and wrapper-level execution results. They do not perform
 correlation, create findings, or make investigative conclusions.
 
@@ -69,8 +69,9 @@ Parser fixtures under `tests/fixtures/parser_outputs/` are synthetic only. They
 are not real evidence, not generated parser output from case data, and not
 complete documentation of every real parser column.
 
-Wrapper implementation, parser normalization, parser CLI commands, and MCP
-parser schemas are now part of M2. Correlation and findings remain later work.
+Wrapper code, parser normalization, parser CLI commands, and MCP parser schemas
+are available in the parser workflow. Correlation and findings are handled by
+the analysis workflow.
 
 ## MFT Parser Wrapper
 
@@ -135,5 +136,5 @@ must not resolve inside `evidence_root`.
 
 MCP parser tool schemas are defined for `parse_mft`, `parse_registry_runkeys`,
 and `parse_amcache`. They describe constrained parser wrappers, not arbitrary
-process execution. Full MCP runtime wiring remains future work, and M2 parser
+process execution. Full MCP runtime wiring remains future work, and parser
 interfaces do not generate findings.

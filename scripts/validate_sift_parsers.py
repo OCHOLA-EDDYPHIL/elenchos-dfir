@@ -27,7 +27,7 @@ from siftguard.policy.paths import is_relative_to, validate_output_path
 
 LOCAL_ENV_PATH = Path(".local/sift-validation/paths.env")
 VALIDATION_TOOLS = ("MFTECmd", "RECmd", "AmcacheParser")
-DEFAULT_CASE_ID = "CASE-VALIDATION-M2"
+DEFAULT_CASE_ID = "CASE-PARSER-VALIDATION"
 SUMMARY_FILENAME = "sift-parser-validation-summary.json"
 
 

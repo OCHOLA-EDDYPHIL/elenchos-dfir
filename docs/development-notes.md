@@ -20,7 +20,7 @@ When adding a new parser wrapper:
 
 1. Define the expected artifact type and parser name.
 2. Add command configuration and safe path resolution if needed.
-3. Build commands as argv tuples or lists, without shell strings.
+3. Represent commands as argv tuples or lists, without shell strings.
 4. Use the safe runner for parser execution.
 5. Normalize parser output into `ParserEvent` observations.
 6. Preserve output file paths and hashes in `ParserResult`.

@@ -119,7 +119,7 @@ def test_arg_parser_accepts_expected_args_and_defaults(tmp_path):
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(tmp_path / "runs"),
             "--timeout-seconds",
@@ -128,7 +128,7 @@ def test_arg_parser_accepts_expected_args_and_defaults(tmp_path):
         defaults,
     )
 
-    assert args.case_id == "CASE-VALIDATION-M2"
+    assert args.case_id == "CASE-PARSER-VALIDATION"
     assert args.evidence_root == defaults["evidence_root"]
     assert args.mft_path == defaults["mft_path"]
     assert args.registry_hive_path == defaults["registry_hive_paths"]
@@ -139,7 +139,7 @@ def test_arg_parser_accepts_expected_args_and_defaults(tmp_path):
 def test_summary_sanitization_uses_runs_relative_paths_and_basenames(tmp_path):
     runs_root = tmp_path / "runs"
     result = make_result(
-        case_id="CASE-VALIDATION-M2",
+        case_id="CASE-PARSER-VALIDATION",
         artifact_id="EV-MFT-VALIDATION",
         artifact_type="mft",
         parser_name="mftecmd",
@@ -150,10 +150,12 @@ def test_summary_sanitization_uses_runs_relative_paths_and_basenames(tmp_path):
     row = validation_script.summarize_parser_result(
         result,
         runs_root=runs_root,
-        audit_ledger_path=runs_root / "CASE-VALIDATION-M2" / "audit.jsonl",
+        audit_ledger_path=runs_root / "CASE-PARSER-VALIDATION" / "audit.jsonl",
     )
 
-    assert row["output_dir"] == "runs/CASE-VALIDATION-M2/parser_outputs/EV-MFT-VALIDATION/mftecmd"
+    assert row["output_dir"] == (
+        "runs/CASE-PARSER-VALIDATION/parser_outputs/EV-MFT-VALIDATION/mftecmd"
+    )
     assert row["output_file_basenames"] == ["parser-output.csv"]
     assert str(tmp_path) not in json.dumps(row)
 
@@ -165,13 +167,13 @@ def test_summary_output_path_must_resolve_under_runs_root(tmp_path):
     evidence_root.mkdir()
 
     resolved = validation_script.resolve_summary_out(
-        Path("CASE-VALIDATION-M2/summary.json"),
+        Path("CASE-PARSER-VALIDATION/summary.json"),
         runs_root,
         evidence_root,
-        "CASE-VALIDATION-M2",
+        "CASE-PARSER-VALIDATION",
     )
 
-    assert resolved == (runs_root / "CASE-VALIDATION-M2" / "summary.json").resolve()
+    assert resolved == (runs_root / "CASE-PARSER-VALIDATION" / "summary.json").resolve()
 
 
 def test_summary_output_path_rejects_evidence_root(tmp_path):
@@ -184,7 +186,7 @@ def test_summary_output_path_rejects_evidence_root(tmp_path):
             Path("summary.json"),
             runs_root,
             evidence_root,
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
         )
 
 
@@ -199,7 +201,7 @@ def test_summary_output_path_must_stay_under_case_directory(tmp_path):
             Path("other-case/summary.json"),
             runs_root,
             evidence_root,
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
         )
 
 
@@ -210,7 +212,7 @@ def test_run_validation_rejects_runs_root_inside_evidence_root(tmp_path):
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(runs_root),
             "--evidence-root",
@@ -230,7 +232,7 @@ def test_missing_all_artifact_paths_writes_failure_summary(monkeypatch, tmp_path
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(runs_root),
             "--evidence-root",
@@ -302,7 +304,7 @@ def test_fake_parser_results_produce_success_summary(monkeypatch, tmp_path):
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(runs_root),
             "--evidence-root",
@@ -352,7 +354,7 @@ def test_partial_or_failed_eventful_summary_exits_two(monkeypatch, tmp_path):
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(runs_root),
             "--evidence-root",
@@ -390,7 +392,7 @@ def test_generated_summary_omits_private_paths(monkeypatch, tmp_path):
     args = validation_script.parse_args(
         [
             "--case-id",
-            "CASE-VALIDATION-M2",
+            "CASE-PARSER-VALIDATION",
             "--runs-root",
             str(runs_root),
             "--evidence-root",

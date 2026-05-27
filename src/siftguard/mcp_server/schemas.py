@@ -254,7 +254,7 @@ def _correlation_descriptors() -> dict[str, ToolDescriptor]:
             name="correlate_timeline",
             title="Correlate Timeline",
             description=(
-                "Build subject timelines, validate derived claims, and render generated "
+                "Generate subject timelines, validate derived claims, and render generated "
                 "outputs from an existing normalized parser JSON file. The tool accepts "
                 "paths to generated parser output, not raw evidence upload data."
             ),

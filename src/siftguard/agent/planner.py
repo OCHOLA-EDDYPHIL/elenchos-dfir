@@ -2,4 +2,4 @@
 
 
 def plan_next_actions(*args, **kwargs):
-    raise NotImplementedError("Planner will be implemented in M4.")
+    raise NotImplementedError("Planner is not available yet.")

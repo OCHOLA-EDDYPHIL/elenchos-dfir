@@ -177,7 +177,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     correlate_parser = subparsers.add_parser(
         "correlate",
-        help="Build timelines, validated findings, and a Markdown report from normalized JSON",
+        help="Generate timelines, validated findings, and a Markdown report from normalized JSON",
     )
     correlate_parser.add_argument("--case-id", required=True, help="Case identifier")
     correlate_parser.add_argument(
