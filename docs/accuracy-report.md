@@ -2,13 +2,16 @@
 
 ## Status
 
-Draft pending final run.
+Draft pending completed primary finding run.
 
 This report structure is submission-ready, and primary parser validation has
-been run against locally staged artifacts from one evidence image. The report is
-still not final because final correlation/finding output, representative
-execution-log packaging, and final self-correction evidence are not recorded
-yet. Issue #89 must remain open until those outputs are available and reviewed.
+been run against locally staged artifacts from one evidence image. A constrained
+one-go agent workflow was also attempted against the staged primary artifacts,
+but it did not complete final correlation, validation, reporting, or
+verification. The report is still not final because primary finding output,
+false-positive review, missed-artifact review, and final primary-run accuracy
+evidence are not complete. Issue #89 must remain open until those outputs are
+available and reviewed.
 
 ## Environment
 
@@ -18,6 +21,7 @@ yet. Issue #89 must remain open until those outputs are available and reviewed.
 | SIFT version | not captured |
 | Python version | 3.12.3 |
 | Commit SHA used for parser validation | `03faf60` |
+| Commit SHA used for one-go agent attempt | `99d9e25` |
 | SIFTGuard MCP version | `0.1.0` |
 | MFTECmd | `1.3.0+5eb8a7e63b5c2058be18d2784741f92cd1978879` |
 | RECmd | `2.1.0+b9838adf98fae6c96dd617101f0323199b1574be` |
@@ -35,7 +39,7 @@ The SIFT Workstation version itself was not captured.
 | Artifact scope | `$MFT`, Registry `Run`/`RunOnce` keys from `NTUSER.DAT` and `SOFTWARE`, and `Amcache.hve` |
 | Raw evidence committed | no |
 | Evidence paths local/private | yes |
-| Primary dataset status | parser validation completed with useful partial output |
+| Primary dataset status | parser validation completed with useful partial output; one-go agent attempt incomplete with exit code `137` |
 | Secondary dataset status | inspected but incomplete for same-scope validation because `Amcache.hve` was not found |
 
 The repository documents artifact classes and local staging rules in
@@ -80,6 +84,25 @@ placeholders:
 Primary parser validation exit code: `2`. This indicates useful partial parser
 validation output: at least one parser produced events, but not every supplied
 artifact fully succeeded.
+
+Primary one-go agent command, shown with sanitized placeholders:
+
+```bash
+.venv/bin/python -m siftguard inventory <STAGED_PRIMARY_ROOT> \
+  --manifest-out runs/case_staged-primary/manifest.json
+
+.venv/bin/python -m siftguard agent run \
+  --case-id case_staged-primary \
+  --manifest runs/case_staged-primary/manifest.json \
+  --output-dir runs/case_staged-primary/agent-run \
+  --max-iterations 7
+```
+
+Primary one-go agent exit code: `137`. The run wrote partial audit and parser
+wrapper log entries, completed inventory, and started parse, but it was killed
+before `agent_run.json`, `findings.json`, `report.md`, or final verification
+were produced. This is recorded as incomplete run evidence, not final accuracy
+evidence.
 
 Configuration source:
 
@@ -147,6 +170,31 @@ Audit summary:
 - Generated parser outputs remain local under `runs/CASE-FINAL-PRIMARY/` and
   are not committed.
 
+## Primary one-go agent attempt
+
+The constrained one-go agent workflow was run against the same staged primary
+artifact classes. The run did not complete and therefore does not provide final
+finding accuracy evidence.
+
+| Item | Value |
+| --- | --- |
+| Manifest case id | `case_staged-primary` |
+| Manifest artifact count | 4 |
+| Agent exit code | `137` |
+| Final agent status | not written |
+| Completed phases | inventory completed; parse started |
+| Normalized event count | not produced |
+| Timeline count | not produced |
+| Finding count | not produced |
+| Audit entry count | 10 partial entries |
+| Parser wrapper events | `amcacheparser`: 1, `mftecmd`: 1, `recmd`: 4 |
+
+The partial audit confirms that the agent entered the constrained workflow and
+that parser wrapper executions began. Because the process was killed before
+correlation, validation, report generation, or verification, no primary finding
+counts, false-positive conclusions, missed-artifact conclusions, or primary
+self-correction conclusions are made from this run.
+
 ## Findings summary
 
 No final findings recorded yet; pending primary correlation/finding run.
@@ -192,26 +240,45 @@ table is available yet.
 
 ## Self-correction episodes
 
-No final self-correction episode is recorded in this report yet; this remains
-required for the final demo package.
+No natural primary staged-evidence self-correction episode is recorded in this
+report yet because the primary one-go agent attempt did not complete. This
+remains required for final primary-run accuracy evidence if the final package is
+expected to demonstrate correction on the primary evidence workflow itself.
 
-The synthetic induced-failure test documents the expected correction mechanism:
-an unsupported confirmed finding with missing evidence references is detected and
-downgraded to `needs_review`. That test is not a substitute for final demo/run
-evidence.
+Synthetic induced self-correction evidence is documented in
+`docs/execution-log-traceability.md`: an unsupported confirmed finding with
+missing evidence references is detected, the inventory is rechecked, and the
+finding is downgraded to `needs_review`. That evidence supports execution-log
+packaging and demo preparation, but it is not a substitute for completed primary
+evidence accuracy results.
 
 | Episode ID | Trigger | Initial state | Corrective action | Outcome | Log reference |
 | --- | --- | --- | --- | --- | --- |
 
 ## Representative execution logs
 
-Representative final logs are pending issue #90. Primary parser validation
-created local generated outputs, including:
+Representative execution-log documentation is available in
+`docs/execution-log-traceability.md`. That document records sanitized summaries
+for:
+
+- The incomplete primary staged-evidence one-go agent attempt.
+- A successful synthetic constrained agent workflow.
+- A synthetic induced self-correction workflow.
+
+Primary parser validation created local generated outputs, including:
 
 - `runs/CASE-FINAL-PRIMARY/sift-parser-validation-summary.json`
 - `runs/CASE-FINAL-PRIMARY/audit.jsonl`
 
-Expected local generated files for the later final agent/finding run include:
+The incomplete primary staged-evidence one-go agent attempt created local
+partial outputs, including:
+
+- `runs/case_staged-primary/manifest.json`
+- `runs/case_staged-primary/agent-run/audit.jsonl`
+- `runs/case_staged-primary/agent-run/<case-id>/logs/`
+
+Expected local generated files for a later completed primary agent/finding run
+include:
 
 - `runs/<case-id>/agent-run/audit.jsonl`
 - `runs/<case-id>/agent-run/findings.json`
@@ -277,8 +344,10 @@ Not committed:
 - [ ] False positives reviewed.
 - [ ] Missed artifacts reviewed.
 - [ ] Unsupported claims reviewed.
-- [ ] Self-correction episode recorded.
-- [ ] Representative logs linked or packaged.
+- [ ] Primary self-correction episode recorded, or final package explicitly uses
+  synthetic induced correction evidence.
+- [x] Representative logs linked or packaged in
+  `docs/execution-log-traceability.md`.
 - [ ] Secondary validation recorded or explicitly marked unavailable.
 - [ ] Report reviewed for private paths and sensitive values.
 - [ ] Commit SHA recorded.
