@@ -3,7 +3,8 @@
 ## Scope Limitations
 
 - Parser validation covers parser mechanics, not complete incident response.
-- The correlation and finding layer is future work.
+- Correlation and finding support is intentionally narrow: drop, persistence,
+  and execution signals from the supported Windows disk artifacts.
 - Memory forensics is out of scope for the parser workflow.
 - Validation used local evidence subsets, not exhaustive enterprise coverage.
 
@@ -33,6 +34,14 @@ they cannot alone establish execution, user action, or maliciousness.
 - Dirty hives, missing fields, and parser-specific output shapes can produce
   `partial_success`.
 - Parser warnings should be preserved, not hidden.
+- The agent planner is deterministic and uses fixed workflow phases; it is not
+  a free-form LLM planning surface.
+- Markdown is the human-readable report. Machine-readable outputs are workflow
+  artifacts such as `findings.json`, `agent_run.json`, and `audit.jsonl`, not a
+  separate standalone JSON report renderer.
+- The active permission policy is a minimal declaration of read-only evidence
+  posture, output-path constraints, and no arbitrary shell as the agent
+  interface. It should not be described as comprehensive sandboxing.
 
 ## Evidence and Reproducibility Limits
 

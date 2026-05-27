@@ -10,13 +10,13 @@ from siftguard.agent.audit import append_agent_audit_event, record_agent_step_ev
 from siftguard.agent.models import (
     AgentArtifactRef,
     AgentPhase,
-    AgentPlan,
     AgentRun,
     AgentRunStatus,
     AgentState,
     AgentStep,
     AgentStepStatus,
 )
+from siftguard.agent.planner import AGENT_PHASES, build_default_agent_plan
 from siftguard.agent.self_correction import (
     apply_self_correction,
     record_max_iterations_correction,
@@ -49,15 +49,6 @@ from siftguard.validation.models import Finding
 from siftguard.workflows.correlation import load_normalized_timeline_events
 
 Clock = Callable[[], str]
-
-AGENT_PHASES = (
-    AgentPhase.INVENTORY,
-    AgentPhase.PARSE,
-    AgentPhase.CORRELATE,
-    AgentPhase.VALIDATE,
-    AgentPhase.REPORT,
-    AgentPhase.VERIFY,
-)
 
 GENERATED_OUTPUT_PARTS = {"runs", "outputs", "analysis"}
 PARSER_RESULT_ARTIFACT_TYPES = {"parser_result", "parser_result_json"}
@@ -242,25 +233,6 @@ def _artifact_path(manifest: EvidenceManifest, artifact: EvidenceArtifact) -> Pa
     if resolved.is_dir():
         raise ValueError(f"artifact {artifact.artifact_id} path is a directory")
     return resolved
-
-
-def _plan_step(phase: AgentPhase) -> AgentStep:
-    return AgentStep(
-        step_id=f"step_{phase.value}",
-        phase=phase,
-        status=AgentStepStatus.PENDING,
-        action=f"siftguard.agent.{phase.value}",
-    )
-
-
-def _build_plan(case_id: str, *, created_at: str) -> AgentPlan:
-    return AgentPlan(
-        plan_id=f"plan_{case_id}",
-        case_id=case_id,
-        objective="Run the constrained deterministic SIFTGuard workflow.",
-        steps=[_plan_step(phase) for phase in AGENT_PHASES],
-        created_at=created_at,
-    )
 
 
 def _append_agent_audit(
@@ -742,7 +714,7 @@ def run_agent_workflow(
     _clear_previous_agent_outputs(paths)
 
     started_at = clock()
-    plan = _build_plan(case_id, created_at=started_at)
+    plan = build_default_agent_plan(case_id, created_at=started_at)
     state = AgentState(case_id=case_id, final_status=AgentRunStatus.RUNNING)
     run = AgentRun(
         run_id=f"run_{case_id}",

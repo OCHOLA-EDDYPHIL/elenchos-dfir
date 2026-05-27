@@ -56,7 +56,7 @@ def test_symlink_escape_rejected(tmp_path):
     link = runs / "linked_out"
     try:
         link.symlink_to(outside, target_is_directory=True)
-    except (OSError, NotImplementedError):
+    except OSError:
         pytest.skip("symlink creation is not supported in this environment")
 
     with pytest.raises(ValueError, match="outside base"):
