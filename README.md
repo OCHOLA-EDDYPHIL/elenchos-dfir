@@ -31,6 +31,7 @@ are not findings.
 | Submission item | Repo-relative location | Status |
 | --- | --- | --- |
 | Code repository | `.` | In progress |
+| Final submission compliance checklist | `docs/submission-compliance-checklist.md` | Pending completion |
 | LICENSE | `LICENSE` | Present |
 | Setup instructions | `README.md#quick-start-local-development` | Present |
 | Step-by-step local run instructions | `README.md#parser-workflow`, `README.md#correlation-and-validation-workflow`, and `docs/dataset.md` | Present |
@@ -182,6 +183,7 @@ Start with [the agent workflow](docs/agent-workflow.md), then use
 ## Documentation Map
 
 - [docs/architecture.md](docs/architecture.md) - system architecture and data flow.
+- [docs/submission-compliance-checklist.md](docs/submission-compliance-checklist.md) - final submission readiness checklist.
 - [docs/agent-workflow.md](docs/agent-workflow.md) - deterministic agent loop and output contracts.
 - [docs/dataset.md](docs/dataset.md) - local evidence staging and dataset handling.
 - [docs/development-notes.md](docs/development-notes.md) - developer workflow for parser wrappers.
