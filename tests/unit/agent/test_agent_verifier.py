@@ -263,7 +263,17 @@ def test_verification_failures_are_written_to_audit_jsonl(tmp_path: Path):
         "verification_failed",
         "verification_completed",
     ]
+    for event in events:
+        assert event["event_type"] == event["action"]
+        assert event["timestamp_utc"] == TIMESTAMP
+        assert event["case_id"] == CASE_ID
+        assert event["run_id"] == f"run_{CASE_ID}"
+        assert isinstance(event["duration_ms"], int)
+        assert isinstance(event["output_refs"], dict)
     assert events[1]["failure"]["kind"] == "missing_parser_output"
+    assert events[1]["failure_kind"] == "missing_parser_output"
+    assert events[1]["step_id"] == "step_parse"
+    assert events[1]["phase"] == "parse"
     assert events[-1]["failure_count"] == 1
 
 

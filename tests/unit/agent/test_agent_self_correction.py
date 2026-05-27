@@ -213,7 +213,17 @@ def test_unsupported_confirmed_finding_is_downgraded_and_audited(tmp_path: Path)
     assert run.corrections[1].result == "Finding status changed to needs_review."
 
     events = read_events(output_dir / "audit.jsonl")
-    assert "correction_applied" in [event["action"] for event in events]
+    for event in events:
+        assert event["event_type"] == event["action"]
+        assert event["timestamp_utc"] == TIMESTAMP
+        assert event["case_id"] == CASE_ID
+        assert isinstance(event["duration_ms"], int)
+        assert isinstance(event["output_refs"], dict)
+    applied_events = [event for event in events if event["action"] == "correction_applied"]
+    assert len(applied_events) == 2
+    assert applied_events[-1]["correction_id"] == "correction_000002"
+    assert applied_events[-1]["correction_action"] == "downgrade_finding"
+    assert applied_events[-1]["correction_trigger"] == "unsupported_finding"
     assert run.to_dict()["corrections"][1]["action"] == "downgrade_finding"
 
 

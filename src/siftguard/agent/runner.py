@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from siftguard.agent.audit import append_agent_audit_event, record_agent_step_event
 from siftguard.agent.models import (
     AgentArtifactRef,
     AgentPhase,
@@ -26,7 +27,7 @@ from siftguard.agent.verifier import (
     VerificationStatus,
     verify_agent_outputs,
 )
-from siftguard.audit.execution_ledger import append_event, make_event_id, read_events, utc_now
+from siftguard.audit.execution_ledger import utc_now
 from siftguard.correlation.models import SubjectTimeline
 from siftguard.correlation.timeline import build_subject_timelines
 from siftguard.evidence.manifest import EvidenceArtifact, EvidenceManifest, read_manifest
@@ -272,29 +273,30 @@ def _append_agent_audit(
     output_refs: dict[str, str] | None = None,
     error: str | None = None,
 ) -> None:
-    event: dict[str, Any] = {
-        "event_id": make_event_id(len(read_events(context.paths.audit_path)) + 1),
-        "timestamp_utc": context.clock(),
-        "action": action,
-        "case_id": context.case_id,
-        "run_id": run_id,
-    }
     if step is not None:
-        event.update(
-            {
-                "step_id": step.step_id,
-                "phase": step.phase.value,
-                "attempt": step.attempt,
-            }
+        record_agent_step_event(
+            context.paths.audit_path,
+            event_type=action,
+            case_id=context.case_id,
+            run_id=run_id,
+            step=step,
+            status=status or step.status.value,
+            output_refs=output_refs,
+            error=error,
+            clock=context.clock,
         )
-    if status is not None:
-        event["status"] = status
-    if output_refs is not None:
-        event["output_refs"] = dict(output_refs)
-    if error is not None:
-        event["error"] = error
+        return
 
-    append_event(context.paths.audit_path, event)
+    append_agent_audit_event(
+        context.paths.audit_path,
+        event_type=action,
+        case_id=context.case_id,
+        run_id=run_id,
+        status=status or "unknown",
+        output_refs=output_refs,
+        error=error,
+        clock=context.clock,
+    )
 
 
 def _artifact_type_counts(artifacts: list[EvidenceArtifact]) -> dict[str, int]:

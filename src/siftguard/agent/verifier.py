@@ -8,8 +8,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
+from siftguard.agent.audit import append_agent_audit_event, record_verification_failure
 from siftguard.agent.models import AgentPhase, AgentRun, AgentStep
-from siftguard.audit.execution_ledger import append_event, make_event_id, read_events, utc_now
+from siftguard.audit.execution_ledger import utc_now
 from siftguard.policy.paths import is_relative_to
 
 Clock = Callable[[], str]
@@ -499,37 +500,40 @@ def _append_verification_events(
     *,
     audit_log_path: Path,
     case_id: str,
+    run_id: str,
     status: VerificationStatus,
     failures: list[VerificationFailure],
     output_refs: dict[str, str],
     clock: Clock,
 ) -> None:
-    def append(action: str, payload: dict[str, Any]) -> None:
-        event = {
-            "event_id": make_event_id(len(read_events(audit_log_path)) + 1),
-            "timestamp_utc": clock(),
-            "action": action,
-            "case_id": case_id,
-            **payload,
-        }
-        append_event(audit_log_path, event)
-
-    append("verification_started", {"status": "running", "output_refs": dict(output_refs)})
+    append_agent_audit_event(
+        audit_log_path,
+        event_type="verification_started",
+        case_id=case_id,
+        run_id=run_id,
+        status="running",
+        output_refs=output_refs,
+        clock=clock,
+    )
     for failure in failures:
-        append(
-            "verification_failed",
-            {
-                "status": VerificationStatus.FAILED.value,
-                "failure": failure.to_dict(),
-            },
+        record_verification_failure(
+            audit_log_path,
+            case_id=case_id,
+            run_id=run_id,
+            failure=failure.to_dict(),
+            status=VerificationStatus.FAILED.value,
+            output_refs=output_refs,
+            clock=clock,
         )
-    append(
-        "verification_completed",
-        {
-            "status": status.value,
-            "failure_count": len(failures),
-            "output_refs": dict(output_refs),
-        },
+    append_agent_audit_event(
+        audit_log_path,
+        event_type="verification_completed",
+        case_id=case_id,
+        run_id=run_id,
+        status=status.value,
+        output_refs=output_refs,
+        extra={"failure_count": len(failures)},
+        clock=clock,
     )
 
 
@@ -578,6 +582,7 @@ def verify_agent_outputs(
         _append_verification_events(
             audit_log_path=audit_log_path,
             case_id=case_id,
+            run_id=agent_run.run_id,
             status=status,
             failures=failures,
             output_refs=output_refs,
