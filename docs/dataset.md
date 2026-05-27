@@ -1,30 +1,30 @@
 # Dataset and Evidence Handling
 
-## Scope
+## Purpose
 
-This page describes local evidence selection for parser validation and demo
-runs. Raw evidence is not stored in Git, and committed documentation uses
-placeholders instead of private local paths.
+This document explains the supported evidence inputs, local staging layout,
+validation scope, expected demo observations, and evidence safety rules for the
+submission-ready SIFTGuard MCP workflow. It does not publish raw evidence,
+private local paths, or private evidence hashes.
 
-## Required Artifact Types
+## Supported Dataset Scope
 
-- `$MFT`: filesystem metadata observations, including names, paths, record
-  metadata, and parser-reported timestamps.
-- Registry hives:
-  - `NTUSER.DAT` for user-level `Run` and `RunOnce` keys.
-  - `SOFTWARE` for machine-level `Run` and `RunOnce` keys.
-- `Amcache.hve`: application compatibility cache observations.
+SIFTGuard MCP is scoped to Windows disk-artifact triage. The final supported
+artifact classes are:
 
-## Why These Artifacts Are Included
+- `$MFT` for filesystem metadata and file timeline observations.
+- Registry `Run` and `RunOnce` keys from `NTUSER.DAT` and `SOFTWARE` for
+  persistence observations.
+- `Amcache.hve` for application execution or application metadata observations.
 
-These artifacts provide breadth across filesystem metadata, registry autostart
-locations, and application metadata. They are sufficient to validate parser
-wrapper mechanics. They do not, by themselves, establish a complete
-incident narrative.
+The correlation focus is a drop / persistence / execution narrative built from
+normalized observations. Parser observations do not become findings until the
+correlation and validation workflow evaluates them.
 
-## Local Staging Layout
+## Required Local Artifact Layout
 
-Use a local evidence root outside the repository:
+Use a local evidence root outside the repository. The paths below are examples;
+use equivalent local paths that match the same filenames and artifact classes.
 
 ```text
 <LOCAL_EVIDENCE_ROOT>/
@@ -34,9 +34,19 @@ Use a local evidence root outside the repository:
   amcache/Amcache.hve
 ```
 
+Raw artifacts must remain outside the repository and should be mounted or staged
+read-only. Generated outputs should go under `runs/` or another ignored
+generated-output directory such as `outputs/`, `analysis/`, or
+`reports/generated/`.
+
+The evidence inventory records metadata such as artifact identifiers, relative
+paths, sizes, SHA256 hashes, and artifact classifications. Keep that metadata
+local unless it has been reviewed for sanitized documentation.
+
 ## Local Config
 
-The validation harness can read local paths from an ignored `.local` file:
+The parser validation harness can read local paths from an ignored `.local`
+file. These variable names match `scripts/validate_sift_parsers.py`.
 
 ```bash
 mkdir -p .local/sift-validation
@@ -49,21 +59,71 @@ SIFTGUARD_VALIDATION_AMCACHE_PATH=<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve
 EOF
 ```
 
-Do not commit `.local/`.
+Do not commit `.local/`. Machine-specific evidence paths, mounted volume paths,
+case names, hostnames, usernames, and private source locations must remain local.
+
+## Demo Dataset
+
+The final demo should use locally staged artifacts matching the supported layout.
+The repository documents the artifact classes and workflow, not private local
+evidence.
+
+The demo case should contain enough activity to show:
+
+- File creation or drop evidence from `$MFT`.
+- Persistence evidence from Registry `Run` or `RunOnce` keys.
+- Execution or application metadata evidence from `Amcache.hve` where available.
+- Validation or correction behavior when a claim is unsupported, incomplete, or
+  contradicted.
+
+Do not claim a specific malware name, timestamp, indicator, or finding unless it
+is backed by committed sanitized fixtures or reviewed public documentation.
+
+## Secondary Validation
+
+If suitable evidence is available before final submission, run one additional
+compatible artifact set through the same workflow. Keep the validation scope to
+the same artifact classes: `$MFT`, Registry `Run`/`RunOnce` keys, and
+`Amcache.hve`.
+
+The purpose is reproducibility checking: confirm parser behavior, correlation
+behavior, output structure, and traceability outside the primary demo case. This
+is not scope expansion. If secondary evidence is unavailable or incomplete,
+record that honestly in the accuracy report; it is not a blocker by itself.
+
+## Expected Generated Outputs
+
+A local run may generate:
+
+- Evidence manifest or inventory JSON.
+- Parser outputs under `runs/`.
+- Normalized parser events.
+- `findings.json`.
+- Audit JSONL, commonly `audit.jsonl`.
+- `agent_run.json` when the constrained agent workflow is used.
+- Markdown report, commonly `report.md`.
+
+These outputs should normally remain uncommitted. Commit only intentionally
+sanitized examples that have been reviewed for private paths, hostnames,
+usernames, secrets, raw evidence content, and sensitive case data.
 
 ## Hash Policy
 
 - Hash raw or staged artifacts locally when needed.
-- Do not commit hashes if they reveal private evidence provenance unless the
+- Use checksums locally for evidence integrity and reproducibility.
+- Do not publish hashes that reveal private evidence provenance unless the
   report is intentionally sanitized.
 - Parser outputs include output hashes for generated files where appropriate.
-- Evidence hash verification remains local-only unless a sanitized report
-  requires it.
 
-## Git Safety
+## Large-File Handling
 
-Do not commit evidence, `.local/`, `runs/`, parser outputs, audit ledgers, VM
-files, or disk images.
+Do not commit raw evidence, evidence archives, VM images, disk images, parser
+CSVs from private evidence, generated run directories, or private validation
+outputs.
+
+Keep large downloads outside the repository. Document source and acquisition
+steps without embedding sensitive private URLs. Use `.local/` for
+machine-specific paths and keep generated runs under ignored output roots.
 
 Examples of forbidden repository content:
 
@@ -75,9 +135,30 @@ Examples of forbidden repository content:
 - `NTUSER.DAT`
 - `SOFTWARE`
 - `$MFT`
+- Private parser CSVs
+- Private `runs/` outputs
 
-## Demo Dataset Note
+## Test-Scope Matrix
 
-The demo can use locally staged artifacts from the provided FIND EVIL evidence
-dataset. The repository documents artifact classes and workflow, not private
-local evidence paths.
+| Artifact | Purpose | Required path | Expected observation | Limitation |
+| --- | --- | --- | --- | --- |
+| `$MFT` | Filesystem metadata and file timeline triage. | `<LOCAL_EVIDENCE_ROOT>/mft/$MFT` | File records, paths, metadata, and parser-reported timestamps that may support drop observations. | Filesystem metadata alone does not prove maliciousness or execution. |
+| `NTUSER.DAT` | User-level autostart persistence triage. | `<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT` | `HKCU` `Run` and `RunOnce` values that may support persistence observations. | Run key presence requires analyst interpretation and may be benign. |
+| `SOFTWARE` | Machine-level autostart persistence triage. | `<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE` | `HKLM` `Run` and `RunOnce` values that may support persistence observations. | Machine-level autostarts can be normal software behavior. |
+| `Amcache.hve` | Application execution or application metadata triage. | `<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve` | Program names, paths, hashes, and timestamps where the parser reports them. | Amcache observations do not by themselves establish execution certainty. |
+
+## Unsupported Evidence Types
+
+The final submission scope does not include:
+
+- Memory images, unless separately documented in a future scope.
+- Packet captures or network traffic analysis.
+- Cloud logs or cloud incident response.
+- Remote endpoint triage.
+- Mobile artifacts.
+- Broad SIFT tool automation.
+- Offensive actions.
+- Legal evidence certification.
+
+SIFTGuard MCP is analyst-assist triage tooling. Analyst review remains required
+for interpretation, reporting decisions, and any use outside local evaluation.
