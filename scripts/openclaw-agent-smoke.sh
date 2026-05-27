@@ -4,7 +4,7 @@ set -euo pipefail
 CASE_ID="${CASE_ID:-CASE-M4-OPENCLAW-SMOKE}"
 RUN_ROOT="${RUN_ROOT:-runs/$CASE_ID}"
 MAX_ITERATIONS="${MAX_ITERATIONS:-7}"
-PYTHON_BIN="${PYTHON_BIN:-.venv/bin/python}"
+PYTHON_BIN=".venv/bin/python"
 
 case "$RUN_ROOT" in
   runs/*|outputs/*|analysis/*|reports/generated/*|*/runs/*|*/outputs/*|*/analysis/*|*/reports/generated/*)

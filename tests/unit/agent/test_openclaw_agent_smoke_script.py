@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -14,7 +13,6 @@ def repo_root() -> Path:
 def run_smoke_script(run_root: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["RUN_ROOT"] = str(run_root)
-    env["PYTHON_BIN"] = sys.executable
     return subprocess.run(
         [str(repo_root() / "scripts" / "openclaw-agent-smoke.sh")],
         cwd=repo_root(),

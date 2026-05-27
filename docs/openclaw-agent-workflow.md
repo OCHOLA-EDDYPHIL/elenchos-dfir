@@ -80,7 +80,6 @@ Optional environment overrides are available for local testing:
 CASE_ID=CASE-M4-OPENCLAW-SMOKE \
 RUN_ROOT=runs/CASE-M4-OPENCLAW-SMOKE \
 MAX_ITERATIONS=7 \
-PYTHON_BIN=.venv/bin/python \
 ./scripts/openclaw-agent-smoke.sh
 ```
 
