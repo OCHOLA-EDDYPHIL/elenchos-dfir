@@ -4,7 +4,7 @@
 
 Use this checklist before final Devpost submission to confirm that the
 repository, documentation, demo, audit trail, and release snapshot are
-judge-ready. SIFTGuard MCP is triage / analyst-assist validation tooling. It is
+submission-ready. SIFTGuard MCP is triage / analyst-assist validation tooling. It is
 not legal evidence certification, does not claim courtroom admissibility, and
 does not turn parser observations into proof of compromise by itself.
 
@@ -47,9 +47,9 @@ does not turn parser observations into proof of compromise by itself.
 | AI-assisted development compliance | Final write-up notes that the work is original/substantially new for the event and that AI-assisted work was reviewed by the maintainer. | Devpost write-up draft and final submission notes. | `[ ]` |
 | Final hygiene gates | `git diff --check`, tests, Ruff, Mypy, link checks if available, and secret/evidence review have been run and recorded. | Issue #94 output and final release record. | `[ ]` |
 
-## Judging Criteria Mapping
+## Evaluation Criteria Mapping
 
-| Judging criterion | What judges are looking for | Where this repo demonstrates it | Remaining final check |
+| Evaluation criterion | Evaluation target | Where this repo demonstrates it | Remaining final check |
 | --- | --- | --- | --- |
 | Autonomous execution quality | The agent plans, executes constrained steps, verifies outputs, handles failures, and records self-correction without broad shell authority. | `docs/agent-workflow.md`, `docs/openclaw-agent-workflow.md`, generated `agent_run.json`, generated `audit.jsonl`. | Demo video and packaged logs show one successful path and one self-correction path. |
 | IR accuracy | Findings are evidence-backed, unsupported claims are rejected or downgraded, and false positives / missed artifacts are recorded honestly. | `docs/accuracy-report.md`, `docs/parser-validation.md`, generated `findings.json`, generated `report.md`. | Complete final accuracy report for the demo case; add secondary dataset notes if suitable evidence is available. |
