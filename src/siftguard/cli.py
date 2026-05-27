@@ -227,6 +227,14 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Hard cap on deterministic agent phase attempts",
     )
+    agent_run_parser.add_argument(
+        "--max-normalized-events",
+        type=int,
+        help=(
+            "Optional positive event cap for deterministic bounded triage on "
+            "large parser outputs"
+        ),
+    )
 
     return parser
 
@@ -294,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
                 manifest_path=args.manifest,
                 output_dir=args.output_dir,
                 max_iterations=args.max_iterations,
+                max_normalized_events=args.max_normalized_events,
             )
         except Exception as exc:
             print(f"error={exc}", file=sys.stderr)

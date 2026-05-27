@@ -199,6 +199,7 @@ def test_agent_run_serializes_deterministically_and_round_trips():
         started_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
         completed_at="2026-01-01T00:05:00Z",
         max_iterations=3,
+        max_normalized_events=5000,
         steps=[completed_step],
         corrections=[correction],
         output_refs={
@@ -214,6 +215,7 @@ def test_agent_run_serializes_deterministically_and_round_trips():
 
     assert encoded == json.dumps(payload, sort_keys=True, separators=(",", ":"))
     assert payload["started_at"] == TIMESTAMP
+    assert payload["max_normalized_events"] == 5000
     assert json.loads(encoded) == payload
     assert AgentRun.from_dict(payload).to_dict() == payload
 
@@ -231,4 +233,21 @@ def test_agent_run_rejects_case_id_mismatch():
             state=state,
             started_at=TIMESTAMP,
             max_iterations=3,
+        )
+
+
+def test_agent_run_rejects_invalid_max_normalized_events():
+    plan = make_plan()
+    state = AgentState(case_id="case_syn_001")
+
+    with pytest.raises(ValueError, match="max_normalized_events"):
+        AgentRun(
+            run_id="run_syn_001",
+            case_id="case_syn_001",
+            status=AgentRunStatus.RUNNING,
+            plan=plan,
+            state=state,
+            started_at=TIMESTAMP,
+            max_iterations=3,
+            max_normalized_events=0,
         )

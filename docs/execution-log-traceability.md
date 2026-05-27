@@ -118,7 +118,8 @@ Run the constrained agent workflow:
   --case-id "$MANIFEST_CASE_ID" \
   --manifest "$MANIFEST_PATH" \
   --output-dir "$AGENT_OUT" \
-  --max-iterations 7
+  --max-iterations 7 \
+  --max-normalized-events 5000
 ```
 
 Inspect generated summaries without committing raw logs:
@@ -137,27 +138,47 @@ The primary local run used staged artifacts matching `docs/dataset.md`:
 - `registry/NTUSER.DAT`
 - `amcache/Amcache.hve`
 
+An initial unbounded run completed inventory and started parse, then exited
+`137` before final outputs were written. Local kernel logs showed the Python
+process was killed by the OOM path at approximately 3.3 GB resident memory. The
+completed run below therefore uses an explicit deterministic normalized-event
+cap. This is bounded triage, not exhaustive full-`$MFT` analysis.
+
 Sanitized run facts:
 
 | Item | Value |
 | --- | --- |
 | Manifest case id | `case_staged-primary` |
 | Manifest artifact count | 4 |
-| Agent command | `siftguard agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run --max-iterations 7` |
-| Agent exit code | 137 |
-| Agent final status | not written; process was killed before `agent_run.json` was produced |
-| Completed agent phases | inventory completed; parse started |
-| Normalized event count | not produced |
-| Timeline count | not produced |
-| Finding count | not produced |
-| Finding status counts | not produced |
-| Audit entry count | 10 partial entries |
-| Parser wrapper events | `amcacheparser`: 1, `mftecmd`: 1, `recmd`: 4 |
+| Agent command | `siftguard agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run-bounded --max-iterations 7 --max-normalized-events 5000` |
+| Agent exit code | 0 |
+| Agent final status | `completed` |
+| Step count | 6 |
+| Completed agent phases | inventory, parse, correlate, validate, report, verify |
+| Max normalized events | 5000 |
+| Limit reached | yes |
+| Normalized event count | 5000 |
+| Timeline count | 1347 |
+| Finding count | 1347 |
+| Finding status counts | `needs_review`: 1347 |
+| Audit entry count | 22 |
+| Warning count | 6 |
+| Error count | 0 |
+| Correction count | 0 |
 
-The primary staged-evidence attempt generated partial local audit and parser log
-entries, but it did not complete the final correlation, validation, reporting,
-or verification phases. This run is useful evidence for execution logging and
-large-input behavior, but it is not final accuracy evidence.
+Sanitized parser contribution counts:
+
+| Artifact class | Normalized events included |
+| --- | ---: |
+| `SOFTWARE` Run/RunOnce | 1 |
+| `Amcache.hve` | 128 |
+| `$MFT` | 4871 |
+| user `NTUSER.DAT` Run/RunOnce | 0 |
+
+The primary staged-evidence bounded run generated local audit, finding,
+timeline, normalized-event, agent-run, and report outputs. These outputs remain
+local because they are derived from private evidence. The committed summary is
+limited to sanitized counts and the explicit bounded-mode setting.
 
 ## Successful Synthetic Agent Path
 
@@ -289,6 +310,5 @@ Issue #90 can be closed when this document is committed with validation output:
 - It records a synthetic induced self-correction path.
 - It records the incomplete primary staged-evidence attempt honestly.
 
-Issue #89 should remain open until a completed primary finding run is available
-and false positives, missed artifacts, unsupported claims, and final accuracy
-status are reviewed.
+Issue #89 should remain open until false positives, missed artifacts,
+unsupported claims, and final accuracy status are reviewed.
