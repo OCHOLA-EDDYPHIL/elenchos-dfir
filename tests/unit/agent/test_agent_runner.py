@@ -17,6 +17,14 @@ CASE_ID = "CASE-SYN-001"
 SYNTHETIC_PATH = "C:\\Users\\Alice\\AppData\\Local\\Temp\\example-a.exe"
 SYNTHETIC_HASH = "a" * 64
 FIXED_TIME = "2026-01-01T00:00:00Z"
+EXPECTED_AGENT_PHASES = [
+    "inventory",
+    "parse",
+    "correlate",
+    "validate",
+    "report",
+    "verify",
+]
 
 
 def fixed_clock() -> str:
@@ -114,14 +122,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     )
 
     assert run.status is AgentRunStatus.COMPLETED
-    assert [step.phase.value for step in run.steps] == [
-        "inventory",
-        "parse",
-        "correlate",
-        "validate",
-        "report",
-        "verify",
-    ]
+    assert [step.phase.value for step in run.steps] == EXPECTED_AGENT_PHASES
     assert [step.status.value for step in run.steps] == [
         "completed",
         "completed",
@@ -168,6 +169,14 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     assert timelines["timeline_count"] == 1
     assert findings["finding_count"] == 1
     assert agent_run["status"] == "completed"
+    assert agent_run["plan"]["created_at"] == FIXED_TIME
+    assert [step["phase"] for step in agent_run["plan"]["steps"]] == EXPECTED_AGENT_PHASES
+    assert [step["status"] for step in agent_run["plan"]["steps"]] == ["pending"] * len(
+        EXPECTED_AGENT_PHASES
+    )
+    assert [step["action"] for step in agent_run["plan"]["steps"]] == [
+        f"siftguard.agent.{phase}" for phase in EXPECTED_AGENT_PHASES
+    ]
     assert AgentRun.from_dict(agent_run).to_dict() == agent_run
     assert "command" not in json.dumps(agent_run).lower()
     assert all((output_dir / ref).exists() for ref in agent_run["output_refs"].values())
@@ -211,14 +220,9 @@ def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
         assert event["case_id"] == CASE_ID
         assert isinstance(event["duration_ms"], int)
         assert isinstance(event["output_refs"], dict)
-    assert [event["phase"] for event in events if event["action"] == "agent_step_started"] == [
-        "inventory",
-        "parse",
-        "correlate",
-        "validate",
-        "report",
-        "verify",
-    ]
+    assert [
+        event["phase"] for event in events if event["action"] == "agent_step_started"
+    ] == EXPECTED_AGENT_PHASES
     assert events[-2]["status"] == "completed"
     assert events[-1]["status"] == "completed"
 

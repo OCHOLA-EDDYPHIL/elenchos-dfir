@@ -7,6 +7,12 @@ unless a maintainer explicitly prepares a local evidence demo. Generated
 outputs go under ignored run paths such as `runs/`, and raw evidence is never
 committed.
 
+The active permission policy surface is intentionally small: read-only evidence
+posture, generated outputs outside evidence roots, and no arbitrary shell as the
+agent interface. Enforcement lives in path validation, parser wrappers,
+subprocess execution, and the deterministic agent runner; `permissions.py`
+declares those current invariants without claiming a comprehensive sandbox.
+
 ## Constrained Execution
 
 OpenClaw is instructed to call constrained SIFTGuard entrypoints. The workflow
@@ -15,6 +21,10 @@ SIFTGuard does not expose arbitrary command execution as an agent feature.
 
 The OpenClaw smoke helper is fixed to the synthetic agent workflow. It does not
 accept a free-form command string.
+
+The planner is deterministic. It constructs the fixed inventory, parse,
+correlate, validate, report, and verify workflow phases rather than accepting
+free-form LLM-generated action plans.
 
 ## Verification And Correction
 
