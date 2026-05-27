@@ -2,7 +2,7 @@
 
 ## Scope
 
-This page describes local evidence selection for M2 parser validation and demo
+This page describes local evidence selection for parser validation and demo
 runs. Raw evidence is not stored in Git, and committed documentation uses
 placeholders instead of private local paths.
 
@@ -19,7 +19,7 @@ placeholders instead of private local paths.
 
 These artifacts provide breadth across filesystem metadata, registry autostart
 locations, and application metadata. They are sufficient to validate parser
-wrapper mechanics for M2. They do not, by themselves, establish a complete
+wrapper mechanics. They do not, by themselves, establish a complete
 incident narrative.
 
 ## Local Staging Layout

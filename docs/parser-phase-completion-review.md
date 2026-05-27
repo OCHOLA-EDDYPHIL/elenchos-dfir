@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review covers the parser workflow implemented for SIFTGuard MCP. It
+This review covers the parser workflow available in SIFTGuard MCP. It
 verifies parser wrappers, normalization, CLI and MCP parser schemas, local SIFT
 validation, failure visibility, gated integration tests, evidence handling, and
 supporting documentation.

@@ -2,7 +2,7 @@
 
 ## Role In SIFTGuard
 
-OpenClaw is a runtime orchestrator for M4. It can initiate or supervise the
+OpenClaw is a runtime orchestrator for the agent workflow. It can initiate or supervise the
 constrained SIFTGuard agent workflow, but it is not the forensic engine.
 Forensic parsing, validation, verification, correction, reporting, and audit
 logic stay in deterministic SIFTGuard Python code.
@@ -28,7 +28,7 @@ PATH setup recorded in [OpenClaw Agent Workflow](openclaw-agent-workflow.md).
 ## Auth And Provider Assumptions
 
 OpenClaw auth must be configured locally before running the OpenClaw smoke
-workflow. The successful M4 proof used OpenClaw's own OpenAI/Codex
+workflow. The successful runtime proof used OpenClaw's own OpenAI/Codex
 browser/device-code auth flow.
 
 Do not overwrite, import, inspect, print, or modify existing Azure/Codex CLI

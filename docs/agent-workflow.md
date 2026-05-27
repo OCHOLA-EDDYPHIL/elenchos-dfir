@@ -2,7 +2,7 @@
 
 ## Purpose
 
-The M4 agent workflow adds a deterministic control loop around the existing
+The agent workflow adds a deterministic control loop around the existing
 SIFTGuard pipeline. It plans a constrained forensic workflow, executes existing
 inventory/parser/correlation/validation/reporting code, verifies generated
 outputs, applies safe self-correction where possible, and records traceable
@@ -17,7 +17,7 @@ or courtroom-ready forensic proof.
 plan -> execute -> verify -> correct -> report
 ```
 
-- Plan: build an `AgentPlan` with inventory, parse, correlate, validate,
+- Plan: create an `AgentPlan` with inventory, parse, correlate, validate,
   report, and verify phases.
 - Execute: run only constrained SIFTGuard Python workflow functions through
   `siftguard agent run`.

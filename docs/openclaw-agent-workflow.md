@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This document describes the Milestone 4 OpenClaw path for initiating the
+This document describes the OpenClaw path for initiating the
 constrained SIFTGuard agent workflow. OpenClaw is used as a runtime
 orchestrator over documented SIFTGuard commands. SIFTGuard remains the
 forensic engine.
@@ -65,9 +65,9 @@ synthetic manifest, and runs:
 
 ```bash
 .venv/bin/python -m siftguard agent run \
-  --case-id CASE-M4-OPENCLAW-SMOKE \
-  --manifest runs/CASE-M4-OPENCLAW-SMOKE/manifest.json \
-  --output-dir runs/CASE-M4-OPENCLAW-SMOKE/agent-run \
+  --case-id CASE-AGENT-OPENCLAW-SMOKE \
+  --manifest runs/CASE-AGENT-OPENCLAW-SMOKE/manifest.json \
+  --output-dir runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run \
   --max-iterations 7
 ```
 
@@ -77,8 +77,8 @@ network access, or external services. It does not accept a free-form command.
 Optional environment overrides are available for local testing:
 
 ```bash
-CASE_ID=CASE-M4-OPENCLAW-SMOKE \
-RUN_ROOT=runs/CASE-M4-OPENCLAW-SMOKE \
+CASE_ID=CASE-AGENT-OPENCLAW-SMOKE \
+RUN_ROOT=runs/CASE-AGENT-OPENCLAW-SMOKE \
 MAX_ITERATIONS=7 \
 ./scripts/openclaw-agent-smoke.sh
 ```
@@ -106,7 +106,7 @@ agent_run.json, audit.jsonl, findings.json, and report.md exist.
 A headless OpenClaw task can be started with:
 
 ```bash
-mkdir -p runs/CASE-M4-OPENCLAW-SMOKE/openclaw-trace
+mkdir -p runs/CASE-AGENT-OPENCLAW-SMOKE/openclaw-trace
 
 openclaw agent --agent main --json --timeout 900 --message "
 You may only run this documented SIFTGuard command sequence:
@@ -119,10 +119,10 @@ Do not modify tracked repository files.
 Use only the synthetic/local SIFTGuard smoke path.
 Report only whether the command exits successfully and whether
 agent_run.json, audit.jsonl, findings.json, and report.md exist.
-" > runs/CASE-M4-OPENCLAW-SMOKE/openclaw-trace/openclaw-agent-turn.json
+" > runs/CASE-AGENT-OPENCLAW-SMOKE/openclaw-trace/openclaw-agent-turn.json
 ```
 
-The `main` agent id was the configured local agent used for the Milestone 4
+The `main` agent id was the configured local agent used for the agent workflow
 proof. If a different local agent id is configured, list available agents with
 `openclaw agents list --json` and substitute that id. The `cd siftguard-mcp`
 prefix is used when the OpenClaw agent workspace is the parent project
@@ -134,21 +134,21 @@ must not be committed.
 
 ## Local Proof Result
 
-The Milestone 4 runtime proof used a natural-language OpenClaw task with the
+The runtime proof used a natural-language OpenClaw task with the
 constrained command sequence above. OpenClaw reported that the command exited
 successfully and that `agent_run.json`, `audit.jsonl`, `findings.json`, and
 `report.md` existed after the run. The raw OpenClaw response was saved under
-`runs/CASE-M4-OPENCLAW-SMOKE/openclaw-trace/` and was not committed.
+`runs/CASE-AGENT-OPENCLAW-SMOKE/openclaw-trace/` and was not committed.
 
 ## Expected Outputs
 
 The OpenClaw-initiated smoke run should create:
 
 ```text
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/agent_run.json
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/findings.json
-runs/CASE-M4-OPENCLAW-SMOKE/agent-run/report.md
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/findings.json
+runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/report.md
 ```
 
 The runner may also write deterministic intermediate outputs such as
@@ -160,14 +160,14 @@ directory.
 After the smoke run:
 
 ```bash
-test -f runs/CASE-M4-OPENCLAW-SMOKE/agent-run/agent_run.json
-test -f runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
-test -f runs/CASE-M4-OPENCLAW-SMOKE/agent-run/findings.json
-test -f runs/CASE-M4-OPENCLAW-SMOKE/agent-run/report.md
-grep -q agent_run_started runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
-grep -q agent_run_completed runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl
-grep -q verification_failed runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl || true
-grep -q correction_applied runs/CASE-M4-OPENCLAW-SMOKE/agent-run/audit.jsonl || true
+test -f runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
+test -f runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+test -f runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/findings.json
+test -f runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/report.md
+grep -q agent_run_started runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+grep -q agent_run_completed runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+grep -q verification_failed runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl || true
+grep -q correction_applied runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl || true
 ```
 
 The `verification_failed` and `correction_applied` checks are optional for this
@@ -177,7 +177,7 @@ demonstrates those audit events without requiring real evidence.
 ## Trace Handling
 
 - Store raw OpenClaw traces only under ignored run output paths such as
-  `runs/CASE-M4-OPENCLAW-SMOKE/openclaw-trace/`.
+  `runs/CASE-AGENT-OPENCLAW-SMOKE/openclaw-trace/`.
 - Commit only sanitized documentation.
 - Do not commit account identifiers, tokens, device codes, provider logs,
   gateway logs, shell history, private paths, or local case data.
