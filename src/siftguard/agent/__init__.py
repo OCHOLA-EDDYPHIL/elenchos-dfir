@@ -14,6 +14,14 @@ from siftguard.agent.models import (
     CorrectionTrigger,
 )
 from siftguard.agent.runner import run_agent_workflow
+from siftguard.agent.verifier import (
+    VerificationFailure,
+    VerificationFailureKind,
+    VerificationResult,
+    VerificationSeverity,
+    VerificationStatus,
+    verify_agent_outputs,
+)
 
 __all__ = [
     "AgentArtifactRef",
@@ -27,5 +35,11 @@ __all__ = [
     "AgentStepStatus",
     "CorrectionAction",
     "CorrectionTrigger",
+    "VerificationFailure",
+    "VerificationFailureKind",
+    "VerificationResult",
+    "VerificationSeverity",
+    "VerificationStatus",
     "run_agent_workflow",
+    "verify_agent_outputs",
 ]
