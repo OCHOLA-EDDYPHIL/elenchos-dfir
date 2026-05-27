@@ -208,7 +208,8 @@ requires the same staged evidence and SIFT parser tools as the parser workflow.
   --case-id "$CASE_ID" \
   --manifest "$RUN_DIR/manifest.json" \
   --output-dir "$RUN_DIR/agent-run" \
-  --max-iterations 7
+  --max-iterations 7 \
+  --max-normalized-events 5000
 ```
 
 Expected agent outputs:
@@ -223,6 +224,9 @@ Expected agent outputs:
 The agent records plan, execute, verify, correct, and report phases. Unsupported
 or internally inconsistent outputs are downgraded, retried through constrained
 paths, or marked for review rather than silently treated as confirmed findings.
+The `--max-normalized-events` value is an explicit bounded-triage setting for
+large staged artifacts; remove it only when the local environment can complete
+the full normalized event volume.
 
 Read an audit ledger summary:
 

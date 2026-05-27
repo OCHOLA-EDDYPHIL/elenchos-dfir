@@ -2,16 +2,15 @@
 
 ## Status
 
-Draft pending completed primary finding run.
+Draft pending final accuracy review.
 
 This report structure is submission-ready, and primary parser validation has
-been run against locally staged artifacts from one evidence image. A constrained
-one-go agent workflow was also attempted against the staged primary artifacts,
-but it did not complete final correlation, validation, reporting, or
-verification. The report is still not final because primary finding output,
-false-positive review, missed-artifact review, and final primary-run accuracy
-evidence are not complete. Issue #89 must remain open until those outputs are
-available and reviewed.
+been run against locally staged artifacts from one evidence image. A bounded
+one-go agent workflow also completed against the staged primary artifacts using
+an explicit normalized-event cap for large-input triage. The report is still not
+final because false-positive review, missed-artifact review, unsupported-claim
+review, and final primary-run accuracy conclusions are not complete. Issue #89
+must remain open until those outputs are reviewed.
 
 ## Environment
 
@@ -22,6 +21,7 @@ available and reviewed.
 | Python version | 3.12.3 |
 | Commit SHA used for parser validation | `03faf60` |
 | Commit SHA used for one-go agent attempt | `99d9e25` |
+| Commit SHA used for bounded one-go agent run | pending PR commit |
 | SIFTGuard MCP version | `0.1.0` |
 | MFTECmd | `1.3.0+5eb8a7e63b5c2058be18d2784741f92cd1978879` |
 | RECmd | `2.1.0+b9838adf98fae6c96dd617101f0323199b1574be` |
@@ -39,7 +39,7 @@ The SIFT Workstation version itself was not captured.
 | Artifact scope | `$MFT`, Registry `Run`/`RunOnce` keys from `NTUSER.DAT` and `SOFTWARE`, and `Amcache.hve` |
 | Raw evidence committed | no |
 | Evidence paths local/private | yes |
-| Primary dataset status | parser validation completed with useful partial output; one-go agent attempt incomplete with exit code `137` |
+| Primary dataset status | parser validation completed with useful partial output; bounded one-go agent run completed with exit code `0` |
 | Secondary dataset status | inspected but incomplete for same-scope validation because `Amcache.hve` was not found |
 
 The repository documents artifact classes and local staging rules in
@@ -85,7 +85,8 @@ Primary parser validation exit code: `2`. This indicates useful partial parser
 validation output: at least one parser produced events, but not every supplied
 artifact fully succeeded.
 
-Primary one-go agent command, shown with sanitized placeholders:
+Initial unbounded primary one-go agent command, shown with sanitized
+placeholders:
 
 ```bash
 .venv/bin/python -m siftguard inventory <STAGED_PRIMARY_ROOT> \
@@ -101,8 +102,27 @@ Primary one-go agent command, shown with sanitized placeholders:
 Primary one-go agent exit code: `137`. The run wrote partial audit and parser
 wrapper log entries, completed inventory, and started parse, but it was killed
 before `agent_run.json`, `findings.json`, `report.md`, or final verification
-were produced. This is recorded as incomplete run evidence, not final accuracy
-evidence.
+were produced. Local kernel logs showed the Python process was killed by the
+OOM path at approximately 3.3 GB resident memory. This is recorded as incomplete
+run evidence and motivated an explicit bounded triage run.
+
+Completed bounded primary one-go agent command, shown with sanitized
+placeholders:
+
+```bash
+.venv/bin/python -m siftguard agent run \
+  --case-id case_staged-primary \
+  --manifest runs/case_staged-primary/manifest.json \
+  --output-dir runs/case_staged-primary/agent-run-bounded \
+  --max-iterations 7 \
+  --max-normalized-events 5000
+```
+
+Bounded primary one-go agent exit code: `0`. This run completed inventory,
+parse, correlation, validation, report generation, and verification. The cap is
+an explicit triage constraint, not an exhaustive full-`$MFT` analysis. The
+generated metadata and warnings record that `max_normalized_events=5000` was
+applied.
 
 Configuration source:
 
@@ -170,70 +190,91 @@ Audit summary:
 - Generated parser outputs remain local under `runs/CASE-FINAL-PRIMARY/` and
   are not committed.
 
-## Primary one-go agent attempt
+## Primary bounded one-go agent run
 
 The constrained one-go agent workflow was run against the same staged primary
-artifact classes. The run did not complete and therefore does not provide final
-finding accuracy evidence.
+artifact classes. The completed run is useful final-run evidence for bounded
+triage behavior, but the findings still require analyst accuracy review before
+this report can be finalized.
 
 | Item | Value |
 | --- | --- |
 | Manifest case id | `case_staged-primary` |
 | Manifest artifact count | 4 |
-| Agent exit code | `137` |
-| Final agent status | not written |
-| Completed phases | inventory completed; parse started |
-| Normalized event count | not produced |
-| Timeline count | not produced |
-| Finding count | not produced |
-| Audit entry count | 10 partial entries |
-| Parser wrapper events | `amcacheparser`: 1, `mftecmd`: 1, `recmd`: 4 |
+| Agent exit code | `0` |
+| Final agent status | `completed` |
+| Step count | 6 |
+| Completed phases | inventory, parse, correlate, validate, report, verify |
+| Max normalized events | 5000 |
+| Limit reached | yes |
+| Normalized event count | 5000 |
+| Timeline count | 1347 |
+| Finding count | 1347 |
+| Finding status counts | `needs_review`: 1347 |
+| Audit entry count | 22 |
+| Warning count | 6 |
+| Error count | 0 |
+| Correction count | 0 |
 
-The partial audit confirms that the agent entered the constrained workflow and
-that parser wrapper executions began. Because the process was killed before
-correlation, validation, report generation, or verification, no primary finding
-counts, false-positive conclusions, missed-artifact conclusions, or primary
-self-correction conclusions are made from this run.
+Sanitized parser contribution counts for the bounded run:
+
+| Artifact class | Normalized events included |
+| --- | ---: |
+| `SOFTWARE` Run/RunOnce | 1 |
+| `Amcache.hve` | 128 |
+| `$MFT` | 4871 |
+| user `NTUSER.DAT` Run/RunOnce | 0 |
+
+The bounded run confirms that the constrained workflow can complete against the
+primary staged artifact set in the SIFT VM. It also records that the user
+`NTUSER.DAT` did not produce Run/RunOnce events and that the large `$MFT`
+artifact was capped after the configured limit. No confirmed compromise claim is
+made from these counts alone.
 
 ## Findings summary
 
-No final findings recorded yet; pending primary correlation/finding run.
+The bounded primary run produced 1347 finding objects. All are currently
+`needs_review`, so the report does not treat them as confirmed or inferred
+without analyst review. The full private finding list remains local in
+`findings.json` and is not committed.
 
 | Finding ID | Claim | Status | Evidence refs | Source artifacts | Notes |
 | --- | --- | --- | --- | --- | --- |
+| local private findings | private evidence-derived timeline claims | `needs_review` | retained locally | `$MFT`, `SOFTWARE`, `Amcache.hve` | 1347 findings require review before final accuracy conclusions. |
 
 ## Status counts
 
 | Status | Count |
 | --- | --- |
-| Total findings | pending final run |
-| Confirmed | pending final run |
-| Inferred | pending final run |
-| Rejected | pending final run |
-| Needs review | pending final run |
+| Total findings | 1347 |
+| Confirmed | 0 |
+| Inferred | 0 |
+| Rejected | 0 |
+| Needs review | 1347 |
 
 ## False positives
 
-Pending final findings run. No false-positive statement is made until recorded
-findings have been reviewed.
+Pending analyst review of the 1347 `needs_review` findings. No false-positive
+statement is made until recorded findings have been reviewed.
 
 | Finding ID | Claim | Why false positive | How detected | Corrective action |
 | --- | --- | --- | --- | --- |
 
 ## Missed artifacts
 
-Pending final findings run. Parser validation did show that the selected user
-`NTUSER.DAT` did not produce Run/RunOnce events; that parser-level result should
-be reviewed when final findings are produced.
+Pending analyst review. Parser validation and the bounded agent run did show
+that the selected user `NTUSER.DAT` did not produce Run/RunOnce events; that
+parser-level result should be reviewed before final missed-artifact conclusions
+are made.
 
 | Expected artifact | Expected signal | Observed result | Explanation | Follow-up |
 | --- | --- | --- | --- | --- |
 
 ## Unsupported or downgraded claims
 
-Pending final findings run. The validation policy blocks or downgrades
-unsupported claims, but no final primary-run unsupported or downgraded claim
-table is available yet.
+Pending analyst review of the bounded primary run. The validation policy marked
+all 1347 bounded-run findings as `needs_review`; no confirmed or inferred
+claims were emitted in the recorded run.
 
 | Claim | Where it appeared | Why unsupported | Final status | Mitigation |
 | --- | --- | --- | --- | --- |
@@ -241,9 +282,10 @@ table is available yet.
 ## Self-correction episodes
 
 No natural primary staged-evidence self-correction episode is recorded in this
-report yet because the primary one-go agent attempt did not complete. This
-remains required for final primary-run accuracy evidence if the final package is
-expected to demonstrate correction on the primary evidence workflow itself.
+report yet. The completed bounded primary run produced no correction records.
+This remains required for final primary-run accuracy evidence if the final
+package is expected to demonstrate correction on the primary evidence workflow
+itself.
 
 Synthetic induced self-correction evidence is documented in
 `docs/execution-log-traceability.md`: an unsupported confirmed finding with
@@ -261,7 +303,7 @@ Representative execution-log documentation is available in
 `docs/execution-log-traceability.md`. That document records sanitized summaries
 for:
 
-- The incomplete primary staged-evidence one-go agent attempt.
+- The completed bounded primary staged-evidence one-go agent run.
 - A successful synthetic constrained agent workflow.
 - A synthetic induced self-correction workflow.
 
@@ -270,20 +312,16 @@ Primary parser validation created local generated outputs, including:
 - `runs/CASE-FINAL-PRIMARY/sift-parser-validation-summary.json`
 - `runs/CASE-FINAL-PRIMARY/audit.jsonl`
 
-The incomplete primary staged-evidence one-go agent attempt created local
-partial outputs, including:
+The completed bounded primary staged-evidence one-go agent run created local
+outputs, including:
 
 - `runs/case_staged-primary/manifest.json`
-- `runs/case_staged-primary/agent-run/audit.jsonl`
-- `runs/case_staged-primary/agent-run/<case-id>/logs/`
-
-Expected local generated files for a later completed primary agent/finding run
-include:
-
-- `runs/<case-id>/agent-run/audit.jsonl`
-- `runs/<case-id>/agent-run/findings.json`
-- `runs/<case-id>/agent-run/agent_run.json`
-- `runs/<case-id>/agent-run/report.md`
+- `runs/case_staged-primary/agent-run-bounded/audit.jsonl`
+- `runs/case_staged-primary/agent-run-bounded/findings.json`
+- `runs/case_staged-primary/agent-run-bounded/agent_run.json`
+- `runs/case_staged-primary/agent-run-bounded/normalized_events.json`
+- `runs/case_staged-primary/agent-run-bounded/subject_timelines.json`
+- `runs/case_staged-primary/agent-run-bounded/report.md`
 
 These paths are placeholders. Do not commit private logs, raw parser outputs,
 private paths, or generated run directories unless sanitized examples are
@@ -303,14 +341,14 @@ scope expansion.
 
 ## Reproducibility
 
-The final run should be reproducible from documented local inputs and commands
-when equivalent evidence and parser tooling are available:
+The bounded primary run should be reproducible from documented local inputs and
+commands when equivalent evidence and parser tooling are available:
 
 - Stage raw evidence outside the repository using the layout in
   `docs/dataset.md`.
 - Keep evidence read-only and generated outputs under ignored run directories.
-- Run the README parser, correlation, and agent workflow commands against the
-  staged artifacts.
+- Run the README parser, correlation, and bounded agent workflow commands
+  against the staged artifacts.
 - Repeat the parser-validation command above for parser wrapper checks.
 - Preserve local `audit.jsonl`, `findings.json`, `agent_run.json`, and
   `report.md` for review.
@@ -334,13 +372,15 @@ Not committed:
 - SIFTGuard MCP is not legal evidence certification.
 - Analyst review remains required.
 - Secondary validation may be limited by available evidence.
+- The bounded primary run used `--max-normalized-events 5000` and is not an
+  exhaustive full-`$MFT` analysis.
 - This draft does not claim final accuracy results.
 
 ## Finalization checklist
 
 - [x] Primary parser validation run completed.
-- [ ] Primary correlation/finding run completed.
-- [ ] Findings counts recorded.
+- [x] Primary bounded correlation/finding run completed.
+- [x] Findings counts recorded.
 - [ ] False positives reviewed.
 - [ ] Missed artifacts reviewed.
 - [ ] Unsupported claims reviewed.

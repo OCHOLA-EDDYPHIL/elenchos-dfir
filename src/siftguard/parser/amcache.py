@@ -19,6 +19,7 @@ PARSER_NAME = "amcacheparser"
 SOURCE_TOOL = "AmcacheParser"
 EXPECTED_ARTIFACT_TYPE = "amcache"
 DEFAULT_AMCACHE_CSV_NAME = "amcache.csv"
+EVENT_LIMIT_WARNING_PREFIX = "max_events="
 
 Runner = Callable[..., ToolResult]
 
@@ -49,6 +50,14 @@ def _utc_now_z() -> str:
 def _require_non_empty(value: str, field_name: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _validate_max_events(max_events: int | None) -> int | None:
+    if max_events is None:
+        return None
+    if not isinstance(max_events, int) or max_events < 1:
+        raise ValueError("max_events must be a positive integer when provided")
+    return max_events
 
 
 def _row_get(row: dict[str, str], *names: str) -> str | None:
@@ -217,13 +226,16 @@ def normalize_amcache_csv(
     csv_path: Path,
     case_id: str,
     artifact_id: str,
+    max_events: int | None = None,
 ) -> tuple[list[ParserEvent], list[str], list[str]]:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
 
     events: list[ParserEvent] = []
     warnings: list[str] = []
     errors: list[str] = []
+    limit_reached = False
 
     if not csv_path.exists():
         return [], [], [f"AmcacheParser CSV does not exist: {csv_path}"]
@@ -237,6 +249,10 @@ def normalize_amcache_csv(
 
         row_count = 0
         for row_number, row in enumerate(reader, start=2):
+            if max_events is not None and len(events) >= max_events:
+                limit_reached = True
+                break
+
             row_count += 1
             row_warnings_before = len(warnings)
             path = _row_get(row, *_PATH_COLUMNS)
@@ -284,6 +300,11 @@ def normalize_amcache_csv(
 
         if row_count == 0:
             errors.append(f"AmcacheParser CSV has no data rows: {csv_path}")
+        if limit_reached:
+            warnings.append(
+                f"{EVENT_LIMIT_WARNING_PREFIX}{max_events} reached; "
+                "remaining AmcacheParser rows were not normalized"
+            )
 
     return events, warnings, errors
 
@@ -363,9 +384,11 @@ def parse_amcache(
     timeout_seconds: int = 900,
     runner: Runner | None = None,
     artifact_type: str = EXPECTED_ARTIFACT_TYPE,
+    max_events: int | None = None,
 ) -> ParserResult:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
     if artifact_type != EXPECTED_ARTIFACT_TYPE:
         raise ValueError(
             f"expected artifact_type={EXPECTED_ARTIFACT_TYPE}, got {artifact_type}"
@@ -449,16 +472,23 @@ def parse_amcache(
 
     if csv_paths:
         for output_csv_path in csv_paths:
+            if max_events is not None and len(events) >= max_events:
+                break
             csv_events, csv_warnings, csv_errors = normalize_amcache_csv(
                 csv_path=output_csv_path,
                 case_id=case_id,
                 artifact_id=artifact_id,
+                max_events=(
+                    None if max_events is None else max(max_events - len(events), 0)
+                ),
             )
             events.extend(csv_events)
             warnings.extend(
                 f"{output_csv_path.name}: {warning}" for warning in csv_warnings
             )
             errors.extend(f"{output_csv_path.name}: {error}" for error in csv_errors)
+            if max_events is not None and len(events) >= max_events:
+                break
         if tool_failed:
             warnings.append("AmcacheParser command failed but output CSV was present")
             errors.append(_tool_error(tool_result))
@@ -496,6 +526,7 @@ def parse_amcache(
         duration_ms=getattr(tool_result, "duration_ms", None),
         metadata={
             "csv_name": DEFAULT_AMCACHE_CSV_NAME,
+            "max_events": max_events,
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
             "tool_exit_code": getattr(tool_result, "exit_code", None),
@@ -514,6 +545,7 @@ def parse_amcache_artifact(
     command_config: ParserCommandConfig | None = None,
     timeout_seconds: int = 900,
     runner: Runner | None = None,
+    max_events: int | None = None,
 ) -> ParserResult:
     if artifact.artifact_type != EXPECTED_ARTIFACT_TYPE:
         raise ValueError(
@@ -530,4 +562,5 @@ def parse_amcache_artifact(
         timeout_seconds=timeout_seconds,
         runner=runner,
         artifact_type=artifact.artifact_type,
+        max_events=max_events,
     )

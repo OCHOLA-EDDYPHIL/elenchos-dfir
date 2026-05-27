@@ -25,6 +25,7 @@ SOFTWARE_RUN_CSV_NAME = "software-run.csv"
 SOFTWARE_RUNONCE_CSV_NAME = "software-runonce.csv"
 NTUSER_RUN_CSV_NAME = "ntuser-run.csv"
 NTUSER_RUNONCE_CSV_NAME = "ntuser-runonce.csv"
+EVENT_LIMIT_WARNING_PREFIX = "max_events="
 
 Runner = Callable[..., ToolResult]
 
@@ -77,6 +78,14 @@ def _utc_now_z() -> str:
 def _require_non_empty(value: str, field_name: str) -> None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{field_name} must be a non-empty string")
+
+
+def _validate_max_events(max_events: int | None) -> int | None:
+    if max_events is None:
+        return None
+    if not isinstance(max_events, int) or max_events < 1:
+        raise ValueError("max_events must be a positive integer when provided")
+    return max_events
 
 
 def _row_get(row: dict[str, str], *names: str) -> str | None:
@@ -173,13 +182,16 @@ def normalize_recmd_runkeys_csv(
     csv_path: Path,
     case_id: str,
     artifact_id: str,
+    max_events: int | None = None,
 ) -> tuple[list[ParserEvent], list[str], list[str]]:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
 
     events: list[ParserEvent] = []
     warnings: list[str] = []
     errors: list[str] = []
+    limit_reached = False
 
     if not csv_path.exists():
         return [], [], [f"RECmd Run Key CSV does not exist: {csv_path}"]
@@ -193,6 +205,10 @@ def normalize_recmd_runkeys_csv(
 
         row_count = 0
         for row_number, row in enumerate(reader, start=2):
+            if max_events is not None and len(events) >= max_events:
+                limit_reached = True
+                break
+
             row_count += 1
             hive = _row_get(row, "Hive")
             key_path = _row_get(row, "KeyPath", "Key Path")
@@ -242,6 +258,11 @@ def normalize_recmd_runkeys_csv(
 
         if row_count == 0:
             errors.append(f"RECmd Run Key CSV has no data rows: {csv_path}")
+        if limit_reached:
+            warnings.append(
+                f"{EVENT_LIMIT_WARNING_PREFIX}{max_events} reached; "
+                "remaining RECmd Run Key rows were not normalized"
+            )
 
     return events, warnings, errors
 
@@ -253,9 +274,11 @@ def normalize_recmd_runkeys_json(
     artifact_id: str,
     hive: str,
     key_path: str,
+    max_events: int | None = None,
 ) -> tuple[list[ParserEvent], list[str], list[str]]:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
 
     if not json_path.exists():
         return [], [], [f"RECmd Run Key JSON does not exist: {json_path}"]
@@ -289,7 +312,12 @@ def normalize_recmd_runkeys_json(
             timestamp_malformed = True
 
     events: list[ParserEvent] = []
+    limit_reached = False
     for value_index, item in enumerate(values, start=1):
+        if max_events is not None and len(events) >= max_events:
+            limit_reached = True
+            break
+
         if not isinstance(item, dict):
             warnings.append(f"json value {value_index}: value record is not an object")
             continue
@@ -326,6 +354,12 @@ def normalize_recmd_runkeys_json(
                 status="malformed" if timestamp_malformed else "normalized",
                 metadata=metadata,
             )
+        )
+
+    if limit_reached:
+        warnings.append(
+            f"{EVENT_LIMIT_WARNING_PREFIX}{max_events} reached; "
+            "remaining RECmd Run Key JSON values were not normalized"
         )
 
     return events, warnings, errors
@@ -403,9 +437,11 @@ def parse_registry_runkeys(
     timeout_seconds: int = 900,
     runner: Runner | None = None,
     artifact_type: str = "registry_hive",
+    max_events: int | None = None,
 ) -> ParserResult:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
 
     if artifact_type not in ACCEPTED_INPUT_ARTIFACT_TYPES:
         return _skipped_result(
@@ -472,6 +508,9 @@ def parse_registry_runkeys(
     duration_ms = 0
 
     for target in targets:
+        if max_events is not None and len(events) >= max_events:
+            break
+
         csv_path = output_dir / target.csv_name
         json_path = output_dir / target.json_name
         stdout_path = logs_dir / f"{PARSER_NAME}_{artifact_id}_{target.label}_stdout.log"
@@ -517,6 +556,9 @@ def parse_registry_runkeys(
                 csv_path=csv_path,
                 case_id=case_id,
                 artifact_id=artifact_id,
+                max_events=(
+                    None if max_events is None else max(max_events - len(events), 0)
+                ),
             )
             events.extend(target_events)
             warnings.extend(
@@ -533,6 +575,9 @@ def parse_registry_runkeys(
                 artifact_id=artifact_id,
                 hive=resolved_hive_path.name,
                 key_path=_display_key_path(resolved_hive_path, target),
+                max_events=(
+                    None if max_events is None else max(max_events - len(events), 0)
+                ),
             )
             events.extend(target_events)
             warnings.extend(
@@ -577,6 +622,7 @@ def parse_registry_runkeys(
         "successful_command_count": successful_command_count,
         "failed_command_count": failed_command_count,
         "missing_csv_count": missing_csv_count,
+        "max_events": max_events,
     }
     for index, target in enumerate(targets, start=1):
         metadata[f"target_{index}_label"] = target.label
@@ -612,6 +658,7 @@ def parse_registry_runkeys_artifact(
     command_config: ParserCommandConfig | None = None,
     timeout_seconds: int = 900,
     runner: Runner | None = None,
+    max_events: int | None = None,
 ) -> ParserResult:
     if artifact.artifact_type not in ACCEPTED_INPUT_ARTIFACT_TYPES:
         raise ValueError(
@@ -629,4 +676,5 @@ def parse_registry_runkeys_artifact(
         timeout_seconds=timeout_seconds,
         runner=runner,
         artifact_type=artifact.artifact_type,
+        max_events=max_events,
     )
