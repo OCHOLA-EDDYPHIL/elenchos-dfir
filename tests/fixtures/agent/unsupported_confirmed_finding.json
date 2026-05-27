@@ -1,0 +1,14 @@
+{
+  "artifact_hashes": [],
+  "audit_event_refs": [],
+  "claim": "A suspicious persistence-related observation requires review.",
+  "confidence": "high",
+  "evidence_refs": [],
+  "finding_id": "finding-demo-unsupported-confirmed",
+  "kind": "conclusion",
+  "limitations": [],
+  "rationale": "Synthetic generated output intentionally lacks evidence support.",
+  "raw_record_refs": [],
+  "status": "confirmed",
+  "supports_final_report": false
+}
