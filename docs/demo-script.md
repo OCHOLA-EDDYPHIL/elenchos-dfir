@@ -1,32 +1,31 @@
 # Demo Script v0 (Under 5 Minutes)
 
-1. Show case directory and no evidence in Git
-- `git status --ignored`
-- `ls -la cases/official/selected/`
+1. Show repository hygiene
+- `git status --short`
+- `git ls-files | grep -Ei '(^runs/|^\.local/|\.E01$|\.raw$|\.dd$)' || true`
 
-2. Create or load case
-- `./scripts/prepare_case.sh`
+2. Show controlled positive detection
+- `rm -rf runs/case_positive-control`
+- `.venv/bin/python -m siftguard agent run-fixture --case-id case_positive-control --fixture tests/fixtures/positive_control/positive_chain.json --output-dir runs/case_positive-control/agent-run --max-iterations 7`
+- Show sanitized summary: one `inferred` finding with `$MFT`, Registry, and
+  Amcache evidence categories.
 
-3. Hash evidence
-- `siftguard hash cases/official/selected/<artifact>`
+3. Show controlled self-correction
+- `rm -rf runs/case_self-correction-control`
+- `.venv/bin/python -m siftguard agent run-fixture --case-id case_self-correction-control --fixture tests/fixtures/positive_control/unsupported_claim.json --output-dir runs/case_self-correction-control/agent-run --max-iterations 7`
+- Show sanitized summary: unsupported induced claim downgraded to
+  `needs_review`, correction records present, `correction_applied` in audit.
 
-4. Inventory artifacts
-- `siftguard inventory cases/official/selected --manifest-out runs/case_demo_001/manifest.json`
+4. Show real staged primary bounded triage
+- `.venv/bin/python -m siftguard agent run --case-id case_staged-primary --manifest runs/case_staged-primary/manifest.json --output-dir runs/case_staged-primary/agent-run-final --max-iterations 7 --max-normalized-events 5000 --event-selection-profile forensic-triage`
+- Show sanitized summary: 5000 normalized events, 1347 timelines, 128
+  `needs_review` findings, 0 confirmed/inferred/rejected, 0 MFT-only findings.
 
-5. Parse `$MFT`, Run Keys, Amcache
-- Show planned parser commands (stubs in v0).
+5. Show local outputs without committing them
+- `find runs/case_positive-control/agent-run -maxdepth 1 -type f -printf '%f\n' | sort`
+- `find runs/case_self-correction-control/agent-run -maxdepth 1 -type f -printf '%f\n' | sort`
 
-6. Generate drop/execution/persistence timeline
-- Show correlation module placeholder and planned output path.
-
-7. Trigger one self-correction episode
-- Demonstrate planned self-correction hook with a controlled mismatch.
-
-8. Show validated findings
-- Run validation over sample findings and display pass/fail.
-
-9. Show JSONL audit ledger
-- `cat runs/case_demo_001/execution_ledger.jsonl`
-
-10. Show Markdown report
-- Display generated or placeholder report path in `runs/case_demo_001/`.
+6. Close with limitations
+- Controlled fixtures prove pipeline behavior.
+- Real primary evidence remains conservative bounded triage.
+- Generated `runs/` outputs and private evidence stay local-only.

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from siftguard import __version__
 from siftguard.agent.models import AgentRunStatus
-from siftguard.agent.runner import run_agent_workflow
+from siftguard.agent.runner import run_agent_fixture_workflow, run_agent_workflow
 from siftguard.audit.execution_ledger import read_events
 from siftguard.evidence.hashing import sha256_file
 from siftguard.evidence.manifest import build_manifest, write_manifest
@@ -246,6 +246,43 @@ def _build_parser() -> argparse.ArgumentParser:
             "deterministic MFT fill."
         ),
     )
+    agent_fixture_parser = agent_subparsers.add_parser(
+        "run-fixture",
+        help="Run the constrained agent workflow against a controlled synthetic fixture",
+    )
+    agent_fixture_parser.add_argument("--case-id", required=True, help="Case identifier")
+    agent_fixture_parser.add_argument(
+        "--fixture",
+        type=Path,
+        required=True,
+        help="Synthetic fixture descriptor JSON",
+    )
+    agent_fixture_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Generated agent output directory under runs/, outputs/, analysis/, "
+            "or reports/generated/"
+        ),
+    )
+    agent_fixture_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        required=True,
+        help="Hard cap on deterministic agent phase attempts",
+    )
+    agent_fixture_parser.add_argument(
+        "--max-normalized-events",
+        type=int,
+        help="Optional positive event cap for fixture validation runs",
+    )
+    agent_fixture_parser.add_argument(
+        "--event-selection-profile",
+        choices=tuple(sorted(SUPPORTED_EVENT_SELECTION_PROFILES)),
+        default="first-n",
+        help="Event selection policy for fixture validation runs.",
+    )
 
     return parser
 
@@ -303,19 +340,29 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "agent":
-        if args.agent_command != "run":
+        if args.agent_command not in {"run", "run-fixture"}:
             print("error=agent subcommand is required", file=sys.stderr)
             return 1
 
         try:
-            run = run_agent_workflow(
-                case_id=args.case_id,
-                manifest_path=args.manifest,
-                output_dir=args.output_dir,
-                max_iterations=args.max_iterations,
-                max_normalized_events=args.max_normalized_events,
-                event_selection_profile=args.event_selection_profile,
-            )
+            if args.agent_command == "run-fixture":
+                run = run_agent_fixture_workflow(
+                    case_id=args.case_id,
+                    fixture_path=args.fixture,
+                    output_dir=args.output_dir,
+                    max_iterations=args.max_iterations,
+                    max_normalized_events=args.max_normalized_events,
+                    event_selection_profile=args.event_selection_profile,
+                )
+            else:
+                run = run_agent_workflow(
+                    case_id=args.case_id,
+                    manifest_path=args.manifest,
+                    output_dir=args.output_dir,
+                    max_iterations=args.max_iterations,
+                    max_normalized_events=args.max_normalized_events,
+                    event_selection_profile=args.event_selection_profile,
+                )
         except Exception as exc:
             print(f"error={exc}", file=sys.stderr)
             return 1

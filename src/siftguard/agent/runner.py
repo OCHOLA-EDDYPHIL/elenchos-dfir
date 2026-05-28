@@ -139,6 +139,10 @@ class AgentWorkflowContext:
     clock: Clock
     max_normalized_events: int | None = None
     event_selection_profile: str = EVENT_SELECTION_FIRST_N
+    input_source: str | None = None
+    fixture_id: str | None = None
+    induced_findings: list[dict[str, Any]] = field(default_factory=list)
+    induced_findings_applied: bool = False
     artifacts: list[AgentArtifactRef] = field(default_factory=list)
     normalized_event_rows: list[dict[str, Any]] = field(default_factory=list)
     timelines: list[SubjectTimeline] = field(default_factory=list)
@@ -251,6 +255,184 @@ def _load_json_object(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"{path.name} must contain a JSON object")
     return payload
+
+
+FIXTURE_SCHEMA_VERSION = 1
+SYNTHETIC_FIXTURE_INPUT_SOURCES = {
+    "synthetic_positive_control",
+    "synthetic_self_correction_control",
+}
+BLOCKED_FIXTURE_KEYS = {
+    "argv",
+    "bash",
+    "cmd",
+    "command",
+    "executable",
+    "powershell",
+    "raw_command",
+    "script",
+    "shell",
+    "subprocess",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class AgentFixtureSpec:
+    fixture_id: str
+    case_id: str
+    input_source: str
+    manifest_path: Path
+    induced_findings: list[dict[str, Any]]
+
+
+def _validate_fixture_json(name: str, value: Any) -> Any:
+    if isinstance(value, dict):
+        checked: dict[str, Any] = {}
+        for key, child in value.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError(f"{name} contains an invalid key")
+            if key.casefold() in BLOCKED_FIXTURE_KEYS:
+                raise ValueError(f"{name} contains blocked execution key: {key}")
+            checked[key] = _validate_fixture_json(f"{name}.{key}", child)
+        return checked
+    if isinstance(value, list):
+        return [_validate_fixture_json(f"{name}[]", child) for child in value]
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    raise TypeError(f"{name} must contain only JSON-compatible values")
+
+
+def _fixture_relative_path(*, fixture_path: Path, value: Any, field_name: str) -> Path:
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"fixture {field_name} must be a non-empty string")
+    candidate = Path(value)
+    if candidate.is_absolute():
+        raise ValueError(f"fixture {field_name} must be relative")
+    resolved = (fixture_path.parent / candidate).resolve()
+    if not is_relative_to(resolved, fixture_path.parent.resolve()):
+        raise ValueError(f"fixture {field_name} must stay under the fixture directory")
+    if not resolved.exists() or resolved.is_dir():
+        raise ValueError(f"fixture {field_name} does not exist: {value}")
+    return resolved
+
+
+def _string_list_from_fixture(value: Any, *, field_name: str) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"fixture finding {field_name} must be a list of strings")
+    return list(value)
+
+
+def _dict_list_from_fixture(value: Any, *, field_name: str) -> list[dict[str, Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
+        raise ValueError(f"fixture finding {field_name} must be a list of objects")
+    return [dict(item) for item in value]
+
+
+def _normalize_induced_finding(row: dict[str, Any]) -> dict[str, Any]:
+    finding_id = row.get("finding_id")
+    claim = row.get("claim")
+    status = row.get("status")
+    confidence = row.get("confidence", "high")
+    kind = row.get("kind", "conclusion")
+    rationale = row.get(
+        "rationale",
+        "Synthetic control introduced an unsupported claim for verification.",
+    )
+    if not isinstance(finding_id, str) or not finding_id:
+        raise ValueError("induced finding requires finding_id")
+    if not isinstance(claim, str) or not claim:
+        raise ValueError("induced finding requires claim")
+    if status not in {"confirmed", "inferred"}:
+        raise ValueError("induced finding status must be confirmed or inferred")
+    if confidence not in {"low", "medium", "high"}:
+        raise ValueError("induced finding confidence must be low, medium, or high")
+    if kind not in {"observation", "conclusion"}:
+        raise ValueError("induced finding kind must be observation or conclusion")
+    if not isinstance(rationale, str) or not rationale:
+        raise ValueError("induced finding rationale must be a non-empty string")
+
+    return {
+        "finding_id": finding_id,
+        "claim": claim,
+        "status": status,
+        "confidence": confidence,
+        "kind": kind,
+        "evidence_refs": _dict_list_from_fixture(
+            row.get("evidence_refs"),
+            field_name="evidence_refs",
+        ),
+        "audit_event_refs": _string_list_from_fixture(
+            row.get("audit_event_refs"),
+            field_name="audit_event_refs",
+        ),
+        "artifact_hashes": _string_list_from_fixture(
+            row.get("artifact_hashes"),
+            field_name="artifact_hashes",
+        ),
+        "raw_record_refs": _string_list_from_fixture(
+            row.get("raw_record_refs"),
+            field_name="raw_record_refs",
+        ),
+        "rationale": rationale,
+        "limitations": _string_list_from_fixture(
+            row.get("limitations"),
+            field_name="limitations",
+        ),
+        "supports_final_report": False,
+    }
+
+
+def load_agent_fixture_spec(fixture_path: Path, *, case_id: str) -> AgentFixtureSpec:
+    resolved_fixture = _validate_manifest_path(fixture_path)
+    payload = _validate_fixture_json("fixture", _load_json_object(resolved_fixture))
+    schema_version = payload.get("schema_version")
+    if schema_version != FIXTURE_SCHEMA_VERSION:
+        raise ValueError(f"unsupported fixture schema_version: {schema_version}")
+
+    fixture_id = payload.get("fixture_id")
+    fixture_case_id = payload.get("case_id")
+    input_source = payload.get("input_source")
+    if not isinstance(fixture_id, str) or not fixture_id:
+        raise ValueError("fixture_id must be a non-empty string")
+    if fixture_case_id != case_id:
+        raise ValueError(
+            f"fixture case_id '{fixture_case_id}' does not match requested case_id '{case_id}'"
+        )
+    if input_source not in SYNTHETIC_FIXTURE_INPUT_SOURCES:
+        raise ValueError("fixture input_source must identify an approved synthetic control")
+
+    manifest_path = _fixture_relative_path(
+        fixture_path=resolved_fixture,
+        value=payload.get("manifest"),
+        field_name="manifest",
+    )
+    manifest = read_manifest(manifest_path)
+    if manifest.case_id != case_id:
+        raise ValueError(
+            f"fixture manifest case_id '{manifest.case_id}' does not match requested "
+            f"case_id '{case_id}'"
+        )
+    case_root = Path(manifest.case_root).resolve()
+    if not is_relative_to(case_root, resolved_fixture.parent.resolve()):
+        raise ValueError("fixture manifest case_root must stay under the fixture directory")
+    induced_rows = payload.get("induced_findings", [])
+    if not isinstance(induced_rows, list) or not all(
+        isinstance(item, dict) for item in induced_rows
+    ):
+        raise ValueError("fixture induced_findings must be a list of objects")
+    induced_findings = [_normalize_induced_finding(dict(row)) for row in induced_rows]
+
+    return AgentFixtureSpec(
+        fixture_id=fixture_id,
+        case_id=case_id,
+        input_source=input_source,
+        manifest_path=manifest_path,
+        induced_findings=induced_findings,
+    )
 
 
 def _event_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -980,6 +1162,8 @@ def _build_coverage_summary(context: AgentWorkflowContext) -> dict[str, Any]:
             total_known = True
     return {
         "case_id": context.case_id,
+        "fixture_id": context.fixture_id,
+        "input_source": context.input_source,
         "selection_profile": context.event_selection_profile,
         "max_normalized_events": context.max_normalized_events,
         "normalized_events_written": len(context.normalized_event_rows),
@@ -1139,7 +1323,76 @@ def _run_report_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     }
 
 
+def _append_induced_fixture_findings(
+    context: AgentWorkflowContext,
+    run: AgentRun,
+) -> None:
+    if not context.induced_findings or context.induced_findings_applied:
+        return
+
+    payload = _load_json_object(context.paths.findings_path)
+    rows = payload.get("findings")
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise ValueError("findings output must contain a findings object list")
+
+    existing_ids = {
+        row.get("finding_id")
+        for row in rows
+        if isinstance(row.get("finding_id"), str)
+    }
+    for induced in context.induced_findings:
+        finding_id = induced["finding_id"]
+        if finding_id in existing_ids:
+            raise ValueError(f"induced finding duplicates existing finding_id: {finding_id}")
+        rows.append(dict(induced))
+        existing_ids.add(finding_id)
+
+    validation_results = payload.get("validation_results", [])
+    if not isinstance(validation_results, list):
+        validation_results = []
+    for induced in context.induced_findings:
+        validation_results.append(
+            {
+                "finding": dict(induced),
+                "original_requested_status": induced["status"],
+                "final_status": induced["status"],
+                "validation_notes": [
+                    "synthetic_control_induced_unsupported_claim",
+                ],
+                "downgrade_reason": None,
+                "rule_name": "synthetic_control",
+                "contradiction_evidence_refs": [],
+            }
+        )
+
+    payload["findings"] = rows
+    payload["finding_count"] = len(rows)
+    payload["validation_results"] = validation_results
+    _write_json(context.paths.findings_path, payload)
+    context.induced_findings_applied = True
+
+    append_agent_audit_event(
+        context.paths.audit_path,
+        event_type="fixture_induced_claim_written",
+        case_id=context.case_id,
+        run_id=run.run_id,
+        phase=AgentPhase.VALIDATE.value,
+        step_id="step_validate",
+        status="completed",
+        output_refs={
+            "findings": _output_ref(context.paths.findings_path, context.paths.output_dir),
+        },
+        extra={
+            "fixture_id": context.fixture_id,
+            "input_source": context.input_source,
+            "induced_finding_count": len(context.induced_findings),
+        },
+        clock=context.clock,
+    )
+
+
 def _run_verify_phase(context: AgentWorkflowContext, run: AgentRun) -> dict[str, Any]:
+    _append_induced_fixture_findings(context, run)
     result = verify_agent_outputs(
         case_id=context.case_id,
         output_dir=context.paths.output_dir,
@@ -1172,7 +1425,12 @@ def _run_phase(
 
 def _step_inputs(context: AgentWorkflowContext, phase: AgentPhase) -> dict[str, Any]:
     if phase is AgentPhase.INVENTORY:
-        return {"manifest": context.manifest_path.name}
+        inputs: dict[str, Any] = {"manifest": context.manifest_path.name}
+        if context.input_source is not None:
+            inputs["input_source"] = context.input_source
+        if context.fixture_id is not None:
+            inputs["fixture_id"] = context.fixture_id
+        return inputs
     if phase is AgentPhase.PARSE:
         return {
             "artifact_count": context.manifest.artifact_count,
@@ -1303,6 +1561,9 @@ def run_agent_workflow(
     max_iterations: int,
     max_normalized_events: int | None = None,
     event_selection_profile: str = EVENT_SELECTION_FIRST_N,
+    input_source: str | None = None,
+    fixture_id: str | None = None,
+    induced_findings: list[dict[str, Any]] | None = None,
     clock: Clock = utc_now,
 ) -> AgentRun:
     case_id = _require_non_empty_string("case_id", case_id)
@@ -1338,6 +1599,7 @@ def run_agent_workflow(
         max_iterations=max_iterations,
         max_normalized_events=max_normalized_events,
         event_selection_profile=event_selection_profile,
+        input_source=input_source,
     )
     context = AgentWorkflowContext(
         case_id=case_id,
@@ -1347,6 +1609,9 @@ def run_agent_workflow(
         clock=clock,
         max_normalized_events=max_normalized_events,
         event_selection_profile=event_selection_profile,
+        input_source=input_source,
+        fixture_id=fixture_id,
+        induced_findings=[dict(finding) for finding in induced_findings or []],
     )
 
     _append_agent_audit(
@@ -1355,6 +1620,23 @@ def run_agent_workflow(
         run_id=run.run_id,
         status=run.status.value,
     )
+    if input_source is not None:
+        append_agent_audit_event(
+            context.paths.audit_path,
+            event_type="fixture_input_loaded",
+            case_id=context.case_id,
+            run_id=run.run_id,
+            status="completed",
+            output_refs={
+                "manifest": _output_ref(context.manifest_path, context.paths.output_dir),
+            },
+            extra={
+                "fixture_id": fixture_id,
+                "input_source": input_source,
+                "induced_finding_count": len(context.induced_findings),
+            },
+            clock=context.clock,
+        )
 
     for iteration, phase in enumerate(AGENT_PHASES, start=1):
         if iteration > max_iterations:
@@ -1582,4 +1864,29 @@ def run_agent_workflow(
         run=run,
         status=final_status,
         errors=list(run.errors),
+    )
+
+
+def run_agent_fixture_workflow(
+    *,
+    case_id: str,
+    fixture_path: Path,
+    output_dir: Path,
+    max_iterations: int,
+    max_normalized_events: int | None = None,
+    event_selection_profile: str = EVENT_SELECTION_FIRST_N,
+    clock: Clock = utc_now,
+) -> AgentRun:
+    spec = load_agent_fixture_spec(fixture_path, case_id=case_id)
+    return run_agent_workflow(
+        case_id=case_id,
+        manifest_path=spec.manifest_path,
+        output_dir=output_dir,
+        max_iterations=max_iterations,
+        max_normalized_events=max_normalized_events,
+        event_selection_profile=event_selection_profile,
+        input_source=spec.input_source,
+        fixture_id=spec.fixture_id,
+        induced_findings=spec.induced_findings,
+        clock=clock,
     )

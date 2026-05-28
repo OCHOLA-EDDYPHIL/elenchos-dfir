@@ -128,6 +128,22 @@ Run the constrained agent workflow:
   --event-selection-profile forensic-triage
 ```
 
+Run controlled validation fixtures:
+
+```bash
+.venv/bin/python -m siftguard agent run-fixture \
+  --case-id case_positive-control \
+  --fixture tests/fixtures/positive_control/positive_chain.json \
+  --output-dir runs/case_positive-control/agent-run \
+  --max-iterations 7
+
+.venv/bin/python -m siftguard agent run-fixture \
+  --case-id case_self-correction-control \
+  --fixture tests/fixtures/positive_control/unsupported_claim.json \
+  --output-dir runs/case_self-correction-control/agent-run \
+  --max-iterations 7
+```
+
 Inspect generated summaries without committing raw logs:
 
 ```bash
@@ -154,11 +170,9 @@ The primary local run used staged artifacts matching `docs/dataset.md`:
 An initial unbounded run completed inventory and started parse, then exited
 `137` before final outputs were written. Local kernel logs showed the Python
 process was killed by the OOM path at approximately 3.3 GB resident memory. The
-completed run below therefore used an explicit deterministic normalized-event
-cap before resource-adaptive triage was added. It is bounded triage, not
-exhaustive full-`$MFT` analysis. Re-run with
-`--event-selection-profile forensic-triage` to generate `coverage_summary.json`
-and stricter finding counts.
+completed run below therefore used the resource-adaptive `forensic-triage`
+profile with an explicit deterministic normalized-event cap. It is bounded
+triage, not exhaustive full-`$MFT` analysis.
 
 Sanitized run facts:
 
@@ -166,17 +180,20 @@ Sanitized run facts:
 | --- | --- |
 | Manifest case id | `case_staged-primary` |
 | Manifest artifact count | 4 |
-| Agent command | `siftguard agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run-bounded --max-iterations 7 --max-normalized-events 5000` |
+| Agent command | `siftguard agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run-final --max-iterations 7 --max-normalized-events 5000 --event-selection-profile forensic-triage` |
 | Agent exit code | 0 |
 | Agent final status | `completed` |
 | Step count | 6 |
 | Completed agent phases | inventory, parse, correlate, validate, report, verify |
+| Event selection profile | `forensic-triage` |
 | Max normalized events | 5000 |
 | Limit reached | yes |
 | Normalized event count | 5000 |
+| Total source events seen | 947241 |
 | Timeline count | 1347 |
-| Finding count | 1347 |
-| Finding status counts | `needs_review`: 1347 |
+| Finding count | 128 |
+| Finding status counts | `needs_review`: 128 |
+| MFT-only findings | 0 |
 | Audit entry count | 22 |
 | Warning count | 6 |
 | Error count | 0 |
@@ -184,17 +201,55 @@ Sanitized run facts:
 
 Sanitized parser contribution counts:
 
-| Artifact class | Normalized events included |
-| --- | ---: |
-| `SOFTWARE` Run/RunOnce | 1 |
-| `Amcache.hve` | 128 |
-| `$MFT` | 4871 |
-| user `NTUSER.DAT` Run/RunOnce | 0 |
+| Artifact class | Normalized events included | Parser status |
+| --- | ---: | --- |
+| `SOFTWARE` Run/RunOnce | 1 | `success` |
+| `Amcache.hve` | 128 | `partial_success` |
+| `$MFT` | 4871 | `partial_success`, bounded |
+| user `NTUSER.DAT` Run/RunOnce | 0 | `failed` for queried keys |
 
 The primary staged-evidence bounded run generated local audit, finding,
-timeline, normalized-event, agent-run, and report outputs. These outputs remain
-local because they are derived from private evidence. The committed summary is
-limited to sanitized counts and the explicit bounded-mode setting.
+timeline, normalized-event, coverage, agent-run, and report outputs. These
+outputs remain local because they are derived from private evidence. The
+committed summary is limited to sanitized counts and the explicit bounded-mode
+setting.
+
+## Positive-Control Fixture Run
+
+The positive-control fixture is synthetic and proves that the same agent path
+emits a supportable finding when a coherent chain is present.
+
+| Item | Value |
+| --- | --- |
+| Case id | `case_positive-control` |
+| Input source | `synthetic_positive_control` |
+| Agent status | `completed` |
+| Step count | 6 |
+| Correction count | 0 |
+| Normalized event count | 6 |
+| Timeline count | 2 |
+| Finding count | 1 |
+| Finding status counts | `inferred`: 1 |
+| Evidence categories | `$MFT`, Registry, Amcache |
+| Audit entry count | 17 |
+
+## Self-Correction Fixture Run
+
+The self-correction fixture is synthetic and introduces an unsupported proposed
+`inferred` claim. The verifier detects missing evidence support, the correction
+path downgrades the finding, and the final report is regenerated from corrected
+findings.
+
+| Item | Value |
+| --- | --- |
+| Case id | `case_self-correction-control` |
+| Input source | `synthetic_self_correction_control` |
+| Agent status | `completed` |
+| Step count | 7 |
+| Correction count | 2 |
+| Final finding status counts | `needs_review`: 2 |
+| Audit entry count | 27 |
+| Correction audit events | `correction_applied`: 2 |
 
 ## Successful Synthetic Agent Path
 

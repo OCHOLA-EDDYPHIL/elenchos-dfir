@@ -1,0 +1,30 @@
+{
+  "artifact_count": 2,
+  "artifacts": [
+    {
+      "artifact_id": "EV-SC-MFT-001",
+      "artifact_type": "mftecmd_csv",
+      "discovered_at_utc": "2026-01-01T00:00:00Z",
+      "path": "mftecmd.csv",
+      "relative_path": "mftecmd.csv",
+      "sha256": "c4de15cda4675ddc9b603876d934744487617a601e62400346b71a4c387f1693",
+      "size_bytes": 242,
+      "source_image_id": null,
+      "source_image_label": "synthetic-self-correction-control"
+    },
+    {
+      "artifact_id": "EV-SC-AMCACHE-001",
+      "artifact_type": "amcacheparser_csv",
+      "discovered_at_utc": "2026-01-01T00:00:00Z",
+      "path": "amcache.csv",
+      "relative_path": "amcache.csv",
+      "sha256": "89284c69e62e4561949debc042daaf68865ba2fc92bd65222658cc3b039b2e94",
+      "size_bytes": 236,
+      "source_image_id": null,
+      "source_image_label": "synthetic-self-correction-control"
+    }
+  ],
+  "case_id": "case_self-correction-control",
+  "case_root": "tests/fixtures/positive_control/unsupported_claim",
+  "generated_at_utc": "2026-01-01T00:00:00Z"
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "case_self-correction-control",
+  "fixture_id": "unsupported_claim",
+  "induced_findings": [
+    {
+      "claim": "Synthetic control proposes persistence for updater.exe without Registry Run or RunOnce support.",
+      "confidence": "high",
+      "evidence_refs": [],
+      "finding_id": "F-SYN-UNSUPPORTED-PERSISTENCE",
+      "kind": "conclusion",
+      "limitations": [],
+      "rationale": "Synthetic induced claim intentionally lacks evidence support so verification can downgrade it.",
+      "status": "inferred"
+    }
+  ],
+  "input_source": "synthetic_self_correction_control",
+  "manifest": "unsupported_claim/manifest.json",
+  "schema_version": 1
+}
