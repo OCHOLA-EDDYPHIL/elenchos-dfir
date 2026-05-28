@@ -66,7 +66,7 @@ def test_cli_correlate_succeeds_with_synthetic_normalized_events(tmp_path: Path,
     out = capsys.readouterr().out
     assert f"output_dir={output_dir.resolve()}" in out
     assert "timelines=1" in out
-    assert "findings=1" in out
+    assert "findings=0" in out
     assert f"report_path={(output_dir / 'report.md').resolve()}" in out
     assert "# Case Report" not in out
 

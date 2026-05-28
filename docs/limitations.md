@@ -35,9 +35,17 @@ they cannot alone establish execution, user action, or maliciousness.
   `partial_success`.
 - Parser warnings should be preserved, not hidden.
 - Large raw artifacts can exceed available VM memory if every normalized event
-  is loaded for one run. The documented final demo path uses explicit bounded
-  triage with `--max-normalized-events`; bounded outputs are reproducible but
-  are not exhaustive full-artifact analysis.
+  is loaded for one run. The documented final demo path uses
+  `--max-normalized-events` with `--event-selection-profile forensic-triage`;
+  bounded outputs are reproducible but are not exhaustive full-artifact
+  analysis.
+- Resource-adaptive triage prioritizes available Registry and Amcache events,
+  then selects high-volume MFT observations by deterministic path, anchor-time,
+  and fill rules. The selection policy is coverage triage, not a malware
+  detection rule.
+- Ordinary single-source MFT timelines remain timeline and coverage evidence.
+  They are not findings unless correlation or validation rules create a
+  supportable candidate.
 - The agent planner is deterministic and uses fixed workflow phases; it is not
   a free-form LLM planning surface.
 - Markdown is the human-readable report. Machine-readable outputs are workflow

@@ -13,6 +13,7 @@ from siftguard.evidence.hashing import sha256_file
 from siftguard.evidence.manifest import build_manifest, write_manifest
 from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import validate_output_path
+from siftguard.triage import SUPPORTED_EVENT_SELECTION_PROFILES
 from siftguard.workflows.correlation import run_correlation_workflow
 
 PARSER_STATUS_EXIT_CODES = {
@@ -235,6 +236,16 @@ def _build_parser() -> argparse.ArgumentParser:
             "large parser outputs"
         ),
     )
+    agent_run_parser.add_argument(
+        "--event-selection-profile",
+        choices=tuple(sorted(SUPPORTED_EVENT_SELECTION_PROFILES)),
+        default="first-n",
+        help=(
+            "Event selection policy for bounded runs. first-n preserves legacy "
+            "behavior; forensic-triage prioritizes Registry and Amcache before "
+            "deterministic MFT fill."
+        ),
+    )
 
     return parser
 
@@ -303,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
                 output_dir=args.output_dir,
                 max_iterations=args.max_iterations,
                 max_normalized_events=args.max_normalized_events,
+                event_selection_profile=args.event_selection_profile,
             )
         except Exception as exc:
             print(f"error={exc}", file=sys.stderr)

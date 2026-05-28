@@ -17,6 +17,8 @@ class EvidenceArtifact:
     sha256: str
     artifact_type: str
     discovered_at_utc: str
+    source_image_id: str | None = None
+    source_image_label: str | None = None
 
 
 @dataclass(slots=True)

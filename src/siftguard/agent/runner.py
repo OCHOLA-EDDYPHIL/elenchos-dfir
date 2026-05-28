@@ -32,7 +32,12 @@ from siftguard.correlation.models import SubjectTimeline
 from siftguard.correlation.timeline import build_subject_timelines
 from siftguard.evidence.manifest import EvidenceArtifact, EvidenceManifest, read_manifest
 from siftguard.parser.amcache import normalize_amcache_csv, parse_amcache_artifact
-from siftguard.parser.mft import normalize_mftecmd_csv, parse_mft_artifact
+from siftguard.parser.mft import (
+    normalize_mftecmd_csv,
+    parse_mft_artifact,
+    parse_mft_artifact_for_triage,
+    select_mftecmd_csv_for_triage,
+)
 from siftguard.parser.registry_runkeys import (
     normalize_recmd_runkeys_csv,
     parse_registry_runkeys_artifact,
@@ -40,9 +45,16 @@ from siftguard.parser.registry_runkeys import (
 from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import is_relative_to
 from siftguard.reporting.markdown_report import render_markdown_report
+from siftguard.triage import (
+    EVENT_SELECTION_FIRST_N,
+    EVENT_SELECTION_FORENSIC_TRIAGE,
+    TriageAnchors,
+    empty_selection_counts,
+    validate_event_selection_profile,
+)
 from siftguard.validation.claims import (
     ClaimValidationResult,
-    candidate_from_subject_timeline,
+    candidates_from_subject_timelines,
     validate_claim_candidates,
 )
 from siftguard.validation.models import Finding
@@ -79,12 +91,38 @@ BOUNDED_ARTIFACT_TYPE_PRIORITY = {
     "mftecmd_csv": 2,
 }
 EVENT_LIMIT_WARNING_MARKER = "max_events="
+HIGH_VOLUME_MFT_ARTIFACT_TYPES = {"mft", "mftecmd_csv"}
+PARSER_NAME_BY_ARTIFACT_TYPE = {
+    "mft": "mftecmd",
+    "mftecmd_csv": "mftecmd",
+    "registry": "recmd",
+    "registry_hive": "recmd",
+    "recmd_runkeys_csv": "recmd",
+    "amcache": "amcacheparser",
+    "amcacheparser_csv": "amcacheparser",
+}
+
+
+@dataclass(slots=True)
+class ArtifactRows:
+    rows: list[dict[str, Any]]
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    parser_name: str | None = None
+    parser_status: str = "success"
+    source_rows_seen: int | None = None
+    source_events_seen: int | None = None
+    selection_counts: dict[str, int] = field(default_factory=empty_selection_counts)
+    dropped_due_to_cap: int = 0
+    bounded: bool = False
+    skip_reason: str | None = None
 
 
 @dataclass(slots=True)
 class AgentWorkflowPaths:
     output_dir: Path
     normalized_events_path: Path
+    coverage_summary_path: Path
     timelines_path: Path
     findings_path: Path
     report_path: Path
@@ -100,6 +138,7 @@ class AgentWorkflowContext:
     paths: AgentWorkflowPaths
     clock: Clock
     max_normalized_events: int | None = None
+    event_selection_profile: str = EVENT_SELECTION_FIRST_N
     artifacts: list[AgentArtifactRef] = field(default_factory=list)
     normalized_event_rows: list[dict[str, Any]] = field(default_factory=list)
     timelines: list[SubjectTimeline] = field(default_factory=list)
@@ -108,6 +147,9 @@ class AgentWorkflowContext:
     warnings: list[str] = field(default_factory=list)
     normalized_event_limit_reached: bool = False
     artifact_event_counts: dict[str, int] = field(default_factory=dict)
+    coverage_artifacts: list[dict[str, Any]] = field(default_factory=list)
+    coverage_summary: dict[str, Any] = field(default_factory=dict)
+    selection_counts: dict[str, int] = field(default_factory=empty_selection_counts)
 
 
 def _require_non_empty_string(name: str, value: str) -> str:
@@ -171,6 +213,7 @@ def _workflow_paths(output_dir: Path) -> AgentWorkflowPaths:
     return AgentWorkflowPaths(
         output_dir=output_dir,
         normalized_events_path=_resolve_output_path(output_dir, "normalized_events.json"),
+        coverage_summary_path=_resolve_output_path(output_dir, "coverage_summary.json"),
         timelines_path=_resolve_output_path(output_dir, "subject_timelines.json"),
         findings_path=_resolve_output_path(output_dir, "findings.json"),
         report_path=_resolve_output_path(output_dir, "report.md"),
@@ -182,6 +225,7 @@ def _workflow_paths(output_dir: Path) -> AgentWorkflowPaths:
 def _clear_previous_agent_outputs(paths: AgentWorkflowPaths) -> None:
     for path in (
         paths.normalized_events_path,
+        paths.coverage_summary_path,
         paths.timelines_path,
         paths.findings_path,
         paths.report_path,
@@ -326,6 +370,78 @@ def _limit_warning(context: AgentWorkflowContext) -> str:
     )
 
 
+def _parser_name_for_artifact(artifact: EvidenceArtifact) -> str | None:
+    return PARSER_NAME_BY_ARTIFACT_TYPE.get(artifact.artifact_type)
+
+
+def _parser_status_for_rows(
+    rows: list[dict[str, Any]],
+    warnings: list[str],
+    errors: list[str],
+) -> str:
+    if errors and not rows:
+        return "failed"
+    if warnings or errors:
+        return "partial_success"
+    return "success"
+
+
+def _metadata_int(metadata: dict[str, Any], name: str) -> int | None:
+    value = metadata.get(name)
+    return value if isinstance(value, int) else None
+
+
+def _metadata_selection_counts(metadata: dict[str, Any]) -> dict[str, int]:
+    counts = empty_selection_counts()
+    for key in counts:
+        value = metadata.get(f"selection_{key}")
+        if isinstance(value, int):
+            counts[key] = value
+    return counts
+
+
+def _increment_selection_counts(context: AgentWorkflowContext, counts: dict[str, int]) -> None:
+    for key, value in counts.items():
+        context.selection_counts[key] = context.selection_counts.get(key, 0) + value
+
+
+def _artifact_coverage(
+    artifact: EvidenceArtifact,
+    result: ArtifactRows,
+) -> dict[str, Any]:
+    return {
+        "artifact_id": artifact.artifact_id,
+        "source_path": artifact.relative_path,
+        "artifact_type": artifact.artifact_type,
+        "source_image_id": artifact.source_image_id,
+        "source_image_label": artifact.source_image_label,
+        "parser_name": result.parser_name,
+        "parser_status": result.parser_status,
+        "source_rows_seen": result.source_rows_seen,
+        "source_events_seen": result.source_events_seen,
+        "normalized_rows_selected": len(result.rows),
+        "warnings_count": len(result.warnings),
+        "errors_count": len(result.errors),
+        "bounded": result.bounded,
+        "skip_reason": result.skip_reason,
+    }
+
+
+def _skipped_artifact_rows(
+    artifact: EvidenceArtifact,
+    *,
+    parser_status: str,
+    reason: str,
+) -> ArtifactRows:
+    return ArtifactRows(
+        rows=[],
+        warnings=[f"{artifact.artifact_id}: {reason}"],
+        parser_name=_parser_name_for_artifact(artifact),
+        parser_status=parser_status,
+        skip_reason=reason,
+    )
+
+
 def _run_inventory_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     artifacts = sorted(context.manifest.artifacts, key=lambda item: item.relative_path)
     context.artifacts = [AgentArtifactRef.from_artifact(artifact) for artifact in artifacts]
@@ -342,7 +458,7 @@ def _parser_result_rows(
     artifact: EvidenceArtifact,
     path: Path,
     max_events: int | None = None,
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+) -> ArtifactRows:
     result = ParserResult.from_dict(_load_json_object(path))
     if result.case_id != case_id:
         raise ValueError(
@@ -356,13 +472,24 @@ def _parser_result_rows(
             f"{artifact.artifact_id}: parser result status={result.status} produced no events"
         )
     rows = [event.to_dict() for event in result.events]
+    source_events_seen = len(rows)
     if max_events is not None and len(rows) > max_events:
         rows = rows[:max_events]
         warnings.append(
             f"max_events={max_events} reached; remaining parser result events "
             "were not normalized"
         )
-    return rows, warnings, errors
+    return ArtifactRows(
+        rows=rows,
+        warnings=warnings,
+        errors=errors,
+        parser_name=result.parser_name,
+        parser_status=result.status,
+        source_rows_seen=source_events_seen,
+        source_events_seen=source_events_seen,
+        bounded=max_events is not None and source_events_seen > len(rows),
+        dropped_due_to_cap=max(source_events_seen - len(rows), 0),
+    )
 
 
 def _normalized_event_rows(
@@ -371,10 +498,11 @@ def _normalized_event_rows(
     artifact: EvidenceArtifact,
     path: Path,
     max_events: int | None = None,
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+) -> ArtifactRows:
     payload = _load_json_object(path)
     _validate_payload_case_id(case_id, payload)
     rows = _event_rows(payload)
+    source_events_seen = len(rows)
     warnings: list[str] = []
     if max_events is not None and len(rows) > max_events:
         rows = rows[:max_events]
@@ -382,7 +510,16 @@ def _normalized_event_rows(
             f"max_events={max_events} reached; remaining normalized events "
             "were not loaded"
         )
-    return rows, warnings, []
+    return ArtifactRows(
+        rows=rows,
+        warnings=warnings,
+        parser_name=_parser_name_for_artifact(artifact),
+        parser_status="partial_success" if warnings else "success",
+        source_rows_seen=source_events_seen,
+        source_events_seen=source_events_seen,
+        bounded=max_events is not None and source_events_seen > len(rows),
+        dropped_due_to_cap=max(source_events_seen - len(rows), 0),
+    )
 
 
 def _synthetic_csv_rows(
@@ -391,7 +528,7 @@ def _synthetic_csv_rows(
     artifact: EvidenceArtifact,
     path: Path,
     max_events: int | None = None,
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+) -> ArtifactRows:
     if artifact.artifact_type == "mftecmd_csv":
         events, warnings, errors = normalize_mftecmd_csv(
             csv_path=path,
@@ -416,10 +553,18 @@ def _synthetic_csv_rows(
     else:
         raise ValueError(f"unsupported synthetic CSV artifact type: {artifact.artifact_type}")
 
-    return (
-        [event.to_dict() for event in events],
-        [f"{artifact.artifact_id}: {warning}" for warning in warnings],
-        [f"{artifact.artifact_id}: {error}" for error in errors],
+    rows = [event.to_dict() for event in events]
+    artifact_warnings = [f"{artifact.artifact_id}: {warning}" for warning in warnings]
+    artifact_errors = [f"{artifact.artifact_id}: {error}" for error in errors]
+    return ArtifactRows(
+        rows=rows,
+        warnings=artifact_warnings,
+        errors=artifact_errors,
+        parser_name=_parser_name_for_artifact(artifact),
+        parser_status=_parser_status_for_rows(rows, artifact_warnings, artifact_errors),
+        source_rows_seen=len(rows) if not _has_event_limit_warning(warnings) else None,
+        source_events_seen=len(rows) if not _has_event_limit_warning(warnings) else None,
+        bounded=_has_event_limit_warning(warnings),
     )
 
 
@@ -428,7 +573,7 @@ def _raw_parser_rows(
     context: AgentWorkflowContext,
     artifact: EvidenceArtifact,
     max_events: int | None = None,
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+) -> ArtifactRows:
     evidence_root = Path(context.manifest.case_root).resolve()
     if artifact.artifact_type == "mft":
         result = parse_mft_artifact(
@@ -466,7 +611,22 @@ def _raw_parser_rows(
         errors.append(
             f"{artifact.artifact_id}: parser result status={result.status} produced no events"
         )
-    return [event.to_dict() for event in result.events], warnings, errors
+    rows = [event.to_dict() for event in result.events]
+    return ArtifactRows(
+        rows=rows,
+        warnings=warnings,
+        errors=errors,
+        parser_name=result.parser_name,
+        parser_status=result.status,
+        source_rows_seen=_metadata_int(result.metadata, "source_rows_seen") or len(rows),
+        source_events_seen=_metadata_int(result.metadata, "source_events_seen") or len(rows),
+        selection_counts=_metadata_selection_counts(result.metadata),
+        dropped_due_to_cap=_metadata_int(result.metadata, "dropped_due_to_cap") or 0,
+        bounded=(
+            max_events is not None
+            and (_metadata_int(result.metadata, "source_events_seen") or len(rows)) > len(rows)
+        ),
+    )
 
 
 def _rows_for_artifact(
@@ -474,7 +634,7 @@ def _rows_for_artifact(
     context: AgentWorkflowContext,
     artifact: EvidenceArtifact,
     max_events: int | None = None,
-) -> tuple[list[dict[str, Any]], list[str], list[str]]:
+) -> ArtifactRows:
     artifact_path = _artifact_path(context.manifest, artifact)
     if artifact.artifact_type in PARSER_RESULT_ARTIFACT_TYPES:
         return _parser_result_rows(
@@ -503,11 +663,113 @@ def _rows_for_artifact(
             artifact=artifact,
             max_events=max_events,
         )
-    return [], [], []
+    return _skipped_artifact_rows(
+        artifact,
+        parser_status="skipped",
+        reason=f"unsupported artifact type: {artifact.artifact_type}",
+    )
 
 
-def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
-    supported_artifacts = [
+def _forensic_triage_rows_for_artifact(
+    *,
+    context: AgentWorkflowContext,
+    artifact: EvidenceArtifact,
+    max_events: int | None,
+    anchors: TriageAnchors,
+) -> ArtifactRows:
+    if artifact.artifact_type == "mftecmd_csv":
+        artifact_path = _artifact_path(context.manifest, artifact)
+        selection = select_mftecmd_csv_for_triage(
+            csv_path=artifact_path,
+            case_id=context.case_id,
+            artifact_id=artifact.artifact_id,
+            max_events=max_events,
+            anchors=anchors,
+        )
+        rows = [event.to_dict() for event in selection.events]
+        warnings = [f"{artifact.artifact_id}: {warning}" for warning in selection.warnings]
+        errors = [f"{artifact.artifact_id}: {error}" for error in selection.errors]
+        return ArtifactRows(
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+            parser_name="mftecmd",
+            parser_status=_parser_status_for_rows(rows, warnings, errors),
+            source_rows_seen=selection.source_rows_seen,
+            source_events_seen=selection.source_events_seen,
+            selection_counts=selection.selection_counts,
+            dropped_due_to_cap=selection.dropped_due_to_cap,
+            bounded=selection.dropped_due_to_cap > 0,
+        )
+
+    if artifact.artifact_type == "mft":
+        evidence_root = Path(context.manifest.case_root).resolve()
+        result = parse_mft_artifact_for_triage(
+            case_id=context.case_id,
+            artifact=artifact,
+            runs_root=context.paths.output_dir,
+            evidence_root=evidence_root,
+            ledger_path=context.paths.audit_path,
+            max_events=max_events,
+            anchors=anchors,
+        )
+        warnings = [f"{artifact.artifact_id}: {warning}" for warning in result.warnings]
+        errors = [f"{artifact.artifact_id}: {error}" for error in result.errors]
+        if result.status in {"failed", "skipped"} and not result.events:
+            errors.append(
+                f"{artifact.artifact_id}: parser result status={result.status} produced no events"
+            )
+        rows = [event.to_dict() for event in result.events]
+        return ArtifactRows(
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+            parser_name=result.parser_name,
+            parser_status=result.status,
+            source_rows_seen=_metadata_int(result.metadata, "source_rows_seen"),
+            source_events_seen=_metadata_int(result.metadata, "source_events_seen"),
+            selection_counts=_metadata_selection_counts(result.metadata),
+            dropped_due_to_cap=_metadata_int(result.metadata, "dropped_due_to_cap") or 0,
+            bounded=(_metadata_int(result.metadata, "dropped_due_to_cap") or 0) > 0,
+        )
+
+    return _rows_for_artifact(
+        context=context,
+        artifact=artifact,
+        max_events=max_events,
+    )
+
+
+def _safe_rows_for_artifact(
+    *,
+    context: AgentWorkflowContext,
+    artifact: EvidenceArtifact,
+    max_events: int | None,
+    anchors: TriageAnchors | None = None,
+) -> ArtifactRows:
+    try:
+        if anchors is None:
+            return _rows_for_artifact(
+                context=context,
+                artifact=artifact,
+                max_events=max_events,
+            )
+        return _forensic_triage_rows_for_artifact(
+            context=context,
+            artifact=artifact,
+            max_events=max_events,
+            anchors=anchors,
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        return _skipped_artifact_rows(
+            artifact,
+            parser_status="unavailable",
+            reason=str(exc),
+        )
+
+
+def _supported_artifacts(context: AgentWorkflowContext) -> list[EvidenceArtifact]:
+    return [
         artifact
         for artifact in sorted(
             context.manifest.artifacts,
@@ -518,6 +780,218 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
         )
         if artifact.artifact_type in SUPPORTED_PARSE_ARTIFACT_TYPES
     ]
+
+
+def _record_artifact_rows(
+    context: AgentWorkflowContext,
+    artifact: EvidenceArtifact,
+    result: ArtifactRows,
+    *,
+    rows: list[dict[str, Any]],
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    rows.extend(result.rows)
+    context.artifact_event_counts[artifact.artifact_id] = len(result.rows)
+    context.coverage_artifacts.append(_artifact_coverage(artifact, result))
+    warnings.extend(result.warnings)
+    errors.extend(result.errors)
+    _increment_selection_counts(context, result.selection_counts)
+    if result.dropped_due_to_cap:
+        context.normalized_event_limit_reached = True
+
+
+def _record_unprocessed_artifacts(
+    context: AgentWorkflowContext,
+    artifacts: list[EvidenceArtifact],
+    *,
+    start_index: int,
+    reason: str,
+    warnings: list[str],
+) -> None:
+    for artifact in artifacts[start_index:]:
+        result = _skipped_artifact_rows(
+            artifact,
+            parser_status="skipped",
+            reason=reason,
+        )
+        context.coverage_artifacts.append(_artifact_coverage(artifact, result))
+        warnings.extend(result.warnings)
+
+
+def _run_parse_phase_first_n(
+    context: AgentWorkflowContext,
+    supported_artifacts: list[EvidenceArtifact],
+    *,
+    rows: list[dict[str, Any]],
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    for index, artifact in enumerate(supported_artifacts):
+        remaining = _remaining_event_capacity(context)
+        if remaining == 0:
+            context.normalized_event_limit_reached = True
+            _record_unprocessed_artifacts(
+                context,
+                supported_artifacts,
+                start_index=index,
+                reason="max_normalized_events cap reached before this artifact",
+                warnings=warnings,
+            )
+            break
+
+        result = _safe_rows_for_artifact(
+            context=context,
+            artifact=artifact,
+            max_events=remaining,
+        )
+        _record_artifact_rows(
+            context,
+            artifact,
+            result,
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+        )
+        if _has_event_limit_warning(result.warnings):
+            context.normalized_event_limit_reached = True
+        if (
+            context.max_normalized_events is not None
+            and len(rows) >= context.max_normalized_events
+            and index < len(supported_artifacts) - 1
+        ):
+            context.normalized_event_limit_reached = True
+            _record_unprocessed_artifacts(
+                context,
+                supported_artifacts,
+                start_index=index + 1,
+                reason="max_normalized_events cap reached before this artifact",
+                warnings=warnings,
+            )
+            break
+
+
+def _run_parse_phase_forensic_triage(
+    context: AgentWorkflowContext,
+    supported_artifacts: list[EvidenceArtifact],
+    *,
+    rows: list[dict[str, Any]],
+    warnings: list[str],
+    errors: list[str],
+) -> None:
+    anchors = TriageAnchors()
+    high_signal = [
+        artifact
+        for artifact in supported_artifacts
+        if artifact.artifact_type not in HIGH_VOLUME_MFT_ARTIFACT_TYPES
+    ]
+    high_volume = [
+        artifact
+        for artifact in supported_artifacts
+        if artifact.artifact_type in HIGH_VOLUME_MFT_ARTIFACT_TYPES
+    ]
+    ordered_artifacts = [*high_signal, *high_volume]
+
+    for index, artifact in enumerate(ordered_artifacts):
+        remaining = _remaining_event_capacity(context)
+        if remaining == 0:
+            context.normalized_event_limit_reached = True
+            _record_unprocessed_artifacts(
+                context,
+                ordered_artifacts,
+                start_index=index,
+                reason="max_normalized_events cap reached before this artifact",
+                warnings=warnings,
+            )
+            break
+
+        result = _safe_rows_for_artifact(
+            context=context,
+            artifact=artifact,
+            max_events=remaining,
+            anchors=anchors,
+        )
+        if artifact.artifact_type not in HIGH_VOLUME_MFT_ARTIFACT_TYPES:
+            selected = len(result.rows)
+            result.selection_counts["non_mft_preserved"] = selected
+            anchors.extend_rows(result.rows)
+
+        _record_artifact_rows(
+            context,
+            artifact,
+            result,
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+        )
+        if (
+            context.max_normalized_events is not None
+            and len(rows) >= context.max_normalized_events
+            and index < len(ordered_artifacts) - 1
+        ):
+            context.normalized_event_limit_reached = True
+            _record_unprocessed_artifacts(
+                context,
+                ordered_artifacts,
+                start_index=index + 1,
+                reason="max_normalized_events cap reached before this artifact",
+                warnings=warnings,
+            )
+            break
+
+
+def _coverage_limitations(context: AgentWorkflowContext) -> list[str]:
+    limitations: list[str] = []
+    if context.max_normalized_events is not None:
+        limitations.append(
+            "Normalized events were bounded by max_normalized_events; output is triage, "
+            "not exhaustive full-artifact recall."
+        )
+    if context.normalized_event_limit_reached:
+        limitations.append(
+            "At least one artifact was truncated, bounded, or skipped after the "
+            "normalized event cap was reached."
+        )
+    if any(
+        item["parser_status"] in {"partial_success", "failed"}
+        for item in context.coverage_artifacts
+    ):
+        limitations.append("One or more parser results completed with warnings or errors.")
+    if any(
+        item["parser_status"] in {"skipped", "unavailable"}
+        for item in context.coverage_artifacts
+    ):
+        limitations.append("One or more optional artifacts were skipped or unavailable.")
+    if context.event_selection_profile == EVENT_SELECTION_FORENSIC_TRIAGE:
+        limitations.append(
+            "Forensic triage prioritizes Registry and Amcache observations before "
+            "deterministic MFT selection."
+        )
+    return sorted(set(limitations), key=lambda value: value.casefold())
+
+
+def _build_coverage_summary(context: AgentWorkflowContext) -> dict[str, Any]:
+    total_source_events_seen = 0
+    total_known = False
+    for artifact in context.coverage_artifacts:
+        value = artifact.get("source_events_seen")
+        if isinstance(value, int):
+            total_source_events_seen += value
+            total_known = True
+    return {
+        "case_id": context.case_id,
+        "selection_profile": context.event_selection_profile,
+        "max_normalized_events": context.max_normalized_events,
+        "normalized_events_written": len(context.normalized_event_rows),
+        "total_source_events_seen": total_source_events_seen if total_known else None,
+        "per_artifact": list(context.coverage_artifacts),
+        "selection_notes": dict(sorted(context.selection_counts.items())),
+        "limitations": _coverage_limitations(context),
+    }
+
+
+def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
+    supported_artifacts = _supported_artifacts(context)
     if not supported_artifacts:
         raise ValueError(
             "manifest contains no supported parser-output artifacts; expected one of "
@@ -527,32 +1001,38 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     warnings: list[str] = []
     errors: list[str] = []
-    artifact_event_counts: dict[str, int] = {}
     context.normalized_event_rows = rows
-    for index, artifact in enumerate(supported_artifacts):
-        remaining = _remaining_event_capacity(context)
-        if remaining == 0:
-            context.normalized_event_limit_reached = True
-            break
-
-        artifact_rows, artifact_warnings, artifact_errors = _rows_for_artifact(
-            context=context,
-            artifact=artifact,
-            max_events=remaining,
+    context.artifact_event_counts = {}
+    context.coverage_artifacts = []
+    context.selection_counts = empty_selection_counts()
+    context.normalized_event_limit_reached = False
+    for artifact in sorted(context.manifest.artifacts, key=lambda item: item.relative_path):
+        if artifact.artifact_type in SUPPORTED_PARSE_ARTIFACT_TYPES:
+            continue
+        skipped = _skipped_artifact_rows(
+            artifact,
+            parser_status="skipped",
+            reason=f"unsupported artifact type: {artifact.artifact_type}",
         )
-        rows.extend(artifact_rows)
-        artifact_event_counts[artifact.artifact_id] = len(artifact_rows)
-        warnings.extend(artifact_warnings)
-        errors.extend(artifact_errors)
-        if _has_event_limit_warning(artifact_warnings):
-            context.normalized_event_limit_reached = True
-        if (
-            context.max_normalized_events is not None
-            and len(rows) >= context.max_normalized_events
-            and index < len(supported_artifacts) - 1
-        ):
-            context.normalized_event_limit_reached = True
-            break
+        context.coverage_artifacts.append(_artifact_coverage(artifact, skipped))
+        warnings.extend(skipped.warnings)
+
+    if context.event_selection_profile == EVENT_SELECTION_FORENSIC_TRIAGE:
+        _run_parse_phase_forensic_triage(
+            context,
+            supported_artifacts,
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+        )
+    else:
+        _run_parse_phase_first_n(
+            context,
+            supported_artifacts,
+            rows=rows,
+            warnings=warnings,
+            errors=errors,
+        )
 
     if errors and not rows:
         raise ValueError("parser phase produced no events: " + "; ".join(errors))
@@ -562,8 +1042,8 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
         warnings.append(_limit_warning(context))
 
     context.normalized_event_rows = rows
-    context.artifact_event_counts = artifact_event_counts
     context.warnings.extend(warnings)
+    context.coverage_summary = _build_coverage_summary(context)
     _write_json(
         context.paths.normalized_events_path,
         {
@@ -573,12 +1053,18 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
             "events": rows,
             "limit_reached": context.normalized_event_limit_reached,
             "max_normalized_events": context.max_normalized_events,
-            "parser_artifact_event_counts": artifact_event_counts,
+            "parser_artifact_event_counts": context.artifact_event_counts,
+            "selection_profile": context.event_selection_profile,
         },
     )
+    _write_json(context.paths.coverage_summary_path, context.coverage_summary)
 
     return {
         "bounded": context.max_normalized_events is not None,
+        "coverage_summary": _output_ref(
+            context.paths.coverage_summary_path,
+            context.paths.output_dir,
+        ),
         "event_count": len(rows),
         "limit_reached": context.normalized_event_limit_reached,
         "max_normalized_events": context.max_normalized_events,
@@ -586,8 +1072,10 @@ def _run_parse_phase(context: AgentWorkflowContext) -> dict[str, Any]:
             context.paths.normalized_events_path,
             context.paths.output_dir,
         ),
-        "parser_artifact_event_counts": artifact_event_counts,
+        "parser_artifact_event_counts": context.artifact_event_counts,
         "parser_artifact_ids": [artifact.artifact_id for artifact in supported_artifacts],
+        "selection_notes": dict(sorted(context.selection_counts.items())),
+        "selection_profile": context.event_selection_profile,
         "warning_count": len(warnings),
     }
 
@@ -614,7 +1102,7 @@ def _run_correlate_phase(context: AgentWorkflowContext) -> dict[str, Any]:
 
 
 def _run_validate_phase(context: AgentWorkflowContext) -> dict[str, Any]:
-    candidates = [candidate_from_subject_timeline(timeline) for timeline in context.timelines]
+    candidates = candidates_from_subject_timelines(context.timelines)
     context.validation_results = validate_claim_candidates(candidates)
     context.findings = [result.finding for result in context.validation_results]
     _write_json(
@@ -641,6 +1129,7 @@ def _run_report_phase(context: AgentWorkflowContext) -> dict[str, Any]:
         timelines=context.timelines,
         findings=context.findings,
         limitations=limitations,
+        coverage_summary=context.coverage_summary,
     )
     context.paths.report_path.write_text(report, encoding="utf-8")
     return {
@@ -687,6 +1176,7 @@ def _step_inputs(context: AgentWorkflowContext, phase: AgentPhase) -> dict[str, 
     if phase is AgentPhase.PARSE:
         return {
             "artifact_count": context.manifest.artifact_count,
+            "event_selection_profile": context.event_selection_profile,
             "max_normalized_events": context.max_normalized_events,
             "supported_artifact_types": sorted(SUPPORTED_PARSE_ARTIFACT_TYPES),
         }
@@ -743,6 +1233,7 @@ def _make_step(
 def _run_output_refs(paths: AgentWorkflowPaths) -> dict[str, str]:
     candidates = {
         "audit": paths.audit_path,
+        "coverage_summary": paths.coverage_summary_path,
         "normalized_events": paths.normalized_events_path,
         "subject_timelines": paths.timelines_path,
         "findings": paths.findings_path,
@@ -811,6 +1302,7 @@ def run_agent_workflow(
     output_dir: Path,
     max_iterations: int,
     max_normalized_events: int | None = None,
+    event_selection_profile: str = EVENT_SELECTION_FIRST_N,
     clock: Clock = utc_now,
 ) -> AgentRun:
     case_id = _require_non_empty_string("case_id", case_id)
@@ -820,6 +1312,7 @@ def run_agent_workflow(
         "max_normalized_events",
         max_normalized_events,
     )
+    event_selection_profile = validate_event_selection_profile(event_selection_profile)
 
     resolved_manifest_path = _validate_manifest_path(manifest_path)
     manifest = read_manifest(resolved_manifest_path)
@@ -844,6 +1337,7 @@ def run_agent_workflow(
         started_at=started_at,
         max_iterations=max_iterations,
         max_normalized_events=max_normalized_events,
+        event_selection_profile=event_selection_profile,
     )
     context = AgentWorkflowContext(
         case_id=case_id,
@@ -852,6 +1346,7 @@ def run_agent_workflow(
         paths=paths,
         clock=clock,
         max_normalized_events=max_normalized_events,
+        event_selection_profile=event_selection_profile,
     )
 
     _append_agent_audit(
@@ -1029,7 +1524,14 @@ def run_agent_workflow(
                 output_refs={
                     key: value
                     for key, value in outputs.items()
-                    if key in {"normalized_events", "subject_timelines", "findings", "report"}
+                    if key
+                    in {
+                        "coverage_summary",
+                        "normalized_events",
+                        "subject_timelines",
+                        "findings",
+                        "report",
+                    }
                     and isinstance(value, str)
                 },
             )

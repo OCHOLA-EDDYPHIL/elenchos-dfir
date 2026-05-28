@@ -19,6 +19,8 @@ directory such as `runs/<case-id>/agent-run/`:
   errors, and output references.
 - `audit.jsonl`: append-only JSONL execution ledger for lifecycle events, tool
   executions, verification, and correction.
+- `coverage_summary.json`: artifact coverage, parser status, bounded selection
+  counts, skipped/unavailable artifacts, and limitations.
 - `normalized_events.json`: normalized observations produced from parser output
   or parser wrappers.
 - `subject_timelines.json`: correlated timelines grouped by subject.
@@ -62,6 +64,7 @@ report.md sentence
 -> findings.json
 -> evidence_refs
 -> normalized_events.json
+-> coverage_summary.json
 -> parser/tool execution
 -> audit.jsonl event
 -> original manifest artifact entry
@@ -78,9 +81,11 @@ To map a specific finding:
 3. Record the finding status and `evidence_refs`.
 4. Match each evidence reference to the related normalized event or parser
    result entry.
-5. Use `audit.jsonl` to identify the parser or agent step that produced the
+5. Use `coverage_summary.json` to confirm artifact coverage, parser status,
+   bounded selection, skipped artifacts, and limitations.
+6. Use `audit.jsonl` to identify the parser or agent step that produced the
    referenced output.
-6. Use `manifest.json` to confirm the source artifact class and local artifact
+7. Use `manifest.json` to confirm the source artifact class and local artifact
    entry without publishing private paths or hashes.
 
 ## Regeneration Commands
@@ -119,7 +124,8 @@ Run the constrained agent workflow:
   --manifest "$MANIFEST_PATH" \
   --output-dir "$AGENT_OUT" \
   --max-iterations 7 \
-  --max-normalized-events 5000
+  --max-normalized-events 5000 \
+  --event-selection-profile forensic-triage
 ```
 
 Inspect generated summaries without committing raw logs:
@@ -127,6 +133,13 @@ Inspect generated summaries without committing raw logs:
 ```bash
 find "$AGENT_OUT" -maxdepth 2 -type f -printf '%P %s bytes\n'
 .venv/bin/python -m siftguard audit-read "$AGENT_OUT/audit.jsonl"
+SUMMARY_PATH="$AGENT_OUT/coverage_summary.json" .venv/bin/python - <<'PY'
+import json
+import os
+from pathlib import Path
+summary = json.loads(Path(os.environ["SUMMARY_PATH"]).read_text())
+print(summary["selection_profile"], summary["normalized_events_written"])
+PY
 ```
 
 ## Primary Staged-Evidence Run
@@ -141,8 +154,11 @@ The primary local run used staged artifacts matching `docs/dataset.md`:
 An initial unbounded run completed inventory and started parse, then exited
 `137` before final outputs were written. Local kernel logs showed the Python
 process was killed by the OOM path at approximately 3.3 GB resident memory. The
-completed run below therefore uses an explicit deterministic normalized-event
-cap. This is bounded triage, not exhaustive full-`$MFT` analysis.
+completed run below therefore used an explicit deterministic normalized-event
+cap before resource-adaptive triage was added. It is bounded triage, not
+exhaustive full-`$MFT` analysis. Re-run with
+`--event-selection-profile forensic-triage` to generate `coverage_summary.json`
+and stricter finding counts.
 
 Sanitized run facts:
 

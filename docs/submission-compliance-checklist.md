@@ -4,9 +4,9 @@
 
 Use this checklist before final Devpost submission to confirm that the
 repository, documentation, demo, audit trail, and release snapshot are
-submission-ready. SIFTGuard MCP is triage / analyst-assist validation tooling. It is
-not legal evidence certification, does not claim courtroom admissibility, and
-does not turn parser observations into proof of compromise by itself.
+submission-ready. SIFTGuard MCP is triage / analyst-assist validation tooling.
+It is not external evidence certification and does not turn parser observations
+into proof of compromise by itself.
 
 ## Final Release Record
 
