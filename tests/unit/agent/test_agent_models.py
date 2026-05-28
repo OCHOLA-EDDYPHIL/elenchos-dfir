@@ -200,6 +200,7 @@ def test_agent_run_serializes_deterministically_and_round_trips():
         completed_at="2026-01-01T00:05:00Z",
         max_iterations=3,
         max_normalized_events=5000,
+        event_selection_profile="forensic-triage",
         steps=[completed_step],
         corrections=[correction],
         output_refs={
@@ -216,6 +217,7 @@ def test_agent_run_serializes_deterministically_and_round_trips():
     assert encoded == json.dumps(payload, sort_keys=True, separators=(",", ":"))
     assert payload["started_at"] == TIMESTAMP
     assert payload["max_normalized_events"] == 5000
+    assert payload["event_selection_profile"] == "forensic-triage"
     assert json.loads(encoded) == payload
     assert AgentRun.from_dict(payload).to_dict() == payload
 

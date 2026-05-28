@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import re
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,6 +18,13 @@ from siftguard.parser.paths import (
 from siftguard.parser.result import ParserResult
 from siftguard.runner.subprocess_runner import run_command
 from siftguard.runner.tool_result import ToolResult
+from siftguard.triage import (
+    SELECTION_REASON_ORDER,
+    TriageAnchors,
+    classify_selection_reason,
+    empty_selection_counts,
+    timestamp_from_value,
+)
 
 PARSER_NAME = "mftecmd"
 SOURCE_TOOL = "MFTECmd"
@@ -34,6 +42,17 @@ _TIMESTAMP_COLUMNS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("file_modified", ("Modified0x10", "LastModified0x10", "Modified", "LastModifiedUtc")),
     ("file_accessed", ("Accessed0x10", "LastAccess0x10", "Accessed", "LastAccessUtc")),
 )
+
+
+@dataclass(slots=True)
+class MftTriageSelectionResult:
+    events: list[ParserEvent]
+    warnings: list[str]
+    errors: list[str]
+    source_rows_seen: int
+    source_events_seen: int
+    selection_counts: dict[str, int]
+    dropped_due_to_cap: int
 
 
 def _utc_now_z() -> str:
@@ -218,6 +237,105 @@ def _event(
     )
 
 
+def _events_for_row(
+    *,
+    row: dict[str, str],
+    row_number: int,
+    csv_path: Path,
+    case_id: str,
+    artifact_id: str,
+    warnings: list[str],
+    errors: list[str],
+) -> list[ParserEvent]:
+    row_warnings_before = len(warnings)
+    path = _row_path(row)
+    if path is None:
+        errors.append(f"row {row_number}: missing file path or file name")
+        return []
+
+    filename = _row_get(row, "FileName")
+    subject = filename or path
+    entry_number = _row_get(row, "EntryNumber")
+    metadata, malformed_metadata = _metadata_for_row(row, row_number, warnings)
+    sha256 = _normalize_sha256(
+        _row_get(row, "SHA256", "Hash", "FileHash"),
+        row_number,
+        warnings,
+    )
+    timestamp_events: list[ParserEvent] = []
+
+    for event_type, columns in _TIMESTAMP_COLUMNS:
+        timestamp_source = _timestamp_value(row, columns)
+        if timestamp_source is None:
+            continue
+
+        column_name, raw_timestamp = timestamp_source
+        try:
+            timestamp_utc = _normalize_timestamp(raw_timestamp)
+        except ValueError:
+            warnings.append(f"row {row_number}: invalid timestamp in {column_name}")
+            continue
+
+        if timestamp_utc is None:
+            continue
+
+        timestamp_events.append(
+            _event(
+                case_id=case_id,
+                artifact_id=artifact_id,
+                event_type=event_type,
+                path=path,
+                subject=subject,
+                row_number=row_number,
+                csv_path=csv_path,
+                entry_number=entry_number,
+                sha256=sha256,
+                metadata=dict(metadata),
+                status="normalized",
+                timestamp_utc=timestamp_utc,
+                timestamp_description=column_name,
+            )
+        )
+
+    file_record_status = (
+        "malformed"
+        if malformed_metadata or len(warnings) > row_warnings_before
+        else "normalized"
+    )
+    return [
+        _event(
+            case_id=case_id,
+            artifact_id=artifact_id,
+            event_type="file_record",
+            path=path,
+            subject=subject,
+            row_number=row_number,
+            csv_path=csv_path,
+            entry_number=entry_number,
+            sha256=sha256,
+            metadata=metadata,
+            status=file_record_status,
+        ),
+        *timestamp_events,
+    ]
+
+
+def _row_selection_reason(
+    row_events: list[ParserEvent],
+    anchors: TriageAnchors,
+) -> str:
+    path = next((event.path for event in row_events if event.path), None)
+    timestamp = next(
+        (
+            timestamp_from_value(event.timestamp_utc)
+            for event in row_events
+            if event.timestamp_utc is not None
+        ),
+        None,
+    )
+    return classify_selection_reason(path=path, timestamp=timestamp, anchors=anchors)
+
+
 def normalize_mftecmd_csv(
     *,
     csv_path: Path,
@@ -251,77 +369,15 @@ def normalize_mftecmd_csv(
                 break
 
             row_count += 1
-            row_warnings_before = len(warnings)
-            path = _row_path(row)
-            if path is None:
-                errors.append(f"row {row_number}: missing file path or file name")
-                continue
-
-            filename = _row_get(row, "FileName")
-            subject = filename or path
-            entry_number = _row_get(row, "EntryNumber")
-            metadata, malformed_metadata = _metadata_for_row(row, row_number, warnings)
-            sha256 = _normalize_sha256(
-                _row_get(row, "SHA256", "Hash", "FileHash"),
-                row_number,
-                warnings,
+            row_events = _events_for_row(
+                row=row,
+                row_number=row_number,
+                csv_path=csv_path,
+                case_id=case_id,
+                artifact_id=artifact_id,
+                warnings=warnings,
+                errors=errors,
             )
-            timestamp_events: list[ParserEvent] = []
-
-            for event_type, columns in _TIMESTAMP_COLUMNS:
-                timestamp_source = _timestamp_value(row, columns)
-                if timestamp_source is None:
-                    continue
-
-                column_name, raw_timestamp = timestamp_source
-                try:
-                    timestamp_utc = _normalize_timestamp(raw_timestamp)
-                except ValueError:
-                    warnings.append(f"row {row_number}: invalid timestamp in {column_name}")
-                    continue
-
-                if timestamp_utc is None:
-                    continue
-
-                timestamp_events.append(
-                    _event(
-                        case_id=case_id,
-                        artifact_id=artifact_id,
-                        event_type=event_type,
-                        path=path,
-                        subject=subject,
-                        row_number=row_number,
-                        csv_path=csv_path,
-                        entry_number=entry_number,
-                        sha256=sha256,
-                        metadata=dict(metadata),
-                        status="normalized",
-                        timestamp_utc=timestamp_utc,
-                        timestamp_description=column_name,
-                    )
-                )
-
-            file_record_status = (
-                "malformed"
-                if malformed_metadata or len(warnings) > row_warnings_before
-                else "normalized"
-            )
-            row_events = [
-                _event(
-                    case_id=case_id,
-                    artifact_id=artifact_id,
-                    event_type="file_record",
-                    path=path,
-                    subject=subject,
-                    row_number=row_number,
-                    csv_path=csv_path,
-                    entry_number=entry_number,
-                    sha256=sha256,
-                    metadata=metadata,
-                    status=file_record_status,
-                ),
-                *timestamp_events,
-            ]
             for event in row_events:
                 if max_events is not None and len(events) >= max_events:
                     limit_reached = True
@@ -339,6 +395,125 @@ def normalize_mftecmd_csv(
             )
 
     return events, warnings, errors
+
+
+def select_mftecmd_csv_for_triage(
+    *,
+    csv_path: Path,
+    case_id: str,
+    artifact_id: str,
+    max_events: int | None,
+    anchors: TriageAnchors,
+) -> MftTriageSelectionResult:
+    _require_non_empty(case_id, "case_id")
+    _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
+
+    warnings: list[str] = []
+    errors: list[str] = []
+    source_rows_seen = 0
+    source_events_seen = 0
+    selection_counts = empty_selection_counts()
+
+    if not csv_path.exists():
+        return MftTriageSelectionResult(
+            events=[],
+            warnings=[],
+            errors=[f"MFTECmd CSV does not exist: {csv_path}"],
+            source_rows_seen=0,
+            source_events_seen=0,
+            selection_counts=selection_counts,
+            dropped_due_to_cap=0,
+        )
+    if csv_path.is_dir():
+        return MftTriageSelectionResult(
+            events=[],
+            warnings=[],
+            errors=[f"MFTECmd CSV path is a directory: {csv_path}"],
+            source_rows_seen=0,
+            source_events_seen=0,
+            selection_counts=selection_counts,
+            dropped_due_to_cap=0,
+        )
+
+    if max_events is None:
+        selected_events: list[ParserEvent] = []
+    else:
+        buckets: dict[str, list[ParserEvent]] = {
+            reason: [] for reason in SELECTION_REASON_ORDER
+        }
+
+    with csv_path.open(newline="", encoding="utf-8-sig") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            return MftTriageSelectionResult(
+                events=[],
+                warnings=[],
+                errors=[f"MFTECmd CSV has no header row: {csv_path}"],
+                source_rows_seen=0,
+                source_events_seen=0,
+                selection_counts=selection_counts,
+                dropped_due_to_cap=0,
+            )
+
+        for row_number, row in enumerate(reader, start=2):
+            source_rows_seen += 1
+            row_events = _events_for_row(
+                row=row,
+                row_number=row_number,
+                csv_path=csv_path,
+                case_id=case_id,
+                artifact_id=artifact_id,
+                warnings=warnings,
+                errors=errors,
+            )
+            if not row_events:
+                continue
+            source_events_seen += len(row_events)
+
+            if max_events is None:
+                selected_events.extend(row_events)
+                continue
+
+            reason = _row_selection_reason(row_events, anchors)
+            bucket = buckets[reason]
+            available = max_events - len(bucket)
+            if available <= 0:
+                continue
+            bucket.extend(row_events[:available])
+
+    if source_rows_seen == 0:
+        errors.append(f"MFTECmd CSV has no data rows: {csv_path}")
+
+    if max_events is not None:
+        selected_events = []
+        for reason in SELECTION_REASON_ORDER:
+            available = max_events - len(selected_events)
+            if available <= 0:
+                break
+            chunk = buckets[reason][:available]
+            selected_events.extend(chunk)
+            selection_counts[reason] += len(chunk)
+    else:
+        selection_counts["deterministic_fill_selected"] = len(selected_events)
+
+    dropped_due_to_cap = max(source_events_seen - len(selected_events), 0)
+    selection_counts["dropped_due_to_cap"] = dropped_due_to_cap
+    if dropped_due_to_cap:
+        warnings.append(
+            f"{EVENT_LIMIT_WARNING_PREFIX}{max_events} reached; "
+            "remaining MFTECmd rows were not selected by forensic triage"
+        )
+
+    return MftTriageSelectionResult(
+        events=selected_events,
+        warnings=warnings,
+        errors=errors,
+        source_rows_seen=source_rows_seen,
+        source_events_seen=source_events_seen,
+        selection_counts=selection_counts,
+        dropped_due_to_cap=dropped_due_to_cap,
+    )
 
 
 def _existing_file_hashes(paths: Sequence[Path]) -> dict[str, str]:
@@ -495,6 +670,161 @@ def parse_mft(
     )
 
 
+def parse_mft_for_triage(
+    *,
+    case_id: str,
+    artifact_id: str,
+    mft_path: Path,
+    runs_root: Path,
+    evidence_root: Path | None = None,
+    ledger_path: Path | None = None,
+    command_config: ParserCommandConfig | None = None,
+    timeout_seconds: int = 900,
+    runner: Runner | None = None,
+    artifact_type: str = EXPECTED_ARTIFACT_TYPE,
+    max_events: int | None = None,
+    anchors: TriageAnchors | None = None,
+) -> ParserResult:
+    _require_non_empty(case_id, "case_id")
+    _require_non_empty(artifact_id, "artifact_id")
+    max_events = _validate_max_events(max_events)
+    if artifact_type != EXPECTED_ARTIFACT_TYPE:
+        raise ValueError(f"expected artifact_type={EXPECTED_ARTIFACT_TYPE}, got {artifact_type}")
+
+    resolved_mft_path = Path(mft_path)
+    resolved_runs_root = Path(runs_root)
+    if not resolved_mft_path.exists():
+        raise FileNotFoundError(f"MFT input does not exist: {resolved_mft_path}")
+    if resolved_mft_path.is_dir():
+        raise ValueError(f"MFT input must be a file, not a directory: {resolved_mft_path}")
+
+    try:
+        command_base = resolve_parser_command(PARSER_NAME, command_config)
+    except (KeyError, TypeError, ValueError) as exc:
+        return ParserResult.missing_command(
+            case_id=case_id,
+            artifact_id=artifact_id,
+            artifact_type=EXPECTED_ARTIFACT_TYPE,
+            parser_name=PARSER_NAME,
+            source_tool=SOURCE_TOOL,
+            reason=f"MFTECmd command is not available: {exc}",
+        )
+
+    output_dir = ensure_parser_output_dir(
+        resolved_runs_root,
+        case_id,
+        artifact_id,
+        PARSER_NAME,
+        evidence_root,
+    )
+    logs_dir = build_parser_logs_dir(resolved_runs_root, case_id, evidence_root)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    csv_path = output_dir / DEFAULT_MFTECMD_CSV_NAME
+    stdout_path = logs_dir / f"{PARSER_NAME}_{artifact_id}_stdout.log"
+    stderr_path = logs_dir / f"{PARSER_NAME}_{artifact_id}_stderr.log"
+    command = (
+        *command_base,
+        "-f",
+        str(resolved_mft_path),
+        "--csv",
+        str(output_dir),
+        "--csvf",
+        DEFAULT_MFTECMD_CSV_NAME,
+    )
+
+    started_at_utc = _utc_now_z()
+    runner_fn = runner or run_command
+    tool_result = runner_fn(
+        command,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        timeout_seconds=timeout_seconds,
+        ledger_path=ledger_path,
+        case_id=case_id,
+        tool_name=PARSER_NAME,
+        runs_root=resolved_runs_root,
+        evidence_root=evidence_root,
+    )
+    ended_at_utc = _utc_now_z()
+
+    candidate_files = (csv_path, stdout_path, stderr_path)
+    output_files = _existing_files(candidate_files)
+    output_hashes = _existing_file_hashes(candidate_files)
+    warnings: list[str] = []
+    errors: list[str] = []
+    events: list[ParserEvent] = []
+    selection_counts = empty_selection_counts()
+    source_rows_seen = 0
+    source_events_seen = 0
+    dropped_due_to_cap = 0
+
+    tool_failed = tool_result.status != "success"
+    if csv_path.exists():
+        selection = select_mftecmd_csv_for_triage(
+            csv_path=csv_path,
+            case_id=case_id,
+            artifact_id=artifact_id,
+            max_events=max_events,
+            anchors=anchors or TriageAnchors(),
+        )
+        events = selection.events
+        warnings = selection.warnings
+        errors = selection.errors
+        selection_counts = selection.selection_counts
+        source_rows_seen = selection.source_rows_seen
+        source_events_seen = selection.source_events_seen
+        dropped_due_to_cap = selection.dropped_due_to_cap
+        if tool_failed:
+            warnings.append("MFTECmd command failed but output CSV was present")
+            errors.append(_tool_error(tool_result))
+            status = "partial_success"
+        elif errors or warnings:
+            status = "partial_success" if events else "failed"
+        else:
+            status = "success"
+    else:
+        if tool_failed:
+            errors.append(_tool_error(tool_result))
+        else:
+            errors.append(f"expected MFTECmd CSV was not created: {csv_path}")
+        status = "failed"
+
+    metadata: dict[str, JSON_SCALAR] = {
+        "csv_name": DEFAULT_MFTECMD_CSV_NAME,
+        "max_events": max_events,
+        "stdout_path": str(stdout_path),
+        "stderr_path": str(stderr_path),
+        "tool_exit_code": getattr(tool_result, "exit_code", None),
+        "tool_status": getattr(tool_result, "status", None),
+        "source_rows_seen": source_rows_seen,
+        "source_events_seen": source_events_seen,
+        "dropped_due_to_cap": dropped_due_to_cap,
+    }
+    for key, value in selection_counts.items():
+        metadata[f"selection_{key}"] = value
+
+    return ParserResult(
+        case_id=case_id,
+        artifact_id=artifact_id,
+        artifact_type=EXPECTED_ARTIFACT_TYPE,
+        parser_name=PARSER_NAME,
+        source_tool=SOURCE_TOOL,
+        status=status,
+        command=command,
+        output_dir=str(output_dir),
+        output_files=output_files,
+        output_hashes=output_hashes,
+        events=events,
+        warnings=warnings,
+        errors=errors,
+        started_at_utc=started_at_utc,
+        ended_at_utc=ended_at_utc,
+        duration_ms=getattr(tool_result, "duration_ms", None),
+        metadata=metadata,
+    )
+
+
 def parse_mft_artifact(
     *,
     case_id: str,
@@ -523,4 +853,37 @@ def parse_mft_artifact(
         runner=runner,
         artifact_type=artifact.artifact_type,
         max_events=max_events,
+    )
+
+
+def parse_mft_artifact_for_triage(
+    *,
+    case_id: str,
+    artifact: EvidenceArtifact,
+    runs_root: Path,
+    evidence_root: Path | None = None,
+    ledger_path: Path | None = None,
+    command_config: ParserCommandConfig | None = None,
+    timeout_seconds: int = 900,
+    runner: Runner | None = None,
+    max_events: int | None = None,
+    anchors: TriageAnchors | None = None,
+) -> ParserResult:
+    if artifact.artifact_type != EXPECTED_ARTIFACT_TYPE:
+        raise ValueError(
+            f"expected artifact_type={EXPECTED_ARTIFACT_TYPE}, got {artifact.artifact_type}"
+        )
+    return parse_mft_for_triage(
+        case_id=case_id,
+        artifact_id=artifact.artifact_id,
+        mft_path=Path(artifact.path),
+        runs_root=runs_root,
+        evidence_root=evidence_root,
+        ledger_path=ledger_path,
+        command_config=command_config,
+        timeout_seconds=timeout_seconds,
+        runner=runner,
+        artifact_type=artifact.artifact_type,
+        max_events=max_events,
+        anchors=anchors,
     )

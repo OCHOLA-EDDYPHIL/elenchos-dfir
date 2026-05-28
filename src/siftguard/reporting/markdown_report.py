@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,12 +15,18 @@ class ReportInput:
     timelines: Sequence[SubjectTimeline] = ()
     findings: Sequence[Finding] = ()
     limitations: Sequence[str] = ()
+    coverage_summary: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         self.case_id = _validate_required_string("case_id", self.case_id)
         self.timelines = _validate_timelines(self.timelines)
         self.findings = _validate_findings(self.findings)
         self.limitations = _validate_string_sequence("limitations", self.limitations)
+        if self.coverage_summary is not None and not isinstance(
+            self.coverage_summary,
+            Mapping,
+        ):
+            raise TypeError("coverage_summary must be a mapping when provided")
 
 
 @dataclass(slots=True)
@@ -223,6 +229,46 @@ def _render_case_summary(
     )
 
 
+def _render_coverage_summary(lines: list[str], coverage: Mapping[str, Any] | None) -> None:
+    lines.append("## Evidence Coverage")
+    if not coverage:
+        lines.extend(["- Coverage summary was not provided.", ""])
+        return
+
+    lines.extend(
+        [
+            f"- Selection profile: `{coverage.get('selection_profile', 'unknown')}`",
+            f"- Max normalized events: `{coverage.get('max_normalized_events')}`",
+            f"- Normalized events written: {coverage.get('normalized_events_written', 0)}",
+        ]
+    )
+
+    per_artifact = coverage.get("per_artifact")
+    if isinstance(per_artifact, list) and per_artifact:
+        lines.append("- Parser status by artifact:")
+        for item in per_artifact:
+            if not isinstance(item, Mapping):
+                continue
+            artifact_id = item.get("artifact_id", "unknown")
+            artifact_type = item.get("artifact_type", "unknown")
+            status = item.get("parser_status", "unknown")
+            selected = item.get("normalized_rows_selected", 0)
+            bounded = item.get("bounded", False)
+            lines.append(
+                f"  - `{artifact_id}` type=`{artifact_type}` status=`{status}` "
+                f"selected={selected} bounded={str(bool(bounded)).lower()}"
+            )
+
+    notes = coverage.get("selection_notes")
+    if isinstance(notes, Mapping) and notes:
+        rendered = ", ".join(
+            f"{key}={value}" for key, value in sorted(notes.items()) if isinstance(value, int)
+        )
+        if rendered:
+            lines.append(f"- Selection notes: {rendered}")
+    lines.append("")
+
+
 def _render_subject_timelines(lines: list[str], timelines: Sequence[SubjectTimeline]) -> None:
     lines.append("## Subject Timeline")
     if not timelines:
@@ -335,6 +381,7 @@ def _render_report(report: ReportInput) -> str:
 
     lines = ["# Case Report", ""]
     _render_case_summary(lines, report, sections)
+    _render_coverage_summary(lines, report.coverage_summary)
     _render_subject_timelines(lines, timelines)
     _render_finding_list(
         lines,
@@ -366,12 +413,14 @@ def render_markdown_report(
     timelines: Sequence[SubjectTimeline],
     findings: Sequence[Finding],
     limitations: Sequence[str] = (),
+    coverage_summary: Mapping[str, Any] | None = None,
 ) -> str:
     report = ReportInput(
         case_id=case_id,
         timelines=timelines,
         findings=findings,
         limitations=limitations,
+        coverage_summary=coverage_summary,
     )
     return _render_report(report)
 

@@ -43,6 +43,12 @@ The evidence inventory records metadata such as artifact identifiers, relative
 paths, sizes, SHA256 hashes, and artifact classifications. Keep that metadata
 local unless it has been reviewed for sanitized documentation.
 
+Manifest artifacts may include optional `source_image_id` and
+`source_image_label` fields when one run combines staged artifacts from more
+than one local image. These labels are for coverage accounting only. Do not mix
+artifacts from different hosts into a single incident narrative unless that
+relationship is independently supported.
+
 ## Local Config
 
 The parser validation harness can read local paths from an ignored `.local`
@@ -90,6 +96,9 @@ The purpose is reproducibility checking: confirm parser behavior, correlation
 behavior, output structure, and traceability outside the primary demo case. This
 is not scope expansion. If secondary evidence is unavailable or incomplete,
 record that honestly in the accuracy report; it is not a blocker by itself.
+For example, a secondary image without `Amcache.hve` can still contribute MFT
+or Registry coverage. Missing optional artifacts should be recorded in coverage
+metadata as skipped or unavailable, not treated as failure for the whole image.
 
 ## Expected Generated Outputs
 
@@ -97,6 +106,8 @@ A local run may generate:
 
 - Evidence manifest or inventory JSON.
 - Parser outputs under `runs/`.
+- `coverage_summary.json` for artifact coverage, parser status, bounded
+  selection counts, skipped/unavailable artifacts, and limitations.
 - Normalized parser events.
 - `findings.json`.
 - Audit JSONL, commonly `audit.jsonl`.

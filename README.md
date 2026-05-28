@@ -209,13 +209,15 @@ requires the same staged evidence and SIFT parser tools as the parser workflow.
   --manifest "$RUN_DIR/manifest.json" \
   --output-dir "$RUN_DIR/agent-run" \
   --max-iterations 7 \
-  --max-normalized-events 5000
+  --max-normalized-events 5000 \
+  --event-selection-profile forensic-triage
 ```
 
 Expected agent outputs:
 
 - `$RUN_DIR/agent-run/agent_run.json`
 - `$RUN_DIR/agent-run/audit.jsonl`
+- `$RUN_DIR/agent-run/coverage_summary.json`
 - `$RUN_DIR/agent-run/normalized_events.json`
 - `$RUN_DIR/agent-run/subject_timelines.json`
 - `$RUN_DIR/agent-run/findings.json`
@@ -226,7 +228,11 @@ or internally inconsistent outputs are downgraded, retried through constrained
 paths, or marked for review rather than silently treated as confirmed findings.
 The `--max-normalized-events` value is an explicit bounded-triage setting for
 large staged artifacts; remove it only when the local environment can complete
-the full normalized event volume.
+the full normalized event volume. `--event-selection-profile forensic-triage`
+preserves available Registry and Amcache observations before deterministic MFT
+selection and records bounded/skipped coverage in `coverage_summary.json`.
+Use `--event-selection-profile first-n` to preserve the earlier bounded
+selection behavior.
 
 Read an audit ledger summary:
 

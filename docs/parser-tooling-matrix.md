@@ -8,8 +8,7 @@ the matrix.
 
 This document covers only `$MFT`, Registry Run Keys from `SOFTWARE` and
 `NTUSER.DAT` hives, and `Amcache.hve`. It does not perform correlation, construct
-an attack narrative, prove maliciousness, or claim forensic soundness or court
-admissibility.
+an attack narrative, prove maliciousness, or claim final evidentiary status.
 
 ## Verification Environment
 

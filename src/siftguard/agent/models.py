@@ -236,12 +236,22 @@ class AgentArtifactRef:
     artifact_type: str
     relative_path: str | None = None
     sha256: str | None = None
+    source_image_id: str | None = None
+    source_image_label: str | None = None
 
     def __post_init__(self) -> None:
         self.artifact_id = _validate_required_string("artifact_id", self.artifact_id)
         self.artifact_type = _validate_required_string("artifact_type", self.artifact_type)
         self.relative_path = _validate_optional_string("relative_path", self.relative_path)
         self.sha256 = _validate_optional_string("sha256", self.sha256)
+        self.source_image_id = _validate_optional_string(
+            "source_image_id",
+            self.source_image_id,
+        )
+        self.source_image_label = _validate_optional_string(
+            "source_image_label",
+            self.source_image_label,
+        )
 
     @classmethod
     def from_artifact(cls, artifact: EvidenceArtifact) -> AgentArtifactRef:
@@ -250,6 +260,8 @@ class AgentArtifactRef:
             artifact_type=artifact.artifact_type,
             relative_path=artifact.relative_path,
             sha256=artifact.sha256,
+            source_image_id=artifact.source_image_id,
+            source_image_label=artifact.source_image_label,
         )
 
     def to_dict(self) -> dict[str, str | None]:
@@ -258,6 +270,8 @@ class AgentArtifactRef:
             "artifact_type": self.artifact_type,
             "relative_path": self.relative_path,
             "sha256": self.sha256,
+            "source_image_id": self.source_image_id,
+            "source_image_label": self.source_image_label,
         }
 
     @classmethod
@@ -267,6 +281,8 @@ class AgentArtifactRef:
             artifact_type=data["artifact_type"],
             relative_path=data.get("relative_path"),
             sha256=data.get("sha256"),
+            source_image_id=data.get("source_image_id"),
+            source_image_label=data.get("source_image_label"),
         )
 
 
@@ -482,6 +498,7 @@ class AgentRun:
     started_at: datetime | str
     max_iterations: int
     max_normalized_events: int | None = None
+    event_selection_profile: str = "first-n"
     steps: list[AgentStep] = field(default_factory=list)
     corrections: list[AgentCorrection] = field(default_factory=list)
     completed_at: datetime | str | None = None
@@ -512,6 +529,10 @@ class AgentRun:
             raise ValueError(
                 "max_normalized_events must be a positive integer when provided"
             )
+        self.event_selection_profile = _validate_required_string(
+            "event_selection_profile",
+            self.event_selection_profile,
+        )
         self.steps = _validate_steps(self.steps)
         self.corrections = _validate_corrections(self.corrections)
         self.output_refs = _validate_output_refs(self.output_refs)
@@ -529,6 +550,7 @@ class AgentRun:
             "completed_at": self.completed_at,
             "max_iterations": self.max_iterations,
             "max_normalized_events": self.max_normalized_events,
+            "event_selection_profile": self.event_selection_profile,
             "steps": [step.to_dict() for step in self.steps],
             "corrections": [correction.to_dict() for correction in self.corrections],
             "output_refs": dict(self.output_refs),
@@ -550,6 +572,7 @@ class AgentRun:
             started_at=data["started_at"],
             max_iterations=data["max_iterations"],
             max_normalized_events=data.get("max_normalized_events"),
+            event_selection_profile=data.get("event_selection_profile", "first-n"),
             steps=[AgentStep.from_dict(step) for step in data.get("steps", [])],
             corrections=[
                 AgentCorrection.from_dict(correction)

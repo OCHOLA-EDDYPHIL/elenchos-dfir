@@ -6,6 +6,8 @@ from siftguard.correlation.models import SubjectTimeline, TimelineEvent, Timelin
 from siftguard.validation.claims import (
     ClaimCandidate,
     candidate_from_subject_timeline,
+    candidates_from_subject_timelines,
+    should_emit_finding_for_timeline,
     validate_claim_candidate,
     validate_claim_candidates,
 )
@@ -331,6 +333,42 @@ def test_non_ambiguous_complete_timeline_candidate_is_inferred():
 
     assert result.final_status is ClaimStatus.INFERRED
     assert result.rule_name == "drop_execution_persistence_timeline"
+
+
+def test_ordinary_mft_only_timeline_is_not_reportable_finding():
+    timeline = SubjectTimeline(
+        subject="C:/Data/ordinary.txt",
+        events=[
+            TimelineEvent(
+                event_type=TimelineEventType.DROP,
+                timestamp="2026-01-01T00:00:00Z",
+                subject="C:/Data/ordinary.txt",
+                source="mftecmd",
+                details={"detail": "ordinary MFT create"},
+                evidence_refs=[evidence_ref()],
+                path="C:/Data/ordinary.txt",
+            )
+        ],
+    )
+
+    assert should_emit_finding_for_timeline(timeline) is False
+    assert candidates_from_subject_timelines([timeline]) == []
+
+
+def test_correlated_same_path_events_produce_one_grouped_candidate():
+    timeline = SubjectTimeline(
+        subject=SYNTHETIC_PATH,
+        events=[
+            timeline_event(TimelineEventType.DROP, "EV-SYN-MFT-001"),
+            timeline_event(TimelineEventType.EXECUTION, "EV-SYN-AMCACHE-001"),
+            timeline_event(TimelineEventType.PERSISTENCE, "EV-SYN-REG-001"),
+        ],
+    )
+
+    candidates = candidates_from_subject_timelines([timeline])
+
+    assert len(candidates) == 1
+    assert candidates[0].source_timeline_subject == SYNTHETIC_PATH
 
 
 def test_synthetic_claim_validation_examples_contain_no_real_evidence_or_private_paths():

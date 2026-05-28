@@ -59,4 +59,4 @@ usernames into OpenClaw prompts or committed documentation.
 SIFTGuard is triage and analyst-assist tooling. Deterministic verification and
 audit-visible correction reduce interpretation risk, but they do not eliminate
 the need for analyst review. The project should not be presented as
-courtroom-ready forensic proof.
+final forensic proof.
