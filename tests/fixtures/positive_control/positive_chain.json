@@ -1,0 +1,7 @@
+{
+  "case_id": "case_positive-control",
+  "fixture_id": "positive_chain",
+  "input_source": "synthetic_positive_control",
+  "manifest": "positive_chain/manifest.json",
+  "schema_version": 1
+}

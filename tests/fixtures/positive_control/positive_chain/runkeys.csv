@@ -1,0 +1,2 @@
+Hive,KeyPath,ValueName,ValueData,LastWriteTime
+NTUSER.DAT,Software\Microsoft\Windows\CurrentVersion\Run,SyntheticUpdater,C:\Users\analyst\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\updater.exe,2026-01-01 00:00:04
