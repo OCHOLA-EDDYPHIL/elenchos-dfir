@@ -14,7 +14,7 @@ from siftguard.policy.paths import is_relative_to
 from siftguard.reporting.markdown_report import render_markdown_report
 from siftguard.validation.claims import (
     ClaimValidationResult,
-    candidate_from_subject_timeline,
+    candidates_from_subject_timelines,
     validate_claim_candidates,
 )
 from siftguard.validation.models import EvidenceRef
@@ -356,7 +356,7 @@ def run_correlation_workflow(
         counts={"timeline_count": len(timelines)},
     )
 
-    candidates = [candidate_from_subject_timeline(timeline) for timeline in timelines]
+    candidates = candidates_from_subject_timelines(timelines)
     validation_results: list[ClaimValidationResult] = validate_claim_candidates(candidates)
     findings = [result.finding for result in validation_results]
     _write_json(

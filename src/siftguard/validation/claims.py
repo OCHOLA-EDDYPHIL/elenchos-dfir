@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from siftguard.correlation.models import SubjectTimeline, TimelineEventType
+from siftguard.triage import is_suspicious_path
 from siftguard.validation.models import (
     ClaimStatus,
     Confidence,
@@ -375,13 +376,53 @@ def _timeline_candidate_id(timeline: SubjectTimeline) -> str:
     return f"F-TL-{hashlib.sha256(encoded).hexdigest()[:16]}"
 
 
+def _timeline_event_types(timeline: SubjectTimeline) -> set[TimelineEventType]:
+    return {event.event_type for event in timeline.events}
+
+
+def _timeline_has_suspicious_path(timeline: SubjectTimeline) -> bool:
+    return any(
+        is_suspicious_path(event.path)
+        or is_suspicious_path(event.basename)
+        or is_suspicious_path(event.subject)
+        for event in timeline.events
+    )
+
+
+def should_emit_finding_for_timeline(timeline: SubjectTimeline) -> bool:
+    if not isinstance(timeline, SubjectTimeline):
+        raise TypeError("timeline must be a SubjectTimeline")
+
+    event_types = _timeline_event_types(timeline)
+    high_signal_types = {
+        TimelineEventType.EXECUTION,
+        TimelineEventType.PERSISTENCE,
+    }
+    correlated_signal_types = {TimelineEventType.DROP} | high_signal_types
+    if {
+        TimelineEventType.DROP,
+        TimelineEventType.EXECUTION,
+        TimelineEventType.PERSISTENCE,
+    } <= event_types:
+        return True
+    if len(event_types & correlated_signal_types) >= 2:
+        return True
+    if TimelineEventType.PERSISTENCE in event_types:
+        return True
+    if TimelineEventType.EXECUTION in event_types and _timeline_has_suspicious_path(timeline):
+        return True
+    if timeline.ambiguous and event_types & high_signal_types:
+        return True
+    return False
+
+
 def candidate_from_subject_timeline(timeline: SubjectTimeline) -> ClaimCandidate:
     if not isinstance(timeline, SubjectTimeline):
         raise TypeError("timeline must be a SubjectTimeline")
 
     evidence_refs = timeline.collect_evidence_refs()
     raw_record_refs = _raw_record_refs_from_evidence(evidence_refs)
-    event_types = {event.event_type for event in timeline.events}
+    event_types = _timeline_event_types(timeline)
     finding_id = _timeline_candidate_id(timeline)
 
     if timeline.ambiguous:
@@ -439,3 +480,16 @@ def candidate_from_subject_timeline(timeline: SubjectTimeline) -> ClaimCandidate
         limitations=["Timeline has incomplete event category coverage."],
         source_timeline_subject=timeline.subject,
     )
+
+
+def candidates_from_subject_timelines(
+    timelines: Sequence[SubjectTimeline],
+) -> list[ClaimCandidate]:
+    timeline_list = list(timelines)
+    if not all(isinstance(timeline, SubjectTimeline) for timeline in timeline_list):
+        raise TypeError("timelines must contain only SubjectTimeline instances")
+    return [
+        candidate_from_subject_timeline(timeline)
+        for timeline in timeline_list
+        if should_emit_finding_for_timeline(timeline)
+    ]

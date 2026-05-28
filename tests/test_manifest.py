@@ -73,3 +73,21 @@ def test_build_manifest_roundtrip_and_sorting(tmp_path):
     assert loaded.case_root == manifest.case_root
     assert loaded.artifact_count == manifest.artifact_count
     assert [a.relative_path for a in loaded.artifacts] == rel_paths
+
+
+def test_manifest_accepts_optional_source_image_fields(tmp_path):
+    case_dir = tmp_path / "case"
+    case_dir.mkdir()
+    artifact_path = case_dir / "$MFT"
+    artifact_path.write_text("mft", encoding="utf-8")
+
+    manifest = build_manifest(case_dir, case_id="case_demo_001")
+    manifest.artifacts[0].source_image_id = "primary"
+    manifest.artifacts[0].source_image_label = "primary-base-dc-cdrive"
+    manifest_path = tmp_path / "manifest.json"
+    write_manifest(manifest, manifest_path)
+
+    loaded = read_manifest(manifest_path)
+
+    assert loaded.artifacts[0].source_image_id == "primary"
+    assert loaded.artifacts[0].source_image_label == "primary-base-dc-cdrive"

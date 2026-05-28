@@ -108,6 +108,83 @@ def write_synthetic_manifest(tmp_path: Path) -> tuple[Path, Path, list[Path]]:
     return manifest_path, case_dir, [mft_csv, amcache_csv, runkeys_csv]
 
 
+def write_resource_triage_manifest(tmp_path: Path) -> tuple[Path, Path]:
+    case_dir = tmp_path / "resource-triage-inputs"
+    case_dir.mkdir()
+
+    mft_csv = case_dir / "mftecmd.csv"
+    mft_csv.write_text(
+        "\n".join(
+            [
+                "FullPath,FileName,Created0x10,SHA256,EntryNumber",
+                (
+                    "C:\\Program Files\\Common Files\\ordinary.txt,"
+                    "ordinary.txt,2026-01-01 00:00:01,,1"
+                ),
+                (
+                    "C:\\Users\\Alice\\AppData\\Local\\Temp\\suspicious.exe,"
+                    "suspicious.exe,2026-01-01 00:00:02,,2"
+                ),
+                (
+                    "C:\\Data\\archive-note.txt,"
+                    "archive-note.txt,2026-01-01 00:00:03,,3"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    amcache_csv = case_dir / "amcache.csv"
+    amcache_csv.write_text(
+        "\n".join(
+            [
+                "FilePath,ProgramName,LastModifiedTimeUtc,SHA256",
+                (
+                    "C:\\Users\\Alice\\AppData\\Local\\Temp\\suspicious.exe,"
+                    "suspicious.exe,2026-01-01 00:00:04,"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    runkeys_csv = case_dir / "runkeys.csv"
+    runkeys_csv.write_text(
+        "\n".join(
+            [
+                "Hive,KeyPath,ValueName,ValueData,LastWriteTime",
+                (
+                    "NTUSER.DAT,"
+                    "Software\\Microsoft\\Windows\\CurrentVersion\\Run,"
+                    "Suspicious,"
+                    "C:\\Users\\Alice\\AppData\\Local\\Temp\\suspicious.exe,"
+                    "2026-01-01 00:00:05"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    artifacts = [
+        _artifact(case_dir, mft_csv, "mftecmd_csv", "EV-TRIAGE-MFT-001"),
+        _artifact(case_dir, amcache_csv, "amcacheparser_csv", "EV-TRIAGE-AMCACHE-001"),
+        _artifact(case_dir, runkeys_csv, "recmd_runkeys_csv", "EV-TRIAGE-REG-001"),
+    ]
+    manifest = EvidenceManifest(
+        case_id=CASE_ID,
+        generated_at_utc=FIXED_TIME,
+        case_root=str(case_dir.resolve()),
+        artifact_count=len(artifacts),
+        artifacts=artifacts,
+    )
+    manifest_path = tmp_path / "triage-manifest.json"
+    write_manifest(manifest, manifest_path)
+    return manifest_path, case_dir
+
+
 def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     manifest_path, _case_dir, source_files = write_synthetic_manifest(tmp_path)
     output_dir = tmp_path / "runs" / CASE_ID
@@ -154,6 +231,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     for filename in (
         "agent_run.json",
         "audit.jsonl",
+        "coverage_summary.json",
         "normalized_events.json",
         "subject_timelines.json",
         "findings.json",
@@ -165,11 +243,15 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
     timelines = json.loads((output_dir / "subject_timelines.json").read_text(encoding="utf-8"))
     findings = json.loads((output_dir / "findings.json").read_text(encoding="utf-8"))
     agent_run = json.loads((output_dir / "agent_run.json").read_text(encoding="utf-8"))
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
 
     assert normalized["event_count"] == 4
     assert timelines["timeline_count"] == 1
     assert findings["finding_count"] == 1
+    assert coverage["selection_profile"] == "first-n"
+    assert coverage["normalized_events_written"] == 4
     assert agent_run["status"] == "completed"
+    assert agent_run["event_selection_profile"] == "first-n"
     assert agent_run["max_normalized_events"] is None
     assert agent_run["plan"]["created_at"] == FIXED_TIME
     assert [step["phase"] for step in agent_run["plan"]["steps"]] == EXPECTED_AGENT_PHASES
@@ -204,6 +286,7 @@ def test_agent_runner_bounded_normalized_events_truncates_and_warns(tmp_path: Pa
     for filename in (
         "agent_run.json",
         "audit.jsonl",
+        "coverage_summary.json",
         "normalized_events.json",
         "subject_timelines.json",
         "findings.json",
@@ -212,6 +295,7 @@ def test_agent_runner_bounded_normalized_events_truncates_and_warns(tmp_path: Pa
         assert (output_dir / filename).is_file()
 
     normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
     agent_run = json.loads((output_dir / "agent_run.json").read_text(encoding="utf-8"))
     parse_step = next(step for step in agent_run["steps"] if step["phase"] == "parse")
 
@@ -219,12 +303,223 @@ def test_agent_runner_bounded_normalized_events_truncates_and_warns(tmp_path: Pa
     assert normalized["event_count"] == 2
     assert normalized["limit_reached"] is True
     assert normalized["max_normalized_events"] == 2
+    assert normalized["selection_profile"] == "first-n"
+    assert coverage["max_normalized_events"] == 2
+    assert coverage["selection_profile"] == "first-n"
     assert sum(normalized["parser_artifact_event_counts"].values()) == 2
     assert agent_run["max_normalized_events"] == 2
+    assert agent_run["event_selection_profile"] == "first-n"
     assert parse_step["inputs"]["max_normalized_events"] == 2
+    assert parse_step["inputs"]["event_selection_profile"] == "first-n"
     assert parse_step["outputs"]["bounded"] is True
+    assert parse_step["outputs"]["coverage_summary"] == "coverage_summary.json"
     assert parse_step["outputs"]["event_count"] == 2
     assert parse_step["outputs"]["limit_reached"] is True
+
+
+def test_forensic_triage_preserves_high_signal_events_before_mft_fill(tmp_path: Path):
+    manifest_path, _case_dir = write_resource_triage_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=3,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+
+    normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
+    artifact_ids = [row["artifact_id"] for row in normalized["events"]]
+
+    assert normalized["event_count"] == 3
+    assert normalized["selection_profile"] == "forensic-triage"
+    assert "EV-TRIAGE-REG-001" in artifact_ids
+    assert "EV-TRIAGE-AMCACHE-001" in artifact_ids
+    assert coverage["selection_notes"]["non_mft_preserved"] == 2
+    assert coverage["selection_notes"]["dropped_due_to_cap"] > 0
+
+
+def test_forensic_triage_selection_is_deterministic(tmp_path: Path):
+    manifest_path, _case_dir = write_resource_triage_manifest(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=5,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+    first = (output_dir / "normalized_events.json").read_text(encoding="utf-8")
+
+    run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=5,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+    second = (output_dir / "normalized_events.json").read_text(encoding="utf-8")
+
+    assert first == second
+
+
+def test_forensic_triage_mft_suspicious_paths_outrank_ordinary_mft(tmp_path: Path):
+    case_dir = tmp_path / "mft-only"
+    case_dir.mkdir()
+    mft_csv = case_dir / "mftecmd.csv"
+    mft_csv.write_text(
+        "\n".join(
+            [
+                "FullPath,FileName,Created0x10,SHA256,EntryNumber",
+                "C:\\Data\\ordinary.txt,ordinary.txt,2026-01-01 00:00:01,,1",
+                (
+                    "C:\\Users\\Alice\\AppData\\Local\\Temp\\suspicious.exe,"
+                    "suspicious.exe,2026-01-01 00:00:02,,2"
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = EvidenceManifest(
+        case_id=CASE_ID,
+        generated_at_utc=FIXED_TIME,
+        case_root=str(case_dir.resolve()),
+        artifact_count=1,
+        artifacts=[_artifact(case_dir, mft_csv, "mftecmd_csv", "EV-MFT-ONLY-001")],
+    )
+    manifest_path = tmp_path / "mft-only-manifest.json"
+    write_manifest(manifest, manifest_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=1,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+
+    normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
+
+    assert normalized["events"][0]["path"].endswith("suspicious.exe")
+    assert coverage["selection_notes"]["suspicious_path_selected"] == 1
+    assert coverage["selection_notes"]["deterministic_fill_selected"] == 0
+
+
+def test_missing_optional_artifact_is_coverage_unavailable_not_fatal(tmp_path: Path):
+    case_dir = tmp_path / "missing-optional"
+    case_dir.mkdir()
+    mft_csv = case_dir / "mftecmd.csv"
+    mft_csv.write_text(
+        "\n".join(
+            [
+                "FullPath,FileName,Created0x10,SHA256,EntryNumber",
+                "C:\\Data\\ordinary.txt,ordinary.txt,2026-01-01 00:00:01,,1",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    missing = case_dir / "Amcache.hve"
+    artifacts = [
+        _artifact(case_dir, mft_csv, "mftecmd_csv", "EV-MFT-PRESENT-001"),
+        EvidenceArtifact(
+            artifact_id="EV-AMCACHE-MISSING-001",
+            path=str(missing.resolve()),
+            relative_path="Amcache.hve",
+            size_bytes=0,
+            sha256="0" * 64,
+            artifact_type="amcache",
+            discovered_at_utc=FIXED_TIME,
+            source_image_id="secondary",
+            source_image_label="secondary-win7-nfury-cdrive",
+        ),
+    ]
+    manifest = EvidenceManifest(
+        case_id=CASE_ID,
+        generated_at_utc=FIXED_TIME,
+        case_root=str(case_dir.resolve()),
+        artifact_count=len(artifacts),
+        artifacts=artifacts,
+    )
+    manifest_path = tmp_path / "missing-manifest.json"
+    write_manifest(manifest, manifest_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run = run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        max_normalized_events=10,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
+    missing_coverage = next(
+        item for item in coverage["per_artifact"] if item["artifact_id"] == "EV-AMCACHE-MISSING-001"
+    )
+
+    assert run.status is AgentRunStatus.COMPLETED
+    assert missing_coverage["parser_status"] == "unavailable"
+    assert missing_coverage["source_image_label"] == "secondary-win7-nfury-cdrive"
+
+
+def test_ordinary_mft_only_subjects_do_not_become_findings(tmp_path: Path):
+    case_dir = tmp_path / "ordinary-mft"
+    case_dir.mkdir()
+    mft_csv = case_dir / "mftecmd.csv"
+    mft_csv.write_text(
+        "\n".join(
+            [
+                "FullPath,FileName,Created0x10,SHA256,EntryNumber",
+                "C:\\Data\\ordinary-a.txt,ordinary-a.txt,2026-01-01 00:00:01,,1",
+                "C:\\Data\\ordinary-b.txt,ordinary-b.txt,2026-01-01 00:00:02,,2",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    manifest = EvidenceManifest(
+        case_id=CASE_ID,
+        generated_at_utc=FIXED_TIME,
+        case_root=str(case_dir.resolve()),
+        artifact_count=1,
+        artifacts=[_artifact(case_dir, mft_csv, "mftecmd_csv", "EV-MFT-ORDINARY-001")],
+    )
+    manifest_path = tmp_path / "ordinary-manifest.json"
+    write_manifest(manifest, manifest_path)
+    output_dir = tmp_path / "runs" / CASE_ID
+
+    run_agent_workflow(
+        case_id=CASE_ID,
+        manifest_path=manifest_path,
+        output_dir=output_dir,
+        max_iterations=6,
+        event_selection_profile="forensic-triage",
+        clock=fixed_clock,
+    )
+
+    timelines = json.loads((output_dir / "subject_timelines.json").read_text(encoding="utf-8"))
+    findings = json.loads((output_dir / "findings.json").read_text(encoding="utf-8"))
+
+    assert timelines["timeline_count"] == 2
+    assert findings["finding_count"] == 0
+    assert findings["findings"] == []
 
 
 def test_agent_runner_writes_agent_audit_events(tmp_path: Path):
@@ -475,5 +770,6 @@ def test_agent_cli_help_does_not_expose_shell_execution_options(capsys):
     assert "--manifest" in help_text
     assert "--output-dir" in help_text
     assert "--max-normalized-events" in help_text
+    assert "--event-selection-profile" in help_text
     for forbidden in ("--shell", "--command", "--cmd", "--argv", "--executable"):
         assert forbidden not in help_text

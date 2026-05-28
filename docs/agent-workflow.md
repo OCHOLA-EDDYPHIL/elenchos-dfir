@@ -9,7 +9,7 @@ outputs, applies safe self-correction where possible, and records traceable
 artifacts.
 
 The goal is analyst-assist triage with audit-visible decisions, not autonomous
-or courtroom-ready forensic proof.
+proof.
 
 ## Workflow
 
@@ -114,8 +114,8 @@ The runner may also write intermediate generated outputs such as
 
 SIFTGuard is triage and analyst-assist tooling. It helps make deterministic
 workflow execution, evidence grounding, verification, correction, and audit
-visibility explicit. It does not make courtroom-ready forensic claims by
-itself, and analyst review remains required.
+visibility explicit. It does not make final forensic claims by itself, and
+analyst review remains required.
 
 Unsupported findings become `needs_review` rather than final certainty. The
 workflow depends on validated inputs, constrained execution, and careful local

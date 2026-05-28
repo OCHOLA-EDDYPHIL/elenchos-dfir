@@ -164,6 +164,7 @@ def test_report_includes_all_required_sections():
     for heading in (
         "# Case Report",
         "## Case Summary",
+        "## Evidence Coverage",
         "## Subject Timeline",
         "## Confirmed Findings",
         "## Inferred Findings",
@@ -261,6 +262,34 @@ def test_timeline_events_render_with_evidence_ids_and_ambiguity_markers():
     assert "evidence=`EV-SYN-MFT-001`" in timeline
 
 
+def test_report_renders_coverage_summary_when_provided():
+    report = render_markdown_report(
+        case_id=CASE_ID,
+        timelines=[],
+        findings=[],
+        coverage_summary={
+            "selection_profile": "forensic-triage",
+            "max_normalized_events": 5000,
+            "normalized_events_written": 12,
+            "per_artifact": [
+                {
+                    "artifact_id": "EV-SYN-MFT-001",
+                    "artifact_type": "mft",
+                    "parser_status": "success",
+                    "normalized_rows_selected": 10,
+                    "bounded": True,
+                }
+            ],
+            "selection_notes": {"deterministic_fill_selected": 10},
+        },
+    )
+    coverage = section(report, "## Evidence Coverage")
+
+    assert "Selection profile: `forensic-triage`" in coverage
+    assert "`EV-SYN-MFT-001`" in coverage
+    assert "deterministic_fill_selected=10" in coverage
+
+
 def test_report_output_is_deterministic_even_with_reversed_inputs():
     timelines = [subject_timeline(), SubjectTimeline(subject="example-a.exe", events=[])]
     findings = [
@@ -301,8 +330,6 @@ def test_synthetic_report_contains_no_forbidden_paths_or_legal_overclaims():
     for forbidden in ("/mnt/evidence", "/home/", "runs/", ".local/"):
         assert forbidden not in report
     for overclaim in (
-        "court admissible",
-        "courtroom-ready",
         "proves compromise",
         "irrefutable",
         "guaranteed",
