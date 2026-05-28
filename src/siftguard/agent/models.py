@@ -499,6 +499,7 @@ class AgentRun:
     max_iterations: int
     max_normalized_events: int | None = None
     event_selection_profile: str = "first-n"
+    input_source: str | None = None
     steps: list[AgentStep] = field(default_factory=list)
     corrections: list[AgentCorrection] = field(default_factory=list)
     completed_at: datetime | str | None = None
@@ -533,6 +534,7 @@ class AgentRun:
             "event_selection_profile",
             self.event_selection_profile,
         )
+        self.input_source = _validate_optional_string("input_source", self.input_source)
         self.steps = _validate_steps(self.steps)
         self.corrections = _validate_corrections(self.corrections)
         self.output_refs = _validate_output_refs(self.output_refs)
@@ -551,6 +553,7 @@ class AgentRun:
             "max_iterations": self.max_iterations,
             "max_normalized_events": self.max_normalized_events,
             "event_selection_profile": self.event_selection_profile,
+            "input_source": self.input_source,
             "steps": [step.to_dict() for step in self.steps],
             "corrections": [correction.to_dict() for correction in self.corrections],
             "output_refs": dict(self.output_refs),
@@ -573,6 +576,7 @@ class AgentRun:
             max_iterations=data["max_iterations"],
             max_normalized_events=data.get("max_normalized_events"),
             event_selection_profile=data.get("event_selection_profile", "first-n"),
+            input_source=data.get("input_source"),
             steps=[AgentStep.from_dict(step) for step in data.get("steps", [])],
             corrections=[
                 AgentCorrection.from_dict(correction)

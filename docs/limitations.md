@@ -43,6 +43,15 @@ they cannot alone establish execution, user action, or maliciousness.
   then selects high-volume MFT observations by deterministic path, anchor-time,
   and fill rules. The selection policy is coverage triage, not a malware
   detection rule.
+- Controlled positive fixtures prove that the correlation and validation
+  pipeline can emit a supportable finding when a synthetic full chain is
+  present. They do not prove real-world prevalence in local evidence.
+- Controlled self-correction fixtures prove downgrade and audit behavior for an
+  induced unsupported claim. They are separate from primary evidence accuracy
+  results.
+- The real staged primary run did not emit confirmed or inferred compromise
+  findings. Its final result remains bounded `needs_review` triage with no
+  MFT-only findings.
 - Ordinary single-source MFT timelines remain timeline and coverage evidence.
   They are not findings unless correlation or validation rules create a
   supportable candidate.

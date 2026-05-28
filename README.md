@@ -240,6 +240,39 @@ Read an audit ledger summary:
 .venv/bin/python -m siftguard audit-read "$RUN_DIR/agent-run/audit.jsonl"
 ```
 
+## Controlled Validation Fixtures
+
+The repository includes tiny synthetic fixtures that exercise the same
+deterministic agent workflow without raw evidence. They are controlled
+validation inputs, not real compromise claims.
+
+Positive-control fixture:
+
+```bash
+rm -rf runs/case_positive-control
+.venv/bin/python -m siftguard agent run-fixture \
+  --case-id case_positive-control \
+  --fixture tests/fixtures/positive_control/positive_chain.json \
+  --output-dir runs/case_positive-control/agent-run \
+  --max-iterations 7
+```
+
+Self-correction fixture:
+
+```bash
+rm -rf runs/case_self-correction-control
+.venv/bin/python -m siftguard agent run-fixture \
+  --case-id case_self-correction-control \
+  --fixture tests/fixtures/positive_control/unsupported_claim.json \
+  --output-dir runs/case_self-correction-control/agent-run \
+  --max-iterations 7
+```
+
+The positive-control fixture contains a synthetic drop / execution /
+persistence chain and should emit one `inferred` finding. The self-correction
+fixture introduces an unsupported proposed claim and should record correction
+events while downgrading the final status to `needs_review`.
+
 ## Output And Evidence Safety
 
 - Evidence remains local-only and should be mounted or staged read-only.
