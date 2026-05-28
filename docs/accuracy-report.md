@@ -2,13 +2,14 @@
 
 ## Status
 
-Finalized for issue #112 validation snapshot: positive-control detection,
-resource-adaptive conservative triage, and audited self-correction.
+Finalized for submission snapshot: resource-adaptive bounded triage +
+controlled positive detection + audited self-correction.
 
 This report records three separate validation cases. The controlled positive
 and self-correction cases are synthetic fixtures that prove pipeline behavior.
 The real staged primary case remains the local SIFT evidence result and is
-reported as bounded triage, not exhaustive ground-truth recall.
+reported as bounded triage, not exhaustive ground-truth recall. Controlled
+fixtures are synthetic validation controls, not real compromise claims.
 
 ## Validation Method
 
@@ -62,7 +63,9 @@ Sanitized result:
 
 Conclusion: when the evidence contains a coherent drop / execution /
 persistence chain, SIFTGuard emits one grouped supportable `inferred` finding.
-The result is not represented as real compromise in the primary evidence.
+The positive-control fixture emitted 1 inferred finding, and its evidence
+categories were MFT, Registry, and Amcache. The result is not represented as
+real compromise in the primary evidence.
 
 ## Real Primary Conservative Triage
 
@@ -112,7 +115,9 @@ Coverage summary:
 
 Conclusion: incomplete or ambiguous real evidence produces bounded
 `needs_review` triage. Ordinary MFT-only timelines remain in timeline and
-coverage data instead of being inflated into findings.
+coverage data instead of being inflated into findings. The real primary
+evidence emitted 128 `needs_review` findings, 0 confirmed, 0 inferred, 0
+rejected, and 0 MFT-only findings. It does not claim confirmed compromise.
 
 ## Self-Correction Control
 
@@ -152,7 +157,9 @@ Sanitized result:
 
 Conclusion: when an unsupported stronger claim is introduced, the verifier
 detects missing support, the self-correction path downgrades the claim to
-`needs_review`, and the audit trail records the correction.
+`needs_review`, and the audit trail records the correction. The self-correction
+control produced correction records and downgraded unsupported claims to
+`needs_review`.
 
 ## False Positives And Unsupported Claims
 
