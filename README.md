@@ -112,6 +112,38 @@ Expected output:
   artifact classifications.
 - A printed SHA256 digest for `hash`.
 
+## Case Preparation
+
+For E01-backed cases, SIFTGuard can discover sources and prepare the supported
+artifact set itself. Analysts should not hand-author the prepared artifact
+manifest consumed by later workflows.
+
+Source-root discovery writes a local JSON source manifest under ignored
+`.local/` and writes generated case-prep outputs under ignored run paths:
+
+```bash
+.venv/bin/python -m siftguard case prepare \
+  --case-id "$CASE_ID" \
+  --source-root "<SOURCE_ROOT>" \
+  --source-manifest-out ".local/cases/$CASE_ID/source-manifest.json" \
+  --output-dir "$RUN_DIR/case-prep"
+```
+
+An existing JSON source manifest can be reused:
+
+```bash
+.venv/bin/python -m siftguard case prepare \
+  --case-id "$CASE_ID" \
+  --source-manifest ".local/cases/$CASE_ID/source-manifest.json" \
+  --output-dir "$RUN_DIR/case-prep"
+```
+
+Expected outputs include `case_prep.json`, `source_manifest.json`,
+`source_image_manifest.json`, `extraction_audit.jsonl`, `warnings.json`, and
+available extracted artifacts under `extracted/`. Memory sources are staged and
+inventoried only for the final submission scope. Amcache preparation searches
+the disk image first for `Windows/AppCompat/Programs/Amcache.hve`.
+
 ## Parser Workflow
 
 The parser commands are implemented, but they require locally staged artifacts
