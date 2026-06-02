@@ -235,6 +235,26 @@ The constrained agent workflow runs the deterministic SIFTGuard pipeline around
 an evidence manifest or supported parser-output manifest. With raw artifacts, it
 requires the same staged evidence and SIFT parser tools as the parser workflow.
 
+For E01-backed cases prepared by SIFTGuard, use the generated
+`case_prep.json` from `case prepare`; analysts do not hand-author the prepared
+artifact manifest. Memory source records are preserved as inventory/provenance
+only and are not analyzed in the final submission scope.
+
+```bash
+.venv/bin/python -m siftguard agent run-case \
+  --artifact-manifest "$RUN_DIR/case-prep/case_prep.json" \
+  --casebook "docs/casebooks/$CASE_ID.json" \
+  --output-dir "$RUN_DIR/agent-run" \
+  --max-iterations 10 \
+  --max-normalized-events 5000 \
+  --event-selection-profile forensic-triage
+```
+
+The `--casebook` argument is optional until the JSON casebook is available. YAML
+casebooks are not supported in the final sprint. `agent run-case` carries
+case-prep coverage gaps forward, keeps memory out of scope, and applies the
+same disk-first Amcache scope established during case preparation.
+
 ```bash
 .venv/bin/python -m siftguard agent run \
   --case-id "$CASE_ID" \
@@ -254,6 +274,9 @@ Expected agent outputs:
 - `$RUN_DIR/agent-run/subject_timelines.json`
 - `$RUN_DIR/agent-run/findings.json`
 - `$RUN_DIR/agent-run/report.md`
+- `$RUN_DIR/agent-run/decision_trace.json` for `agent run-case`
+- `$RUN_DIR/agent-run/gap_analysis.json` for `agent run-case`
+- `$RUN_DIR/agent-run/performance_summary.json` for `agent run-case`
 
 The agent records plan, execute, verify, correct, and report phases. Unsupported
 or internally inconsistent outputs are downgraded, retried through constrained

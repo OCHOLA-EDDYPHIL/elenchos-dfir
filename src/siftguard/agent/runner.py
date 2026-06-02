@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -518,6 +518,37 @@ def _append_agent_audit(
     )
 
 
+def _append_agent_audit_prelude(
+    context: AgentWorkflowContext,
+    *,
+    run_id: str,
+    events: list[dict[str, Any]] | None,
+) -> None:
+    for event in events or []:
+        event_type = event.get("event_type")
+        if not isinstance(event_type, str) or not event_type:
+            raise ValueError("audit prelude event_type must be a non-empty string")
+        status = event.get("status", "completed")
+        if not isinstance(status, str) or not status:
+            raise ValueError("audit prelude status must be a non-empty string")
+        output_refs = event.get("output_refs")
+        if output_refs is not None and not isinstance(output_refs, dict):
+            raise ValueError("audit prelude output_refs must be a dictionary")
+        extra = event.get("extra")
+        if extra is not None and not isinstance(extra, dict):
+            raise ValueError("audit prelude extra must be a dictionary")
+        append_agent_audit_event(
+            context.paths.audit_path,
+            event_type=event_type,
+            case_id=context.case_id,
+            run_id=run_id,
+            status=status,
+            output_refs=output_refs,
+            extra=extra,
+            clock=context.clock,
+        )
+
+
 def _artifact_type_counts(artifacts: list[EvidenceArtifact]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for artifact in artifacts:
@@ -757,10 +788,14 @@ def _raw_parser_rows(
     max_events: int | None = None,
 ) -> ArtifactRows:
     evidence_root = Path(context.manifest.case_root).resolve()
+    resolved_artifact = replace(
+        artifact,
+        path=str(_artifact_path(context.manifest, artifact)),
+    )
     if artifact.artifact_type == "mft":
         result = parse_mft_artifact(
             case_id=context.case_id,
-            artifact=artifact,
+            artifact=resolved_artifact,
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
@@ -769,7 +804,7 @@ def _raw_parser_rows(
     elif artifact.artifact_type in {"registry", "registry_hive"}:
         result = parse_registry_runkeys_artifact(
             case_id=context.case_id,
-            artifact=artifact,
+            artifact=resolved_artifact,
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
@@ -778,7 +813,7 @@ def _raw_parser_rows(
     elif artifact.artifact_type == "amcache":
         result = parse_amcache_artifact(
             case_id=context.case_id,
-            artifact=artifact,
+            artifact=resolved_artifact,
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
@@ -886,9 +921,13 @@ def _forensic_triage_rows_for_artifact(
 
     if artifact.artifact_type == "mft":
         evidence_root = Path(context.manifest.case_root).resolve()
+        resolved_artifact = replace(
+            artifact,
+            path=str(_artifact_path(context.manifest, artifact)),
+        )
         result = parse_mft_artifact_for_triage(
             case_id=context.case_id,
-            artifact=artifact,
+            artifact=resolved_artifact,
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
@@ -1564,6 +1603,7 @@ def run_agent_workflow(
     input_source: str | None = None,
     fixture_id: str | None = None,
     induced_findings: list[dict[str, Any]] | None = None,
+    audit_prelude_events: list[dict[str, Any]] | None = None,
     clock: Clock = utc_now,
 ) -> AgentRun:
     case_id = _require_non_empty_string("case_id", case_id)
@@ -1587,10 +1627,11 @@ def run_agent_workflow(
     _clear_previous_agent_outputs(paths)
 
     started_at = clock()
+    run_id = f"run_{case_id}"
     plan = build_default_agent_plan(case_id, created_at=started_at)
     state = AgentState(case_id=case_id, final_status=AgentRunStatus.RUNNING)
     run = AgentRun(
-        run_id=f"run_{case_id}",
+        run_id=run_id,
         case_id=case_id,
         status=AgentRunStatus.RUNNING,
         plan=plan,
@@ -1614,6 +1655,11 @@ def run_agent_workflow(
         induced_findings=[dict(finding) for finding in induced_findings or []],
     )
 
+    _append_agent_audit_prelude(
+        context,
+        run_id=run.run_id,
+        events=audit_prelude_events,
+    )
     _append_agent_audit(
         context,
         action="agent_run_started",
