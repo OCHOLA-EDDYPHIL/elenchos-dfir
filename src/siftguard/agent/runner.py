@@ -46,6 +46,7 @@ from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import is_relative_to
 from siftguard.reporting.markdown_report import render_markdown_report
 from siftguard.triage import (
+    CASE_WINDOW,
     EVENT_SELECTION_FIRST_N,
     EVENT_SELECTION_FORENSIC_TRIAGE,
     TriageAnchors,
@@ -154,6 +155,7 @@ class AgentWorkflowContext:
     coverage_artifacts: list[dict[str, Any]] = field(default_factory=list)
     coverage_summary: dict[str, Any] = field(default_factory=dict)
     selection_counts: dict[str, int] = field(default_factory=empty_selection_counts)
+    case_windows: tuple[CASE_WINDOW, ...] = ()
 
 
 def _require_non_empty_string(name: str, value: str) -> str:
@@ -933,6 +935,7 @@ def _forensic_triage_rows_for_artifact(
             ledger_path=context.paths.audit_path,
             max_events=max_events,
             anchors=anchors,
+            case_windows=context.case_windows,
         )
         warnings = [f"{artifact.artifact_id}: {warning}" for warning in result.warnings]
         errors = [f"{artifact.artifact_id}: {error}" for error in result.errors]
@@ -1604,6 +1607,7 @@ def run_agent_workflow(
     fixture_id: str | None = None,
     induced_findings: list[dict[str, Any]] | None = None,
     audit_prelude_events: list[dict[str, Any]] | None = None,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
     clock: Clock = utc_now,
 ) -> AgentRun:
     case_id = _require_non_empty_string("case_id", case_id)
@@ -1653,6 +1657,7 @@ def run_agent_workflow(
         input_source=input_source,
         fixture_id=fixture_id,
         induced_findings=[dict(finding) for finding in induced_findings or []],
+        case_windows=case_windows,
     )
 
     _append_agent_audit_prelude(
