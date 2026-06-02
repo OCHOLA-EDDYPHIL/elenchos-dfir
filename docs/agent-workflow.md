@@ -44,6 +44,26 @@ plan -> execute -> verify -> correct -> report
 The constrained entrypoint is:
 
 ```bash
+.venv/bin/python -m siftguard agent run-case \
+  --artifact-manifest runs/CASE-ID/case-prep/case_prep.json \
+  --casebook docs/casebooks/CASE-ID.json \
+  --output-dir runs/CASE-ID/agent-run \
+  --max-iterations 10 \
+  --max-normalized-events 5000 \
+  --event-selection-profile forensic-triage
+```
+
+`agent run-case` is the manifest-first path after `siftguard case prepare`.
+It consumes the SIFTGuard-generated `case_prep.json`, adapts available
+parser-eligible artifacts into the deterministic agent workflow, preserves
+source provenance, and carries case-prep coverage gaps forward. The casebook is
+optional for now and must be JSON when provided; YAML casebooks are rejected.
+Memory sources from `case_prep.json` remain inventoried/not assessed for final
+scope, and Amcache remains disk-first from the prepared artifact set.
+
+The lower-level manifest entrypoint remains available:
+
+```bash
 .venv/bin/python -m siftguard agent run \
   --case-id CASE-ID \
   --manifest runs/CASE-ID/manifest.json \
@@ -104,11 +124,17 @@ directory:
 
 - `agent_run.json`
 - `audit.jsonl`
+- `coverage_summary.json`
+- `normalized_events.json`
+- `subject_timelines.json`
 - `findings.json`
 - `report.md`
+- `decision_trace.json` for `agent run-case`
+- `gap_analysis.json` for `agent run-case`
+- `performance_summary.json` for `agent run-case`
 
-The runner may also write intermediate generated outputs such as
-`normalized_events.json` and `subject_timelines.json`.
+`agent run-case` writes the extra decision, gap, and performance files as
+basic initial structures for later #117/#119 expansion.
 
 ## Limitations
 
