@@ -49,6 +49,34 @@ than one local image. These labels are for coverage accounting only. Do not mix
 artifacts from different hosts into a single incident narrative unless that
 relationship is independently supported.
 
+## E01 Case Preparation
+
+For E01-backed cases, prefer SIFTGuard case preparation over hand-authored
+prepared artifact manifests. Source-root mode discovers local sources and writes
+a JSON source manifest under ignored `.local/`:
+
+```bash
+.venv/bin/python -m siftguard case prepare \
+  --case-id <CASE_ID> \
+  --source-root <SOURCE_ROOT> \
+  --source-manifest-out .local/cases/<CASE_ID>/source-manifest.json \
+  --output-dir runs/<CASE_ID>/case-prep
+```
+
+The same JSON source manifest can be reused later:
+
+```bash
+.venv/bin/python -m siftguard case prepare \
+  --case-id <CASE_ID> \
+  --source-manifest .local/cases/<CASE_ID>/source-manifest.json \
+  --output-dir runs/<CASE_ID>/case-prep
+```
+
+The generated `case_prep.json` is the prepared artifact manifest for downstream
+workflows. The final submission scope remains disk-first: memory images are
+inventoried as staged but out of scope, and Amcache is searched from the disk
+path `Windows/AppCompat/Programs/Amcache.hve`.
+
 ## Local Config
 
 The parser validation harness can read local paths from an ignored `.local`
