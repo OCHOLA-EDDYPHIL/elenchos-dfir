@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+GENERATED_OUTPUT_PARTS = {"runs", "outputs", "analysis"}
+MOUNTED_EVIDENCE_ROOT = Path("/mnt/evidence")
+
 
 def is_relative_to(child: Path, parent: Path) -> bool:
     try:
@@ -55,3 +58,55 @@ def validate_output_path(
         assert_not_inside_evidence_output(resolved_output, evidence_root)
 
     return resolved_output
+
+
+def is_generated_output_path(path: Path) -> bool:
+    parts = tuple(part.casefold() for part in path.resolve().parts)
+    if any(part in GENERATED_OUTPUT_PARTS for part in parts):
+        return True
+    return any(
+        left == "reports" and right == "generated"
+        for left, right in zip(parts, parts[1:], strict=False)
+    )
+
+
+def generated_output_display_path(path: Path) -> str:
+    resolved = path.resolve()
+    parts = tuple(resolved.parts)
+    lowered = tuple(part.casefold() for part in parts)
+
+    for index, part in enumerate(lowered):
+        if part in GENERATED_OUTPUT_PARTS:
+            return Path(*parts[index:]).as_posix()
+        if (
+            part == "reports"
+            and index + 1 < len(lowered)
+            and lowered[index + 1] == "generated"
+        ):
+            return Path(*parts[index:]).as_posix()
+    return resolved.name
+
+
+def validate_generated_output_dir(
+    output_dir: Path,
+    *,
+    forbidden_roots: list[Path] | tuple[Path, ...] = (),
+    evidence_root: Path = MOUNTED_EVIDENCE_ROOT,
+) -> Path:
+    resolved = output_dir.resolve()
+    cwd = Path.cwd().resolve()
+
+    if resolved == cwd:
+        raise ValueError("output_dir must not be the repository root")
+    if is_relative_to(resolved, evidence_root):
+        raise ValueError(f"output_dir must not be under evidence root '{evidence_root}'")
+    for root in forbidden_roots:
+        resolved_root = root.resolve()
+        if is_relative_to(resolved, resolved_root):
+            raise ValueError(f"output_dir must not be inside source root '{resolved_root}'")
+    if not is_generated_output_path(resolved):
+        raise ValueError(
+            "output_dir must be under an ignored generated output path such as "
+            "runs/, outputs/, analysis/, or reports/generated/"
+        )
+    return resolved
