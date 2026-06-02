@@ -255,6 +255,15 @@ casebooks are not supported in the final sprint. `agent run-case` carries
 case-prep coverage gaps forward, keeps memory out of scope, and applies the
 same disk-first Amcache scope established during case preparation.
 
+With a JSON casebook, `agent run-case` also writes case-question summaries and
+strict finding statuses. `confirmed` requires multiple supported artifacts with
+evidence references and same-source provenance, `inferred` requires independent
+supported evidence, `needs_review` marks weak or ambiguous support, `rejected`
+marks contradicted claims, and `not_assessed` marks unsupported questions. Memory,
+theft contents, transfer destination, and exfiltration method questions are
+`not_assessed` under the current final scope unless direct parsed evidence is
+added later.
+
 ```bash
 .venv/bin/python -m siftguard agent run \
   --case-id "$CASE_ID" \
@@ -274,6 +283,7 @@ Expected agent outputs:
 - `$RUN_DIR/agent-run/subject_timelines.json`
 - `$RUN_DIR/agent-run/findings.json`
 - `$RUN_DIR/agent-run/report.md`
+- `$RUN_DIR/agent-run/case_questions.json` for `agent run-case`
 - `$RUN_DIR/agent-run/decision_trace.json` for `agent run-case`
 - `$RUN_DIR/agent-run/gap_analysis.json` for `agent run-case`
 - `$RUN_DIR/agent-run/performance_summary.json` for `agent run-case`

@@ -308,6 +308,7 @@ def test_run_case_loads_synthetic_case_prep_and_writes_outputs(tmp_path: Path):
         "subject_timelines.json",
         "findings.json",
         "report.md",
+        "case_questions.json",
         "decision_trace.json",
         "gap_analysis.json",
         "performance_summary.json",
@@ -551,6 +552,7 @@ def test_run_case_outputs_do_not_expose_arbitrary_shell_fields(tmp_path: Path):
         (output_dir / filename).read_text(encoding="utf-8")
         for filename in (
             "agent_run.json",
+            "case_questions.json",
             "decision_trace.json",
             "gap_analysis.json",
             "performance_summary.json",
@@ -579,6 +581,74 @@ def test_json_casebook_input_is_accepted(tmp_path: Path):
     assert result.casebook_path == casebook_path.resolve()
     assert gap_analysis["casebook_present"] is True
     assert gap_analysis["case_questions_count"] == 1
+    assert (output_dir / "case_questions.json").is_file()
+
+
+def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Path):
+    case_prep_path, _case_prep_dir, _source_root = write_case_prep(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+
+    run_case_workflow(
+        artifact_manifest_path=case_prep_path,
+        casebook_path=Path("docs/casebooks/rocba-standard.json"),
+        output_dir=output_dir,
+        max_iterations=10,
+        workflow_runner=fake_workflow_runner,
+        clock=fixed_clock,
+    )
+
+    case_questions = json.loads(
+        (output_dir / "case_questions.json").read_text(encoding="utf-8")
+    )
+    gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
+    decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+
+    assert case_questions["casebook_id"] == CASE_ID
+    assert {question["question_id"] for question in case_questions["questions"]} >= {
+        "q_memory",
+        "q_what_was_stolen",
+        "q_where_transferred",
+        "q_how_stolen",
+    }
+    assert {
+        question["status"]
+        for question in case_questions["questions"]
+        if question["question_id"] in {"q_memory", "q_what_was_stolen"}
+    } == {"not_assessed"}
+    assert gap_analysis["case_questions"]
+    assert "not_assessed" in gap_analysis["status_counts"]
+    decision_ids = {decision["decision_id"] for decision in decision_trace["decisions"]}
+    assert {
+        "casebook_intake",
+        "provenance_verification",
+        "validation_strategy",
+        "correction_strategy",
+        "case_question_mapping",
+        "finding_status_assignment",
+        "unsupported_question_gap_handling",
+    } <= decision_ids
+    for decision in decision_trace["decisions"]:
+        assert {
+            "decision_id",
+            "phase",
+            "question",
+            "available_inputs",
+            "selected_action",
+            "rationale",
+            "expected_outputs",
+            "outcome",
+            "next_action",
+        } <= set(decision)
+    for heading in (
+        "## Case Questions Summary",
+        "## Supported Findings",
+        "## Needs Review",
+        "## Not Assessed / Scope Gaps",
+        "## Evidence Provenance Summary",
+        "## Analyst Next Steps",
+    ):
+        assert heading in report
 
 
 def test_yaml_casebook_input_is_rejected(tmp_path: Path):

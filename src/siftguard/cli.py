@@ -520,6 +520,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"output_dir={summary['output_dir']}")
             print(f"agent_run={summary['agent_run']}")
             print(f"audit={summary['audit']}")
+            print(f"case_questions={summary['case_questions']}")
             print(f"decision_trace={summary['decision_trace']}")
             print(f"gap_analysis={summary['gap_analysis']}")
             print(f"performance_summary={summary['performance_summary']}")
