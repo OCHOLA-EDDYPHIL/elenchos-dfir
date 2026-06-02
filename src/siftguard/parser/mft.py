@@ -19,6 +19,7 @@ from siftguard.parser.result import ParserResult
 from siftguard.runner.subprocess_runner import run_command
 from siftguard.runner.tool_result import ToolResult
 from siftguard.triage import (
+    CASE_WINDOW,
     SELECTION_REASON_ORDER,
     TriageAnchors,
     classify_selection_reason,
@@ -323,6 +324,7 @@ def _events_for_row(
 def _row_selection_reason(
     row_events: list[ParserEvent],
     anchors: TriageAnchors,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> str:
     path = next((event.path for event in row_events if event.path), None)
     timestamp = next(
@@ -333,7 +335,12 @@ def _row_selection_reason(
         ),
         None,
     )
-    return classify_selection_reason(path=path, timestamp=timestamp, anchors=anchors)
+    return classify_selection_reason(
+        path=path,
+        timestamp=timestamp,
+        anchors=anchors,
+        case_windows=case_windows,
+    )
 
 
 def normalize_mftecmd_csv(
@@ -404,6 +411,7 @@ def select_mftecmd_csv_for_triage(
     artifact_id: str,
     max_events: int | None,
     anchors: TriageAnchors,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> MftTriageSelectionResult:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
@@ -475,7 +483,7 @@ def select_mftecmd_csv_for_triage(
                 selected_events.extend(row_events)
                 continue
 
-            reason = _row_selection_reason(row_events, anchors)
+            reason = _row_selection_reason(row_events, anchors, case_windows)
             bucket = buckets[reason]
             available = max_events - len(bucket)
             if available <= 0:
@@ -684,6 +692,7 @@ def parse_mft_for_triage(
     artifact_type: str = EXPECTED_ARTIFACT_TYPE,
     max_events: int | None = None,
     anchors: TriageAnchors | None = None,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> ParserResult:
     _require_non_empty(case_id, "case_id")
     _require_non_empty(artifact_id, "artifact_id")
@@ -767,6 +776,7 @@ def parse_mft_for_triage(
             artifact_id=artifact_id,
             max_events=max_events,
             anchors=anchors or TriageAnchors(),
+            case_windows=case_windows,
         )
         events = selection.events
         warnings = selection.warnings
@@ -868,6 +878,7 @@ def parse_mft_artifact_for_triage(
     runner: Runner | None = None,
     max_events: int | None = None,
     anchors: TriageAnchors | None = None,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> ParserResult:
     if artifact.artifact_type != EXPECTED_ARTIFACT_TYPE:
         raise ValueError(
@@ -886,4 +897,5 @@ def parse_mft_artifact_for_triage(
         artifact_type=artifact.artifact_type,
         max_events=max_events,
         anchors=anchors,
+        case_windows=case_windows,
     )

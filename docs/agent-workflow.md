@@ -61,6 +61,29 @@ optional for now and must be JSON when provided; YAML casebooks are rejected.
 Memory sources from `case_prep.json` remain inventoried/not assessed for final
 scope, and Amcache remains disk-first from the prepared artifact set.
 
+When a JSON casebook is provided, `agent run-case` maps normalized MFT,
+Amcache, and Registry Run/RunOnce evidence to explicit case questions. Statuses
+are intentionally strict:
+
+- `confirmed`: direct case context plus multiple supported artifacts with
+  evidence references and same-source provenance.
+- `inferred`: at least two independent supported evidence references or an
+  already validated inferred finding with matching casebook context.
+- `needs_review`: relevant evidence exists, but it is weak, single-source,
+  ambiguous, or context-dependent.
+- `not_assessed`: the question requires unsupported artifacts or staged memory.
+- `rejected`: a proposed claim was contradicted or failed validation.
+
+`not_assessed` is deliberate, not a workflow failure. Under the current final
+scope, memory, theft contents, transfer destination, and exfiltration method
+questions remain `not_assessed` unless future supported parsers produce direct
+evidence.
+
+Casebooks may include an optional `triage_profile` with `keywords`,
+`sensitive_paths`, and `file_extensions` to prioritize file-candidate review.
+These profile values are analyst-provided hints only; they do not prove theft,
+exfiltration, compromise, or any unsupported claim.
+
 The lower-level manifest entrypoint remains available:
 
 ```bash
@@ -129,12 +152,17 @@ directory:
 - `subject_timelines.json`
 - `findings.json`
 - `report.md`
+- `case_questions.json` for `agent run-case`
 - `decision_trace.json` for `agent run-case`
 - `gap_analysis.json` for `agent run-case`
 - `performance_summary.json` for `agent run-case`
 
-`agent run-case` writes the extra decision, gap, and performance files as
-basic initial structures for later #117/#119 expansion.
+`case_questions.json` records the casebook question status, linked evidence,
+and recommended manual review. `decision_trace.json` records concise product
+reasoning for manifest intake, provenance checks, casebook handling, scope
+selection, parser planning, validation, correction, case-question mapping,
+status assignment, and report generation. `gap_analysis.json` carries case-prep
+gaps forward and links unsupported areas back to the same question IDs.
 
 ## Limitations
 

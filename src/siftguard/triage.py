@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 JSON_ROW = dict[str, Any]
+CASE_WINDOW = tuple[datetime, datetime]
 
 EVENT_SELECTION_FIRST_N = "first-n"
 EVENT_SELECTION_FORENSIC_TRIAGE = "forensic-triage"
@@ -48,6 +49,7 @@ SELECTION_REASON_ORDER = (
     "anchor_path_selected",
     "suspicious_path_selected",
     "anchor_window_selected",
+    "case_window_selected",
     "deterministic_fill_selected",
 )
 EMPTY_SELECTION_COUNTS = {
@@ -55,6 +57,7 @@ EMPTY_SELECTION_COUNTS = {
     "anchor_path_selected": 0,
     "suspicious_path_selected": 0,
     "anchor_window_selected": 0,
+    "case_window_selected": 0,
     "deterministic_fill_selected": 0,
     "dropped_due_to_cap": 0,
 }
@@ -155,6 +158,7 @@ def classify_selection_reason(
     path: str | None,
     timestamp: datetime | None,
     anchors: TriageAnchors,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> str:
     if path is not None:
         key = path_key(path)
@@ -167,6 +171,8 @@ def classify_selection_reason(
         abs(timestamp - anchor) <= ANCHOR_WINDOW for anchor in anchors.timestamps
     ):
         return "anchor_window_selected"
+    if timestamp is not None and any(start <= timestamp <= end for start, end in case_windows):
+        return "case_window_selected"
     return "deterministic_fill_selected"
 
 
@@ -179,6 +185,7 @@ def select_event_rows_for_triage(
     *,
     max_events: int | None,
     anchors: TriageAnchors,
+    case_windows: tuple[CASE_WINDOW, ...] = (),
 ) -> EventSelectionResult:
     if max_events is None:
         return EventSelectionResult(
@@ -197,6 +204,7 @@ def select_event_rows_for_triage(
             path=path_from_event_row(row),
             timestamp=timestamp_from_row(row),
             anchors=anchors,
+            case_windows=case_windows,
         )
         if len(buckets[reason]) < max_events:
             buckets[reason].append(row)

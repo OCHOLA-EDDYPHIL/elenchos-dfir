@@ -12,7 +12,20 @@ from siftguard.agent.case_manifest_adapter import (
     AdaptedCaseManifest,
     adapt_case_prep_to_evidence_manifest,
 )
-from siftguard.agent.models import BLOCKED_EXECUTION_KEYS, AgentRun
+from siftguard.agent.case_questions import (
+    evaluate_case_questions,
+    question_mappings_for_findings,
+    render_case_question_report,
+)
+from siftguard.agent.casebook import (
+    CASEBOOK_YAML_REJECTION,
+    Casebook,
+    analysis_window_bounds,
+    load_casebook,
+)
+from siftguard.agent.decision_trace import build_decision_trace
+from siftguard.agent.gap_analysis import build_gap_analysis
+from siftguard.agent.models import AgentRun
 from siftguard.agent.runner import run_agent_workflow
 from siftguard.audit.execution_ledger import utc_now
 from siftguard.evidence.manifest import write_manifest
@@ -23,8 +36,6 @@ from siftguard.policy.paths import (
 )
 from siftguard.triage import EVENT_SELECTION_FIRST_N, validate_event_selection_profile
 
-CASEBOOK_YAML_REJECTION = "YAML casebooks are not supported in the final sprint; use JSON."
-
 RUN_CASE_OUTPUTS = (
     "agent_run.json",
     "audit.jsonl",
@@ -33,6 +44,7 @@ RUN_CASE_OUTPUTS = (
     "subject_timelines.json",
     "findings.json",
     "report.md",
+    "case_questions.json",
     "decision_trace.json",
     "gap_analysis.json",
     "performance_summary.json",
@@ -40,6 +52,14 @@ RUN_CASE_OUTPUTS = (
 
 Clock = Callable[[], str]
 WorkflowRunner = Callable[..., AgentRun]
+
+__all__ = [
+    "CASEBOOK_YAML_REJECTION",
+    "RunCaseResult",
+    "load_casebook",
+    "run_case_output_summary",
+    "run_case_workflow",
+]
 
 
 @dataclass(slots=True)
@@ -49,6 +69,7 @@ class RunCaseResult:
     output_dir: Path
     artifact_manifest_path: Path
     adapted_manifest_path: Path
+    case_questions_path: Path
     decision_trace_path: Path
     gap_analysis_path: Path
     performance_summary_path: Path
@@ -67,47 +88,6 @@ def _load_json_object(path: Path, label: str) -> dict[str, Any]:
         raise ValueError(f"malformed {label} JSON: {exc.msg}") from exc
     if not isinstance(payload, dict):
         raise ValueError(f"{label} JSON must contain an object")
-    return payload
-
-
-def _reject_blocked_keys(value: Any, *, path: str) -> None:
-    if isinstance(value, dict):
-        for key, item in value.items():
-            if not isinstance(key, str):
-                raise ValueError(f"{path} contains a non-string key")
-            if key.casefold() in BLOCKED_EXECUTION_KEYS:
-                raise ValueError(f"{path} contains blocked execution key: {key}")
-            _reject_blocked_keys(item, path=f"{path}.{key}")
-    elif isinstance(value, list):
-        for index, item in enumerate(value):
-            _reject_blocked_keys(item, path=f"{path}[{index}]")
-    elif not isinstance(value, (str, int, float, bool, type(None))):
-        raise ValueError(f"{path} contains a non-JSON value")
-
-
-def load_casebook(casebook_path: Path, *, case_id: str) -> dict[str, Any]:
-    if casebook_path.suffix.casefold() in {".yaml", ".yml"}:
-        raise ValueError(CASEBOOK_YAML_REJECTION)
-    if casebook_path.suffix.casefold() != ".json":
-        raise ValueError("casebooks must use .json")
-    resolved = casebook_path.resolve()
-    if not resolved.exists():
-        raise ValueError(f"casebook does not exist: {casebook_path}")
-    if resolved.is_dir():
-        raise ValueError(f"casebook path is a directory: {casebook_path}")
-    payload = _load_json_object(resolved, "casebook")
-    _reject_blocked_keys(payload, path="casebook")
-    payload_case_id = payload.get("case_id")
-    if payload_case_id is not None and payload_case_id != case_id:
-        raise ValueError(
-            f"casebook case_id '{payload_case_id}' does not match case_id '{case_id}'"
-        )
-    questions = payload.get("case_questions", [])
-    if questions is not None and (
-        not isinstance(questions, list)
-        or not all(isinstance(question, dict) for question in questions)
-    ):
-        raise ValueError("casebook.case_questions must be a list of objects")
     return payload
 
 
@@ -140,7 +120,7 @@ def _output_statuses(output_dir: Path) -> dict[str, dict[str, Any]]:
 def _lifecycle_prelude_events(
     *,
     adapted: AdaptedCaseManifest,
-    casebook: dict[str, Any] | None,
+    casebook: Casebook | None,
 ) -> list[dict[str, Any]]:
     parser_artifacts = [
         artifact.artifact_id for artifact in adapted.evidence_manifest.artifacts
@@ -190,6 +170,7 @@ def _lifecycle_prelude_events(
 
 def _sidecar_output_refs(output_dir: Path) -> dict[str, str]:
     names = {
+        "case_questions": "case_questions.json",
         "decision_trace": "decision_trace.json",
         "gap_analysis": "gap_analysis.json",
         "performance_summary": "performance_summary.json",
@@ -281,97 +262,78 @@ def _augment_coverage_summary(
     _write_json(path, payload)
 
 
-def _decision_trace(
-    *,
-    adapted: AdaptedCaseManifest,
-    run: AgentRun,
-    casebook: dict[str, Any] | None,
-    warnings: list[str],
-    clock: Clock,
-) -> dict[str, Any]:
-    parser_artifacts = [
-        artifact.artifact_id for artifact in adapted.evidence_manifest.artifacts
-    ]
+def _events_from_normalized_output(output_dir: Path) -> list[dict[str, Any]]:
+    payload = _load_json_object(output_dir / "normalized_events.json", "normalized_events")
+    rows = payload.get("events", [])
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise ValueError("normalized_events.events must be a list of objects")
+    return [dict(row) for row in rows]
+
+
+def _findings_payload(output_dir: Path) -> dict[str, Any]:
+    payload = _load_json_object(output_dir / "findings.json", "findings")
+    rows = payload.get("findings", [])
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise ValueError("findings.findings must be a list of objects")
+    return payload
+
+
+def _empty_case_questions(*, case_id: str, created_at: str) -> dict[str, Any]:
     return {
-        "case_id": adapted.case_id,
-        "created_at": clock(),
-        "mode": "basic_initial",
-        "decisions": [
-            {
-                "decision_id": "artifact_manifest_intake",
-                "status": "completed",
-                "rationale": "Loaded JSON case_prep manifest generated by case preparation.",
-                "inputs": {"artifact_manifest": adapted.case_prep_path.name},
-            },
-            {
-                "decision_id": "provenance_verification",
-                "status": "completed",
-                "rationale": "Sources and prepared artifact source IDs were present.",
-                "inputs": {
-                    "source_count": len(adapted.sources),
-                    "memory_source_count": len(adapted.memory_sources),
-                },
-            },
-            {
-                "decision_id": "parser_plan_selection",
-                "status": "completed",
-                "rationale": "Selected available parser-eligible prepared artifacts only.",
-                "outputs": {"parser_artifact_ids": parser_artifacts},
-            },
-            {
-                "decision_id": "workflow_execution",
-                "status": run.status.value,
-                "rationale": "Executed existing deterministic SIFTGuard agent workflow.",
-                "outputs": {"step_count": len(run.steps)},
-            },
-            {
-                "decision_id": "final_output_generation",
-                "status": "completed",
-                "rationale": "Wrote required run-case outputs and initial #116 sidecars.",
-            },
-        ],
-        "casebook_present": casebook is not None,
-        "warnings": list(warnings),
-        "note": "Detailed decision trace expansion is reserved for #117.",
+        "case_id": case_id,
+        "casebook_id": None,
+        "created_at": created_at,
+        "questions": [],
+        "status_counts": {},
+        "warnings": ["casebook absent; case-question mapping was not available"],
     }
 
 
-def _gap_analysis(
+def _write_case_question_outputs(
     *,
+    output_dir: Path,
     adapted: AdaptedCaseManifest,
-    casebook: dict[str, Any] | None,
-    warnings: list[str],
-    clock: Clock,
-) -> dict[str, Any]:
-    missing_prepared = [
-        artifact
-        for artifact in adapted.prepared_artifacts
-        if artifact.get("parser_eligible") is True and artifact.get("status") != "available"
-    ]
-    return {
-        "case_id": adapted.case_id,
-        "created_at": clock(),
-        "mode": "basic_initial",
-        "carried_forward_case_prep_gaps": list(adapted.coverage_gaps),
-        "memory_sources": [
-            {
-                "source_id": source["source_id"],
-                "display_name": source["display_name"],
-                "status": "not_assessed",
-                "analysis_scope": source.get("analysis_scope"),
-                "reason": "memory source inventoried only; final scope excludes memory forensics",
-            }
-            for source in adapted.memory_sources
-        ],
-        "missing_parser_eligible_artifacts": missing_prepared,
-        "skipped_prepared_artifacts": list(adapted.skipped_prepared_artifacts),
-        "casebook_present": casebook is not None,
-        "case_questions_count": (
-            len(casebook.get("case_questions", [])) if casebook is not None else 0
-        ),
-        "warnings": list(warnings),
-        "note": "Full case-question gap analysis is expanded by #117/#121.",
-    }
+    casebook: Casebook | None,
+    created_at: str,
+) -> tuple[Path, dict[str, Any]]:
+    case_questions_path = output_dir / "case_questions.json"
+    findings_payload = _findings_payload(output_dir)
+    findings = [dict(row) for row in findings_payload.get("findings", [])]
+    if casebook is None:
+        case_questions = _empty_case_questions(case_id=adapted.case_id, created_at=created_at)
+        mappings: list[dict[str, Any]] = []
+    else:
+        case_questions = evaluate_case_questions(
+            casebook=casebook,
+            adapted=adapted,
+            normalized_events=_events_from_normalized_output(output_dir),
+            findings=findings,
+            created_at=created_at,
+        )
+        mappings = question_mappings_for_findings(
+            case_questions=case_questions,
+            findings=findings,
+        )
+
+    findings_payload["findings"] = findings
+    findings_payload["finding_count"] = len(findings)
+    findings_payload["case_questions"] = case_questions.get("questions", [])
+    findings_payload["question_mappings"] = mappings
+    _write_json(output_dir / "findings.json", findings_payload)
+    _write_json(case_questions_path, case_questions)
+
+    if casebook is not None:
+        coverage = _load_json_object(output_dir / "coverage_summary.json", "coverage_summary")
+        report = render_case_question_report(
+            case_id=adapted.case_id,
+            case_questions=case_questions,
+            findings=findings,
+            coverage_summary=coverage,
+            adapted=adapted,
+        )
+        (output_dir / "report.md").write_text(report, encoding="utf-8")
+
+    return case_questions_path, case_questions
 
 
 def _performance_summary(
@@ -408,9 +370,12 @@ def _write_sidecars(
     output_dir: Path,
     adapted: AdaptedCaseManifest,
     run: AgentRun,
-    casebook: dict[str, Any] | None,
+    casebook: Casebook | None,
+    case_questions: dict[str, Any] | None,
     warnings: list[str],
     total_wall_clock_seconds: float,
+    event_selection_profile: str,
+    max_normalized_events: int | None,
     clock: Clock,
 ) -> tuple[Path, Path, Path]:
     decision_trace_path = output_dir / "decision_trace.json"
@@ -418,21 +383,25 @@ def _write_sidecars(
     performance_summary_path = output_dir / "performance_summary.json"
     _write_json(
         decision_trace_path,
-        _decision_trace(
+        build_decision_trace(
             adapted=adapted,
             run=run,
             casebook=casebook,
+            case_questions=case_questions,
             warnings=warnings,
-            clock=clock,
+            created_at=clock(),
+            event_selection_profile=event_selection_profile,
+            max_normalized_events=max_normalized_events,
         ),
     )
     _write_json(
         gap_analysis_path,
-        _gap_analysis(
+        build_gap_analysis(
             adapted=adapted,
             casebook=casebook,
+            case_questions=case_questions,
             warnings=warnings,
-            clock=clock,
+            created_at=clock(),
         ),
     )
     _write_json(
@@ -530,7 +499,7 @@ def run_case_workflow(
     )
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
 
-    casebook: dict[str, Any] | None = None
+    casebook: Casebook | None = None
     warnings = list(adapted.warnings)
     if casebook_path is None:
         warnings.append("no casebook provided; continuing with manifest-only run-case workflow")
@@ -550,19 +519,29 @@ def run_case_workflow(
         event_selection_profile=event_selection_profile,
         input_source="case_prep_manifest",
         audit_prelude_events=_lifecycle_prelude_events(adapted=adapted, casebook=casebook),
+        case_windows=analysis_window_bounds(casebook) if casebook is not None else (),
         clock=clock,
     )
     total_wall_clock_seconds = round(time.monotonic() - started, 3)
 
     _ensure_agent_placeholders(resolved_output_dir, case_id=adapted.case_id, run=run)
     _augment_coverage_summary(output_dir=resolved_output_dir, adapted=adapted)
+    case_questions_path, case_questions = _write_case_question_outputs(
+        output_dir=resolved_output_dir,
+        adapted=adapted,
+        casebook=casebook,
+        created_at=clock(),
+    )
     decision_trace_path, gap_analysis_path, performance_summary_path = _write_sidecars(
         output_dir=resolved_output_dir,
         adapted=adapted,
         run=run,
         casebook=casebook,
+        case_questions=case_questions,
         warnings=warnings,
         total_wall_clock_seconds=total_wall_clock_seconds,
+        event_selection_profile=event_selection_profile,
+        max_normalized_events=max_normalized_events,
         clock=clock,
     )
     _update_agent_run_output_refs(
@@ -583,6 +562,7 @@ def run_case_workflow(
         output_dir=resolved_output_dir,
         artifact_manifest_path=adapted.case_prep_path,
         adapted_manifest_path=adapted_manifest_path,
+        case_questions_path=case_questions_path,
         decision_trace_path=decision_trace_path,
         gap_analysis_path=gap_analysis_path,
         performance_summary_path=performance_summary_path,
@@ -598,6 +578,7 @@ def run_case_output_summary(result: RunCaseResult) -> dict[str, str | int | None
         "output_dir": str(result.output_dir),
         "agent_run": str(result.output_dir / "agent_run.json"),
         "audit": str(result.output_dir / "audit.jsonl"),
+        "case_questions": str(result.case_questions_path),
         "decision_trace": str(result.decision_trace_path),
         "gap_analysis": str(result.gap_analysis_path),
         "performance_summary": str(result.performance_summary_path),
