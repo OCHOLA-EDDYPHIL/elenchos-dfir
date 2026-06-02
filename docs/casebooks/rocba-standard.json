@@ -1,0 +1,130 @@
+{
+  "analysis_windows": [
+    {
+      "description": "Fred away / reported break-in window",
+      "end": "2020-11-14T23:59:59-05:00",
+      "id": "absence_window",
+      "start": "2020-11-10T00:00:00-05:00"
+    }
+  ],
+  "case_id": "rocba-standard",
+  "case_facts": [
+    {
+      "fact": "Fred Rocba was using an SRL Surface / Windows 10 system.",
+      "id": "fred_system"
+    },
+    {
+      "fact": "Fred left for vacation on 2020-11-10.",
+      "id": "vacation_context"
+    },
+    {
+      "fact": "A break-in reportedly occurred on 2020-11-13.",
+      "id": "reported_break_in"
+    },
+    {
+      "fact": "The SRL system was allegedly targeted.",
+      "id": "targeted_system"
+    }
+  ],
+  "case_questions": [
+    {
+      "evidence_classes": [
+        "mft",
+        "amcache",
+        "registry_run_keys"
+      ],
+      "id": "q_when_activity",
+      "question": "When did relevant activity occur?",
+      "status_policy": "case_window_activity",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "amcache",
+        "mft"
+      ],
+      "id": "q_program_presence_execution",
+      "question": "Was there evidence of suspicious program presence or execution-relevant artifacts?",
+      "status_policy": "multi_artifact_execution_presence",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "registry_run_keys"
+      ],
+      "id": "q_persistence",
+      "question": "Was there evidence of Run/RunOnce persistence?",
+      "status_policy": "registry_persistence",
+      "supported_by_scope": true
+    },
+    {
+      "evidence_classes": [
+        "mft"
+      ],
+      "id": "q_project_file_candidates",
+      "question": "What project or file candidates appear relevant?",
+      "status_policy": "file_candidate_triage",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [],
+      "expected_status": "not_assessed",
+      "gap_reason": "Current final scope does not parse file-open artifacts, cloud sync databases, browser history, USB history, network capture, or memory.",
+      "id": "q_what_was_stolen",
+      "question": "What was stolen?",
+      "supported_by_scope": false
+    },
+    {
+      "evidence_classes": [],
+      "expected_status": "not_assessed",
+      "gap_reason": "Current final scope does not parse network, browser, cloud sync, USB, or memory artifacts.",
+      "id": "q_where_transferred",
+      "question": "Where was it transferred to?",
+      "supported_by_scope": false
+    },
+    {
+      "evidence_classes": [],
+      "expected_status": "not_assessed",
+      "gap_reason": "Current final scope does not parse the artifact classes required to reconstruct exfiltration path or method.",
+      "id": "q_how_stolen",
+      "question": "How was it stolen?",
+      "supported_by_scope": false
+    },
+    {
+      "evidence_classes": [],
+      "expected_status": "not_assessed",
+      "gap_reason": "Memory image is staged for provenance only; memory forensics is outside final scope.",
+      "id": "q_memory",
+      "question": "What did memory show?",
+      "supported_by_scope": false
+    }
+  ],
+  "display_name": "ROCBA Standard Forensic Case",
+  "key_dates": [
+    {
+      "date": "2020-11-10",
+      "description": "Fred leaves for vacation",
+      "id": "vacation_start"
+    },
+    {
+      "date": "2020-11-13",
+      "description": "Reported break-in targeting the SRL system",
+      "id": "break_in"
+    }
+  ],
+  "time_zone": "America/New_York",
+  "triage_profile": {
+    "file_extensions": [
+      ".docx",
+      ".xlsx",
+      ".pptx",
+      ".pdf"
+    ],
+    "keywords": [
+      "SRL"
+    ],
+    "sensitive_paths": [
+      "Projects"
+    ]
+  }
+}
