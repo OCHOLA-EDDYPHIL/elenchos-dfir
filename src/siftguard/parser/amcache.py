@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from collections.abc import Callable, Sequence
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ SOURCE_TOOL = "AmcacheParser"
 EXPECTED_ARTIFACT_TYPE = "amcache"
 DEFAULT_AMCACHE_CSV_NAME = "amcache.csv"
 EVENT_LIMIT_WARNING_PREFIX = "max_events="
+AMCACHE_TRANSACTION_LOGS = ("Amcache.hve.LOG1", "Amcache.hve.LOG2")
 
 Runner = Callable[..., ToolResult]
 
@@ -147,7 +149,10 @@ def _metadata_for_row(
     sha1: str | None,
     timestamp_column: str | None,
 ) -> dict[str, JSON_SCALAR]:
-    metadata: dict[str, JSON_SCALAR] = {"parser": PARSER_NAME}
+    metadata: dict[str, JSON_SCALAR] = {
+        "artifact_family": EXPECTED_ARTIFACT_TYPE,
+        "parser": PARSER_NAME,
+    }
     for column, key in (
         ("ProgramName", "program_name"),
         ("FileName", "file_name"),
@@ -372,6 +377,31 @@ def _tool_error(tool_result: ToolResult) -> str:
     )
 
 
+def _transaction_log_statuses(amcache_path: Path) -> dict[str, str]:
+    return {
+        name: "available" if (amcache_path.parent / name).is_file() else "missing"
+        for name in AMCACHE_TRANSACTION_LOGS
+    }
+
+
+def _amcache_coverage_gap(
+    *,
+    artifact_id: str,
+    reason: str,
+    impact: str,
+    recommended_next_step: str,
+) -> dict[str, JSON_SCALAR]:
+    return {
+        "artifact_family": "amcache",
+        "artifact_type": EXPECTED_ARTIFACT_TYPE,
+        "gap_id": f"gap_amcache_{artifact_id}_{reason}",
+        "impact": impact,
+        "reason": reason,
+        "recommended_next_step": recommended_next_step,
+        "source_artifact_id": artifact_id,
+    }
+
+
 def parse_amcache(
     *,
     case_id: str,
@@ -413,6 +443,19 @@ def parse_amcache(
             parser_name=PARSER_NAME,
             source_tool=SOURCE_TOOL,
             reason=f"AmcacheParser command is not available: {exc}",
+            coverage_gaps=[
+                _amcache_coverage_gap(
+                    artifact_id=artifact_id,
+                    reason="parser_unavailable",
+                    impact=(
+                        "Amcache execution metadata could not be normalized because "
+                        "the parser command is unavailable."
+                    ),
+                    recommended_next_step=(
+                        "Enable the configured AmcacheParser command and rerun agent run-case."
+                    ),
+                )
+            ],
         )
 
     output_dir = ensure_parser_output_dir(
@@ -436,8 +479,8 @@ def parse_amcache(
         str(output_dir),
         "--csvf",
         DEFAULT_AMCACHE_CSV_NAME,
-        "--nl",
     )
+    transaction_log_statuses = _transaction_log_statuses(resolved_amcache_path)
 
     started_at_utc = _utc_now_z()
     runner_fn = runner or run_command
@@ -507,6 +550,30 @@ def parse_amcache(
             errors.append(f"expected AmcacheParser CSV was not created: {csv_path}")
         status = "failed"
 
+    coverage_gaps: list[dict[str, JSON_SCALAR]] = []
+    if status in {"failed", "skipped"}:
+        missing_logs = [
+            name for name, log_status in transaction_log_statuses.items()
+            if log_status != "available"
+        ]
+        next_step = "Review AmcacheParser stdout/stderr and rerun after correcting parser input."
+        if missing_logs:
+            next_step = (
+                "Stage Amcache transaction logs beside Amcache.hve when available and "
+                "review AmcacheParser stdout/stderr."
+            )
+        coverage_gaps.append(
+            _amcache_coverage_gap(
+                artifact_id=artifact_id,
+                reason="parser_error" if command_base else "parser_unavailable",
+                impact=(
+                    "Amcache execution metadata could not be normalized; "
+                    "execution-specific program evidence is incomplete."
+                ),
+                recommended_next_step=next_step,
+            )
+        )
+
     return ParserResult(
         case_id=case_id,
         artifact_id=artifact_id,
@@ -521,6 +588,7 @@ def parse_amcache(
         events=events,
         warnings=warnings,
         errors=errors,
+        coverage_gaps=coverage_gaps,
         started_at_utc=started_at_utc,
         ended_at_utc=ended_at_utc,
         duration_ms=getattr(tool_result, "duration_ms", None),
@@ -529,6 +597,10 @@ def parse_amcache(
             "max_events": max_events,
             "stdout_path": str(stdout_path),
             "stderr_path": str(stderr_path),
+            "transaction_log_statuses": json.dumps(
+                transaction_log_statuses,
+                sort_keys=True,
+            ),
             "tool_exit_code": getattr(tool_result, "exit_code", None),
             "tool_status": getattr(tool_result, "status", None),
         },

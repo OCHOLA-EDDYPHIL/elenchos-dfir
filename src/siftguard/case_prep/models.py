@@ -27,6 +27,7 @@ ANALYSIS_SCOPES = {
 CASE_PREP_STATUSES = {"completed", "partial_success", "failed"}
 PREPARED_ARTIFACT_TYPES = {"mft", "registry_hive", "amcache_hive"}
 PREPARED_ARTIFACT_STATUSES = {"available", "missing", "skipped", "extraction_failed"}
+SIDECAR_ROLES = {"transaction_log"}
 GAP_ARTIFACT_TYPES = PREPARED_ARTIFACT_TYPES | {"ntuser_hive"}
 GAP_REASONS = {
     "not_found",
@@ -249,6 +250,7 @@ class ExtractionOutcome:
     extraction_method: str
     reason: str | None = None
     warnings: list[str] = field(default_factory=list)
+    sidecars: list[ArtifactSidecar] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.status not in PREPARED_ARTIFACT_STATUSES:
@@ -256,6 +258,53 @@ class ExtractionOutcome:
         if self.reason is not None and self.reason not in GAP_REASONS:
             raise ValueError(f"invalid extraction gap reason: {self.reason}")
         self.warnings = _string_list(self.warnings, "warnings")
+        if not all(isinstance(sidecar, ArtifactSidecar) for sidecar in self.sidecars):
+            raise TypeError("sidecars must contain ArtifactSidecar instances")
+
+
+@dataclass(slots=True)
+class ArtifactSidecar:
+    role: str
+    display_name: str
+    path: str
+    source_candidate_ref: str
+    status: str
+    sha256: str | None = None
+    hash_status: str = "skipped"
+    warnings: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        self.role = _require_string(self.role, "role")
+        if self.role not in SIDECAR_ROLES:
+            raise ValueError(f"invalid sidecar role: {self.role}")
+        self.display_name = _require_string(self.display_name, "display_name")
+        self.path = _require_string(self.path, "path")
+        if Path(self.path).is_absolute() or ".." in Path(self.path).parts:
+            raise ValueError("sidecar path must be relative and safe")
+        self.source_candidate_ref = _require_string(
+            self.source_candidate_ref,
+            "source_candidate_ref",
+        )
+        self.status = _require_string(self.status, "status")
+        if self.status not in PREPARED_ARTIFACT_STATUSES:
+            raise ValueError(f"invalid sidecar status: {self.status}")
+        self.sha256 = _optional_sha256(self.sha256, "sha256")
+        self.hash_status = _require_string(self.hash_status, "hash_status")
+        if self.hash_status not in SOURCE_HASH_STATUSES:
+            raise ValueError(f"invalid sidecar hash_status: {self.hash_status}")
+        self.warnings = _string_list(self.warnings, "warnings")
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "display_name": self.display_name,
+            "hash_status": self.hash_status,
+            "path": self.path,
+            "role": self.role,
+            "sha256": self.sha256,
+            "source_candidate_ref": self.source_candidate_ref,
+            "status": self.status,
+            "warnings": list(self.warnings),
+        }
 
 
 @dataclass(slots=True)
@@ -276,6 +325,7 @@ class PreparedArtifact:
     profile_display_name: str | None = None
     sanitized_profile_hint: str | None = None
     source_candidate_ref: str | None = None
+    sidecars: list[ArtifactSidecar] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.artifact_id = _require_string(self.artifact_id, "artifact_id")
@@ -320,6 +370,8 @@ class PreparedArtifact:
                 self.source_candidate_ref,
                 "source_candidate_ref",
             )
+        if not all(isinstance(sidecar, ArtifactSidecar) for sidecar in self.sidecars):
+            raise TypeError("sidecars must contain ArtifactSidecar instances")
 
     def to_dict(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -345,6 +397,11 @@ class PreparedArtifact:
             value = getattr(self, key)
             if value is not None:
                 payload[key] = value
+        if self.sidecars:
+            payload["sidecars"] = [
+                sidecar.to_dict()
+                for sidecar in sorted(self.sidecars, key=lambda item: item.path)
+            ]
         return payload
 
 

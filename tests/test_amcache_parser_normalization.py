@@ -21,6 +21,8 @@ def test_valid_amcache_fixture_normalizes_without_errors():
     assert len(events) == 1
     assert events[0].parser_name == "amcacheparser"
     assert events[0].artifact_type == "amcache"
+    assert events[0].metadata["artifact_family"] == "amcache"
+    assert events[0].to_dict()["artifact_family"] == "amcache"
     assert events[0].event_type == "amcache_execution"
 
 

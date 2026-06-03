@@ -414,6 +414,10 @@ def _write_sidecars(
             casebook=casebook,
             case_questions=case_questions,
             user_activity_summary=user_activity_summary,
+            coverage_summary=_load_json_object(
+                output_dir / "coverage_summary.json",
+                "coverage_summary",
+            ),
             warnings=warnings,
             created_at=clock(),
         ),
