@@ -26,13 +26,16 @@ ANALYSIS_SCOPES = {
 
 CASE_PREP_STATUSES = {"completed", "partial_success", "failed"}
 PREPARED_ARTIFACT_TYPES = {"mft", "registry_hive", "amcache_hive"}
-PREPARED_ARTIFACT_STATUSES = {"available", "missing", "skipped"}
+PREPARED_ARTIFACT_STATUSES = {"available", "missing", "skipped", "extraction_failed"}
+GAP_ARTIFACT_TYPES = PREPARED_ARTIFACT_TYPES | {"ntuser_hive"}
 GAP_REASONS = {
     "not_found",
     "unsupported_source_role",
     "extractor_unavailable",
     "permission_error",
     "tool_error",
+    "extraction_failed",
+    "hash_failed",
 }
 
 
@@ -232,6 +235,11 @@ class ArtifactTarget:
     display_name: str
     output_path: str
     candidate_paths: tuple[str, ...]
+    registry_hive_type: str | None = None
+    profile_id: str | None = None
+    profile_display_name: str | None = None
+    sanitized_profile_hint: str | None = None
+    source_candidate_ref: str | None = None
 
 
 @dataclass(slots=True)
@@ -263,6 +271,11 @@ class PreparedArtifact:
     hash_status: str
     extraction_method: str
     warnings: list[str] = field(default_factory=list)
+    registry_hive_type: str | None = None
+    profile_id: str | None = None
+    profile_display_name: str | None = None
+    sanitized_profile_hint: str | None = None
+    source_candidate_ref: str | None = None
 
     def __post_init__(self) -> None:
         self.artifact_id = _require_string(self.artifact_id, "artifact_id")
@@ -285,9 +298,31 @@ class PreparedArtifact:
             raise ValueError(f"invalid prepared artifact hash_status: {self.hash_status}")
         self.extraction_method = _require_string(self.extraction_method, "extraction_method")
         self.warnings = _string_list(self.warnings, "warnings")
+        if self.registry_hive_type is not None:
+            self.registry_hive_type = _require_string(
+                self.registry_hive_type,
+                "registry_hive_type",
+            )
+        if self.profile_id is not None:
+            self.profile_id = _require_string(self.profile_id, "profile_id")
+        if self.profile_display_name is not None:
+            self.profile_display_name = _require_string(
+                self.profile_display_name,
+                "profile_display_name",
+            )
+        if self.sanitized_profile_hint is not None:
+            self.sanitized_profile_hint = _require_string(
+                self.sanitized_profile_hint,
+                "sanitized_profile_hint",
+            )
+        if self.source_candidate_ref is not None:
+            self.source_candidate_ref = _require_string(
+                self.source_candidate_ref,
+                "source_candidate_ref",
+            )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "artifact_id": self.artifact_id,
             "artifact_type": self.artifact_type,
             "extraction_method": self.extraction_method,
@@ -300,6 +335,17 @@ class PreparedArtifact:
             "status": self.status,
             "warnings": list(self.warnings),
         }
+        for key in (
+            "registry_hive_type",
+            "profile_id",
+            "profile_display_name",
+            "sanitized_profile_hint",
+            "source_candidate_ref",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                payload[key] = value
+        return payload
 
 
 @dataclass(slots=True)
@@ -310,11 +356,17 @@ class CoverageGap:
     reason: str
     impact: str
     recommended_next_step: str
+    artifact_family: str | None = None
+    source_artifact_id: str | None = None
+    profile_id: str | None = None
+    profile_display_name: str | None = None
+    sanitized_profile_hint: str | None = None
+    source_candidate_ref: str | None = None
 
     def __post_init__(self) -> None:
         self.gap_id = _require_string(self.gap_id, "gap_id")
         self.artifact_type = _require_string(self.artifact_type, "artifact_type")
-        if self.artifact_type not in PREPARED_ARTIFACT_TYPES:
+        if self.artifact_type not in GAP_ARTIFACT_TYPES:
             raise ValueError(f"invalid gap artifact_type: {self.artifact_type}")
         self.source_id = _require_string(self.source_id, "source_id")
         self.reason = _require_string(self.reason, "reason")
@@ -325,9 +377,33 @@ class CoverageGap:
             self.recommended_next_step,
             "recommended_next_step",
         )
+        if self.artifact_family is not None:
+            self.artifact_family = _require_string(self.artifact_family, "artifact_family")
+        if self.source_artifact_id is not None:
+            self.source_artifact_id = _require_string(
+                self.source_artifact_id,
+                "source_artifact_id",
+            )
+        if self.profile_id is not None:
+            self.profile_id = _require_string(self.profile_id, "profile_id")
+        if self.profile_display_name is not None:
+            self.profile_display_name = _require_string(
+                self.profile_display_name,
+                "profile_display_name",
+            )
+        if self.sanitized_profile_hint is not None:
+            self.sanitized_profile_hint = _require_string(
+                self.sanitized_profile_hint,
+                "sanitized_profile_hint",
+            )
+        if self.source_candidate_ref is not None:
+            self.source_candidate_ref = _require_string(
+                self.source_candidate_ref,
+                "source_candidate_ref",
+            )
 
     def to_dict(self) -> dict[str, str]:
-        return {
+        payload = {
             "artifact_type": self.artifact_type,
             "gap_id": self.gap_id,
             "impact": self.impact,
@@ -335,6 +411,18 @@ class CoverageGap:
             "recommended_next_step": self.recommended_next_step,
             "source_id": self.source_id,
         }
+        for key in (
+            "artifact_family",
+            "source_artifact_id",
+            "profile_id",
+            "profile_display_name",
+            "sanitized_profile_hint",
+            "source_candidate_ref",
+        ):
+            value = getattr(self, key)
+            if value is not None:
+                payload[key] = value
+        return payload
 
 
 @dataclass(slots=True)

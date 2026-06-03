@@ -126,3 +126,24 @@ def test_parser_unavailable_produces_gaps_not_shell_command(tmp_path: Path):
         "lastvisitedpidlmru",
         "typedpaths",
     }
+
+
+def test_parser_unavailable_preserves_profile_gap_context(tmp_path: Path):
+    hive = tmp_path / "NTUSER.DAT"
+    hive.write_bytes(b"synthetic hive")
+
+    result = parse_registry_user_activity(
+        case_id="case-001",
+        artifact_id="prep_ntuser_profile_0001",
+        hive_path=hive,
+        runs_root=tmp_path / "runs",
+        command_config=ParserCommandConfig({}),
+        profile_id="profile-0001",
+        profile_display_name="profile-0001",
+        sanitized_profile_hint="profile-0001",
+        source_candidate_ref="Users/profile-0001/NTUSER.DAT",
+    )
+
+    assert result.coverage_gaps
+    assert {gap["profile_id"] for gap in result.coverage_gaps} == {"profile-0001"}
+    assert result.metadata["profile_id"] == "profile-0001"

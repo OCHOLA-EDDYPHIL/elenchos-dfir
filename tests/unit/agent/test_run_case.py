@@ -267,6 +267,45 @@ def add_ntuser_scope_warning(case_prep_path: Path) -> None:
     )
 
 
+def replace_with_profile_ntuser_artifacts(case_prep_path: Path) -> None:
+    payload = json.loads(case_prep_path.read_text(encoding="utf-8"))
+    profile_artifacts = []
+    for index, profile_id in enumerate(("profile-0001", "profile-0002"), start=1):
+        relative_path = f"extracted/registry/profiles/{profile_id}/NTUSER.DAT"
+        _write(case_prep_path.parent / relative_path, f"ntuser-{index}".encode("utf-8"))
+        profile_artifacts.append(
+            {
+                "artifact_id": f"prep_ntuser_{profile_id.replace('-', '_')}",
+                "artifact_type": "registry_hive",
+                "extraction_method": f"fixture_copy:Users/{profile_id}/NTUSER.DAT",
+                "hash_status": "computed",
+                "parser_eligible": True,
+                "path": relative_path,
+                "profile_display_name": profile_id,
+                "profile_id": profile_id,
+                "registry_hive_type": "ntuser",
+                "sanitized_profile_hint": profile_id,
+                "sha256": str(index) * 64,
+                "source_candidate_ref": f"Users/{profile_id}/NTUSER.DAT",
+                "source_id": "src_disk",
+                "source_role": "disk_image",
+                "status": "available",
+                "warnings": [],
+            }
+        )
+    payload["prepared_artifacts"] = [
+        artifact
+        for artifact in payload["prepared_artifacts"]
+        if artifact["artifact_id"] != "prep_ntuser"
+    ] + profile_artifacts
+    payload["coverage_gaps"] = []
+    payload["status"] = "completed"
+    case_prep_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
 def fake_workflow_runner(**kwargs) -> AgentRun:
     case_id = kwargs["case_id"]
     manifest_path = kwargs["manifest_path"]
@@ -429,6 +468,79 @@ def fake_user_activity_workflow_runner(**kwargs) -> AgentRun:
             "recommended_next_step": "Confirm whether TypedPaths exists in NTUSER.DAT.",
             "source_artifact_id": "prep_ntuser",
         }
+    ]
+    (output_dir / "coverage_summary.json").write_text(
+        json.dumps(coverage, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return run
+
+
+def fake_multi_profile_user_activity_workflow_runner(**kwargs) -> AgentRun:
+    run = fake_workflow_runner(**kwargs)
+    case_id = kwargs["case_id"]
+    output_dir = kwargs["output_dir"]
+    manifest = read_manifest(kwargs["manifest_path"])
+    ntuser_artifacts = [
+        artifact
+        for artifact in manifest.artifacts
+        if artifact.registry_hive_type == "ntuser"
+    ]
+    events = []
+    sorted_ntuser_artifacts = sorted(
+        ntuser_artifacts,
+        key=lambda item: item.profile_id or "",
+    )
+    for index, artifact in enumerate(sorted_ntuser_artifacts):
+        target = rf"C:\Users\analyst\Documents\ProjectAlpha\design-{index}.docx"
+        events.append(
+            {
+                "artifact_family": "registry_user_activity",
+                "artifact_id": artifact.artifact_id,
+                "artifact_type": "recentdocs",
+                "case_id": case_id,
+                "event_id": f"ua_recentdocs_{artifact.profile_id}",
+                "event_type": "registry_recent_document_candidate",
+                "evidence_refs": [artifact.artifact_id],
+                "metadata": {
+                    "artifact_family": "registry_user_activity",
+                    "profile_id": artifact.profile_id,
+                    "source_id": "src_disk",
+                    "source_role": "disk_image",
+                    "target": target,
+                },
+                "parser_name": "recmd",
+                "path": target,
+                "profile_id": artifact.profile_id,
+                "raw_record_ref": {
+                    "record_id": f"ua_recentdocs_{artifact.profile_id}",
+                    "row_number": 2,
+                    "source_path": "recmd_recentdocs.csv",
+                },
+                "source_tool": "RECmd",
+                "subject": target,
+                "timestamp_description": "registry_key_last_write",
+                "timestamp_utc": "2020-11-13T20:12:00Z",
+            }
+        )
+    (output_dir / "normalized_events.json").write_text(
+        json.dumps({"case_id": case_id, "event_count": len(events), "events": events}),
+        encoding="utf-8",
+    )
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
+    coverage["normalized_events_written"] = len(events)
+    coverage["registry_user_activity_gaps"] = [
+        {
+            "artifact_family": "registry_user_activity",
+            "artifact_type": "typedpaths",
+            "gap_id": f"gap_typedpaths_{artifact.profile_id}",
+            "impact": "TypedPaths key did not produce rows.",
+            "profile_id": artifact.profile_id,
+            "reason": "no_rows",
+            "recommended_next_step": "Confirm whether TypedPaths exists in NTUSER.DAT.",
+            "source_artifact_id": artifact.artifact_id,
+        }
+        for artifact in ntuser_artifacts
     ]
     (output_dir / "coverage_summary.json").write_text(
         json.dumps(coverage, indent=2, sort_keys=True),
@@ -885,6 +997,61 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
     assert "## Parser Coverage and User-Activity Gaps" in report
     assert "partial profile coverage" in report
     assert "user_activity_analysis_completed" in actions
+
+
+def test_run_case_integrates_multiple_profile_ntuser_hives(tmp_path: Path):
+    case_prep_path, _case_prep_dir, _source_root = write_case_prep(tmp_path, include_gap=False)
+    replace_with_profile_ntuser_artifacts(case_prep_path)
+    casebook_path = write_user_activity_casebook(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+
+    run_case_workflow(
+        artifact_manifest_path=case_prep_path,
+        casebook_path=casebook_path,
+        output_dir=output_dir,
+        max_iterations=10,
+        workflow_runner=fake_multi_profile_user_activity_workflow_runner,
+        clock=fixed_clock,
+    )
+
+    normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    findings = json.loads((output_dir / "findings.json").read_text(encoding="utf-8"))
+    gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
+    decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+
+    profile_ids = {
+        event.get("profile_id")
+        for event in normalized["events"]
+        if event.get("artifact_family") == "registry_user_activity"
+    }
+    assert profile_ids == {"profile-0001", "profile-0002"}
+    assert all(
+        finding.get("profile_ids")
+        for finding in findings["findings"]
+        if finding.get("artifact_family") == "registry_user_activity"
+    )
+    profile_coverage = gap_analysis["registry_user_activity"]["profile_coverage"]
+    assert profile_coverage["status"] == "assessed"
+    assert profile_coverage["discovered_profile_count"] == 2
+    assert profile_coverage["available_profile_count"] == 2
+    assert profile_coverage["parsed_profile_count"] == 2
+    assert {
+        gap.get("profile_id")
+        for gap in gap_analysis["registry_user_activity"]["coverage_gaps"]
+    } == {"profile-0001", "profile-0002"}
+    decision_ids = {decision["decision_id"] for decision in decision_trace["decisions"]}
+    assert {
+        "all_user_profile_hive_discovery",
+        "per_profile_hive_extraction",
+        "per_profile_user_activity_parsing",
+        "profile_coverage_assessment",
+        "multi_profile_finding_aggregation",
+    } <= decision_ids
+    assert "## User Profile Hive Coverage" in report
+    assert "## User Activity Summary by Profile" in report
+    assert "`profile-0001`" in report
+    assert "`profile-0002`" in report
 
 
 def test_yaml_casebook_input_is_rejected(tmp_path: Path):

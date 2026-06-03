@@ -52,6 +52,11 @@ def _required_string(data: dict[str, Any], name: str) -> str:
     return value
 
 
+def _optional_string(data: dict[str, Any], name: str) -> str | None:
+    value = data.get(name)
+    return value if isinstance(value, str) and value else None
+
+
 def _list_of_objects(data: dict[str, Any], name: str) -> list[dict[str, Any]]:
     value = data.get(name)
     if not isinstance(value, list) or not all(isinstance(item, dict) for item in value):
@@ -132,6 +137,11 @@ def _adapted_artifact(
         discovered_at_utc=utc_now_z(),
         source_image_id=source_id,
         source_image_label=_source_label(source),
+        registry_hive_type=_optional_string(prepared_artifact, "registry_hive_type"),
+        profile_id=_optional_string(prepared_artifact, "profile_id"),
+        profile_display_name=_optional_string(prepared_artifact, "profile_display_name"),
+        sanitized_profile_hint=_optional_string(prepared_artifact, "sanitized_profile_hint"),
+        source_candidate_ref=_optional_string(prepared_artifact, "source_candidate_ref"),
     )
 
 
