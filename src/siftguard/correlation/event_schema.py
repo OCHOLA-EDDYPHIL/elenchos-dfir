@@ -14,11 +14,26 @@ VALID_PARSER_EVENT_TYPES = {
     "file_accessed",
     "file_record",
     "registry_run_key",
+    "registry_userassist_program_use",
+    "registry_recent_document_candidate",
+    "registry_opensave_file_candidate",
+    "registry_lastvisited_program_candidate",
+    "registry_typed_path_candidate",
     "amcache_execution",
     "unknown",
 }
 
-VALID_ARTIFACT_TYPES = {"mft", "registry", "amcache", "unknown"}
+VALID_ARTIFACT_TYPES = {
+    "mft",
+    "registry",
+    "amcache",
+    "userassist",
+    "recentdocs",
+    "opensavepidlmru",
+    "lastvisitedpidlmru",
+    "typedpaths",
+    "unknown",
+}
 VALID_PARSER_NAMES = {"mftecmd", "recmd", "amcacheparser", "unknown"}
 VALID_PARSER_EVENT_STATUSES = {"observed", "normalized", "malformed", "skipped"}
 VALID_PARSER_EVENT_CONFIDENCE = {
@@ -183,7 +198,7 @@ class ParserEvent:
             if isinstance(self.raw_record_ref, RawRecordRef)
             else self.raw_record_ref
         )
-        return {
+        payload: dict[str, Any] = {
             "event_id": self.event_id,
             "case_id": self.case_id,
             "artifact_id": self.artifact_id,
@@ -205,6 +220,26 @@ class ParserEvent:
             "confidence": self.confidence,
             "metadata": dict(self.metadata),
         }
+        for key in (
+            "artifact_family",
+            "source_artifact_id",
+            "source_id",
+            "source_role",
+            "registry_hive_path",
+            "registry_key_path",
+            "decoded_value",
+            "target",
+            "timestamp_kind",
+            "user_sid",
+            "user_hint",
+            "evidence_ref",
+            "parser_status",
+            "confidence_basis",
+            "interpretation_note",
+        ):
+            if key in self.metadata:
+                payload[key] = self.metadata[key]
+        return payload
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParserEvent:

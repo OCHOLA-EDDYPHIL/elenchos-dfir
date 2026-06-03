@@ -179,6 +179,94 @@ def write_casebook(tmp_path: Path, *, case_id: str = CASE_ID) -> Path:
     return path
 
 
+def write_user_activity_casebook(tmp_path: Path, *, case_id: str = CASE_ID) -> Path:
+    path = tmp_path / "user-activity-casebook.json"
+    path.write_text(
+        json.dumps(
+            {
+                "case_id": case_id,
+                "display_name": "Synthetic User Activity Case",
+                "analysis_windows": [
+                    {
+                        "id": "window",
+                        "start": "2020-11-13T00:00:00+00:00",
+                        "end": "2020-11-14T00:00:00+00:00",
+                        "description": "synthetic activity window",
+                    }
+                ],
+                "case_questions": [
+                    {
+                        "id": "q_when_activity",
+                        "question": "When did relevant activity occur?",
+                        "supported_by_scope": "partial",
+                        "evidence_classes": ["registry_user_activity", "mft"],
+                        "status_policy": "case_window_activity",
+                    },
+                    {
+                        "id": "q_what_was_stolen",
+                        "question": "What was stolen?",
+                        "supported_by_scope": False,
+                        "expected_status": "not_assessed",
+                        "gap_reason": "Candidate user activity does not prove theft.",
+                    },
+                    {
+                        "id": "q_where_transferred",
+                        "question": "Where was it transferred to?",
+                        "supported_by_scope": False,
+                        "expected_status": "not_assessed",
+                        "gap_reason": "Candidate user activity does not prove transfer.",
+                    },
+                    {
+                        "id": "q_how_stolen",
+                        "question": "How was it stolen?",
+                        "supported_by_scope": False,
+                        "expected_status": "not_assessed",
+                        "gap_reason": "Candidate user activity does not prove method.",
+                    },
+                    {
+                        "id": "q_memory",
+                        "question": "What did memory show?",
+                        "supported_by_scope": False,
+                        "expected_status": "not_assessed",
+                        "gap_reason": "Memory is out of scope.",
+                    },
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def mark_ntuser_available(case_prep_path: Path) -> None:
+    payload = json.loads(case_prep_path.read_text(encoding="utf-8"))
+    _write(case_prep_path.parent / "extracted" / "registry" / "NTUSER.DAT", b"ntuser")
+    for artifact in payload["prepared_artifacts"]:
+        if artifact["artifact_id"] != "prep_ntuser":
+            continue
+        artifact["status"] = "available"
+        artifact["hash_status"] = "computed"
+        artifact["sha256"] = "d" * 64
+    payload["coverage_gaps"] = []
+    case_prep_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
+def add_ntuser_scope_warning(case_prep_path: Path) -> None:
+    payload = json.loads(case_prep_path.read_text(encoding="utf-8"))
+    for artifact in payload["prepared_artifacts"]:
+        if artifact["artifact_id"] != "prep_ntuser":
+            continue
+        artifact["warnings"] = ["multiple NTUSER.DAT candidates found; extracted first"]
+    case_prep_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+
 def fake_workflow_runner(**kwargs) -> AgentRun:
     case_id = kwargs["case_id"]
     manifest_path = kwargs["manifest_path"]
@@ -268,6 +356,82 @@ def fake_workflow_runner(**kwargs) -> AgentRun:
     )
     (output_dir / "agent_run.json").write_text(
         json.dumps(run.to_dict(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return run
+
+
+def fake_user_activity_workflow_runner(**kwargs) -> AgentRun:
+    run = fake_workflow_runner(**kwargs)
+    case_id = kwargs["case_id"]
+    output_dir = kwargs["output_dir"]
+    target = r"C:\Users\analyst\Documents\ProjectAlpha\design.docx"
+    events = [
+        {
+            "artifact_family": "registry_user_activity",
+            "artifact_id": "prep_ntuser",
+            "artifact_type": "recentdocs",
+            "case_id": case_id,
+            "event_id": "ua_recentdocs_1",
+            "event_type": "registry_recent_document_candidate",
+            "evidence_refs": ["prep_ntuser"],
+            "metadata": {
+                "artifact_family": "registry_user_activity",
+                "source_id": "src_disk",
+                "source_role": "disk_image",
+                "target": target,
+            },
+            "parser_name": "recmd",
+            "path": target,
+            "raw_record_ref": {
+                "record_id": "ua_recentdocs_1",
+                "row_number": 2,
+                "source_path": "recmd_recentdocs.csv",
+            },
+            "source_tool": "RECmd",
+            "subject": target,
+            "timestamp_description": "registry_key_last_write",
+            "timestamp_utc": "2020-11-13T20:12:00Z",
+        },
+        {
+            "artifact_id": "prep_mft",
+            "artifact_type": "mft",
+            "case_id": case_id,
+            "event_id": "mft_1",
+            "event_type": "file_created",
+            "evidence_refs": ["prep_mft"],
+            "metadata": {},
+            "parser_name": "mftecmd",
+            "path": target,
+            "raw_record_ref": {
+                "record_id": "mft_1",
+                "row_number": 2,
+                "source_path": "mft.csv",
+            },
+            "source_tool": "MFTECmd",
+            "subject": target,
+            "timestamp_utc": "2020-11-13T20:10:00Z",
+        },
+    ]
+    (output_dir / "normalized_events.json").write_text(
+        json.dumps({"case_id": case_id, "event_count": len(events), "events": events}),
+        encoding="utf-8",
+    )
+    coverage = json.loads((output_dir / "coverage_summary.json").read_text(encoding="utf-8"))
+    coverage["normalized_events_written"] = len(events)
+    coverage["registry_user_activity_gaps"] = [
+        {
+            "artifact_family": "registry_user_activity",
+            "artifact_type": "typedpaths",
+            "gap_id": "gap_typedpaths",
+            "impact": "TypedPaths key did not produce rows.",
+            "reason": "no_rows",
+            "recommended_next_step": "Confirm whether TypedPaths exists in NTUSER.DAT.",
+            "source_artifact_id": "prep_ntuser",
+        }
+    ]
+    (output_dir / "coverage_summary.json").write_text(
+        json.dumps(coverage, indent=2, sort_keys=True),
         encoding="utf-8",
     )
     return run
@@ -644,11 +808,83 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
         "## Case Questions Summary",
         "## Supported Findings",
         "## Needs Review",
+        "## User Activity Summary",
+        "## File Access / Recent Document Candidates",
+        "## Program Use Candidates",
+        "## Typed Path / User Navigation Candidates",
+        "## Parser Coverage and User-Activity Gaps",
         "## Not Assessed / Scope Gaps",
         "## Evidence Provenance Summary",
         "## Analyst Next Steps",
     ):
         assert heading in report
+
+
+def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
+    case_prep_path, _case_prep_dir, _source_root = write_case_prep(tmp_path, include_gap=False)
+    mark_ntuser_available(case_prep_path)
+    add_ntuser_scope_warning(case_prep_path)
+    casebook_path = write_user_activity_casebook(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+
+    run_case_workflow(
+        artifact_manifest_path=case_prep_path,
+        casebook_path=casebook_path,
+        output_dir=output_dir,
+        max_iterations=10,
+        workflow_runner=fake_user_activity_workflow_runner,
+        clock=fixed_clock,
+    )
+
+    normalized = json.loads((output_dir / "normalized_events.json").read_text(encoding="utf-8"))
+    findings = json.loads((output_dir / "findings.json").read_text(encoding="utf-8"))
+    questions = json.loads((output_dir / "case_questions.json").read_text(encoding="utf-8"))
+    gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
+    decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    report = (output_dir / "report.md").read_text(encoding="utf-8")
+    actions = [event["action"] for event in read_events(output_dir / "audit.jsonl")]
+
+    assert any(
+        event.get("artifact_family") == "registry_user_activity"
+        for event in normalized["events"]
+    )
+    categories = {
+        finding.get("finding_category")
+        for finding in findings["findings"]
+    }
+    assert "file_access_candidate" in categories
+    assert any(finding["status"] == "inferred" for finding in findings["findings"])
+    question_by_id = {
+        question["question_id"]: question for question in questions["questions"]
+    }
+    assert question_by_id["q_when_activity"]["linked_evidence_refs"]
+    assert question_by_id["q_what_was_stolen"]["status"] == "not_assessed"
+    assert question_by_id["q_where_transferred"]["status"] == "not_assessed"
+    assert question_by_id["q_how_stolen"]["status"] == "not_assessed"
+    assert question_by_id["q_memory"]["status"] == "not_assessed"
+    assert gap_analysis["registry_user_activity"]["status"] == "partial_scope"
+    assert (
+        gap_analysis["registry_user_activity"]["prepared_hive_scope_warnings"][0][
+            "recommended_next_step"
+        ]
+        == "Extract and inventory all user profile NTUSER.DAT hives before treating "
+        "user-activity coverage as complete."
+    )
+    assert gap_analysis["registry_user_activity"]["coverage_gaps"][0]["reason"] == "no_rows"
+    decision_ids = {decision["decision_id"] for decision in decision_trace["decisions"]}
+    assert {
+        "registry_user_activity_profile_selected",
+        "ntuser_artifact_selected",
+        "user_activity_parser_execution",
+        "user_activity_normalization",
+        "user_activity_finding_generation",
+        "user_activity_case_question_mapping",
+        "user_activity_coverage_gap_handling",
+    } <= decision_ids
+    assert "## User Activity Summary" in report
+    assert "## Parser Coverage and User-Activity Gaps" in report
+    assert "partial profile coverage" in report
+    assert "user_activity_analysis_completed" in actions
 
 
 def test_yaml_casebook_input_is_rejected(tmp_path: Path):

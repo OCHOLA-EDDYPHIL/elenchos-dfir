@@ -22,6 +22,13 @@ GENERIC_CANDIDATE_MARKERS = (
     "archive",
     "document",
 )
+REGISTRY_USER_ACTIVITY_TYPES = {
+    "userassist",
+    "recentdocs",
+    "opensavepidlmru",
+    "lastvisitedpidlmru",
+    "typedpaths",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +112,19 @@ def _evidence_class_from_event(row: dict[str, Any]) -> str:
     artifact_type = _artifact_type_from_event(row).casefold()
     parser = _parser_from_event(row).casefold()
     event_type = _event_type(row)
+    metadata = row.get("metadata", {})
+    artifact_family = ""
+    if isinstance(metadata, dict):
+        value = metadata.get("artifact_family")
+        artifact_family = value if isinstance(value, str) else ""
+    if (
+        row.get("artifact_family") == "registry_user_activity"
+        or artifact_family == "registry_user_activity"
+        or artifact_type in REGISTRY_USER_ACTIVITY_TYPES
+    ):
+        if artifact_type in REGISTRY_USER_ACTIVITY_TYPES:
+            return artifact_type
+        return "registry_user_activity"
     if artifact_type == "amcache" or parser == "amcacheparser" or event_type == "amcache_execution":
         return "amcache"
     if artifact_type in {"registry", "registry_hive"} or parser == "recmd":
@@ -117,6 +137,8 @@ def _evidence_class_from_event(row: dict[str, Any]) -> str:
 def _evidence_class_from_ref(ref: dict[str, Any]) -> str:
     parser = str(ref.get("parser", "")).casefold()
     source = str(ref.get("source", "")).casefold()
+    if source in REGISTRY_USER_ACTIVITY_TYPES or source == "registry_user_activity":
+        return source
     if parser == "amcacheparser" or "amcache" in source:
         return "amcache"
     if parser == "recmd" or "registry" in source or "ntuser" in source or "software" in source:
@@ -241,7 +263,14 @@ def _linked_findings(
         if question.id in _finding_question_ids(finding):
             linked.append(finding)
             continue
-        if question_classes and question_classes & _finding_evidence_classes(finding):
+        finding_classes = _finding_evidence_classes(finding)
+        if question_classes and (
+            question_classes & finding_classes
+            or (
+                "registry_user_activity" in question_classes
+                and finding_classes & REGISTRY_USER_ACTIVITY_TYPES
+            )
+        ):
             linked.append(finding)
     return sorted(linked, key=lambda item: str(item.get("finding_id", "")))
 
@@ -273,7 +302,18 @@ def _events_for_question(
     casebook: Casebook,
 ) -> list[EventEvidence]:
     wanted = set(question.evidence_classes)
-    matched = [event for event in events if not wanted or event.evidence_class in wanted]
+    matched = [
+        event
+        for event in events
+        if (
+            not wanted
+            or event.evidence_class in wanted
+            or (
+                "registry_user_activity" in wanted
+                and event.evidence_class in REGISTRY_USER_ACTIVITY_TYPES
+            )
+        )
+    ]
     if question.status_policy == "case_window_activity":
         window_events = [event for event in matched if event.in_analysis_window]
         return window_events or matched
@@ -516,6 +556,7 @@ def render_case_question_report(
     findings: list[dict[str, Any]],
     coverage_summary: dict[str, Any],
     adapted: AdaptedCaseManifest,
+    user_activity_summary: dict[str, Any] | None = None,
 ) -> str:
     questions = [
         question
@@ -560,6 +601,88 @@ def render_case_question_report(
         lines.append(f"- `{finding.get('finding_id')}` {finding.get('claim')}")
         if finding.get("rationale"):
             lines.append(f"  - Rationale: {finding.get('rationale')}")
+    lines.append("")
+    user_activity_findings = [
+        finding
+        for finding in findings
+        if finding.get("artifact_family") == "registry_user_activity"
+    ]
+    event_counts = {}
+    user_activity_gaps = []
+    prepared_hive_scope_warnings = []
+    if user_activity_summary is not None:
+        raw_counts = user_activity_summary.get("event_counts_by_artifact_type", {})
+        if isinstance(raw_counts, dict):
+            event_counts = raw_counts
+        raw_gaps = user_activity_summary.get("coverage_gaps", [])
+        if isinstance(raw_gaps, list):
+            user_activity_gaps = [gap for gap in raw_gaps if isinstance(gap, dict)]
+        raw_scope_warnings = user_activity_summary.get("prepared_hive_scope_warnings", [])
+        if isinstance(raw_scope_warnings, list):
+            prepared_hive_scope_warnings = [
+                warning for warning in raw_scope_warnings if isinstance(warning, dict)
+            ]
+    lines.append("## User Activity Summary")
+    if not user_activity_findings and not event_counts:
+        lines.append("- No Registry user-activity events were normalized.")
+    for artifact_type, count in sorted(event_counts.items()):
+        lines.append(f"- `{artifact_type}` events: {count}")
+    lines.append("")
+    category_sections = (
+        (
+            "File Access / Recent Document Candidates",
+            {"file_access_candidate", "cloud_or_transfer_candidate"},
+        ),
+        ("Program Use Candidates", {"program_use_candidate"}),
+        ("Typed Path / User Navigation Candidates", {"typed_path_navigation_candidate"}),
+    )
+    for title, categories in category_sections:
+        lines.append(f"## {title}")
+        category_findings = [
+            finding
+            for finding in user_activity_findings
+            if finding.get("finding_category") in categories
+        ]
+        if not category_findings:
+            lines.append("- No candidates in this category.")
+        for finding in sorted(category_findings, key=lambda item: str(item.get("finding_id", ""))):
+            refs = finding.get("linked_event_ids", [])
+            rendered_refs = (
+                ", ".join(f"`{ref}`" for ref in refs[:3])
+                if isinstance(refs, list)
+                else ""
+            )
+            lines.append(
+                f"- `{finding.get('finding_id')}` status=`{finding.get('status')}` "
+                f"{finding.get('claim')}"
+            )
+            if finding.get("rationale"):
+                lines.append(f"  - Reason: {finding.get('rationale')}")
+            if rendered_refs:
+                lines.append(f"  - Evidence refs: {rendered_refs}")
+            lines.append(
+                "  - Limitation: Candidate evidence is not proof of theft or exfiltration."
+            )
+        lines.append("")
+    lines.append("## Parser Coverage and User-Activity Gaps")
+    if prepared_hive_scope_warnings:
+        lines.append(
+            "- Registry user-activity partial profile coverage: coverage is limited "
+            "to the prepared NTUSER.DAT hive(s); one or more additional profile "
+            "hives were not extracted."
+        )
+        lines.append(
+            "  - Next step: extract and inventory all user profile NTUSER.DAT hives."
+        )
+    if not user_activity_gaps:
+        lines.append("- No Registry user-activity parser/key gaps were recorded.")
+    for gap in user_activity_gaps:
+        lines.append(
+            f"- `{gap.get('artifact_type')}` reason=`{gap.get('reason')}`: "
+            f"{gap.get('impact')}"
+        )
+        if gap.get("recommended_next_step"):
+            lines.append(f"  - Next step: {gap.get('recommended_next_step')}")
     lines.append("")
     lines.append("## Not Assessed / Scope Gaps")
     if not not_assessed:

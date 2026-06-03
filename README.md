@@ -264,6 +264,15 @@ theft contents, transfer destination, and exfiltration method questions are
 `not_assessed` under the current final scope unless direct parsed evidence is
 added later.
 
+When a prepared `NTUSER.DAT` hive is available, `agent run-case` also attempts
+generic Registry user-activity coverage for UserAssist, RecentDocs,
+OpenSavePidlMRU, LastVisitedPidlMRU, and TypedPaths. These events can produce
+file, program, and navigation review candidates with provenance; they do not
+prove theft, transfer, exfiltration, or compromise by themselves.
+Coverage is limited to the NTUSER hives prepared by `case prepare`; if multiple
+profile hives were discovered but only one was staged, the run records partial
+profile coverage rather than treating the result as complete.
+
 ```bash
 .venv/bin/python -m siftguard agent run \
   --case-id "$CASE_ID" \

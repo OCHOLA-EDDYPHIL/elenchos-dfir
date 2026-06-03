@@ -12,6 +12,7 @@ def build_gap_analysis(
     adapted: AdaptedCaseManifest,
     casebook: Casebook | None,
     case_questions: dict[str, Any] | None,
+    user_activity_summary: dict[str, Any] | None,
     warnings: list[str],
     created_at: str,
 ) -> dict[str, Any]:
@@ -42,6 +43,27 @@ def build_gap_analysis(
         status = question.get("status")
         if isinstance(status, str):
             status_counts[status] = status_counts.get(status, 0) + 1
+    user_activity_gaps: list[dict[str, Any]] = []
+    user_activity_event_counts: dict[str, int] = {}
+    prepared_hive_scope_warnings: list[dict[str, Any]] = []
+    if user_activity_summary is not None:
+        raw_gaps = user_activity_summary.get("coverage_gaps", [])
+        if isinstance(raw_gaps, list):
+            user_activity_gaps = [dict(gap) for gap in raw_gaps if isinstance(gap, dict)]
+        raw_counts = user_activity_summary.get("event_counts_by_artifact_type", {})
+        if isinstance(raw_counts, dict):
+            user_activity_event_counts = {
+                str(key): value
+                for key, value in raw_counts.items()
+                if isinstance(value, int)
+            }
+        raw_scope_warnings = user_activity_summary.get("prepared_hive_scope_warnings", [])
+        if isinstance(raw_scope_warnings, list):
+            prepared_hive_scope_warnings = [
+                dict(warning)
+                for warning in raw_scope_warnings
+                if isinstance(warning, dict)
+            ]
     return {
         "case_id": adapted.case_id,
         "created_at": created_at,
@@ -52,6 +74,18 @@ def build_gap_analysis(
         "case_questions": questions,
         "status_counts": status_counts,
         "carried_forward_case_prep_gaps": list(adapted.coverage_gaps),
+        "registry_user_activity": {
+            "status": (
+                "partial_scope"
+                if prepared_hive_scope_warnings
+                else "assessed"
+                if user_activity_event_counts
+                else "needs_review"
+            ),
+            "event_counts_by_artifact_type": user_activity_event_counts,
+            "coverage_gaps": user_activity_gaps,
+            "prepared_hive_scope_warnings": prepared_hive_scope_warnings,
+        },
         "memory_sources": [
             {
                 "source_id": source["source_id"],
