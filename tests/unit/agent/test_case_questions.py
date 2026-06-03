@@ -572,6 +572,7 @@ def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
     assert "Airwolf-ARL.lnk" in first
     assert "q_program_presence_execution" in first
     assert "confirmed, narrowly" in first
+    assert "confirmed: confirmed, narrowly" not in first
     assert "does not label activity as malicious" in first
     assert "additional needs_review finding(s) omitted" in first
     forbidden = (
@@ -581,3 +582,17 @@ def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
         "confirmed malware execution",
     )
     assert not any(phrase in first.casefold() for phrase in forbidden)
+
+
+def test_report_text_truncates_on_word_boundary():
+    text = (
+        "execution-relevant artifact presence requires analyst review before "
+        "incident conclusions are made"
+    )
+
+    rendered = case_questions_module._report_text(text, max_chars=62)
+
+    assert rendered == "execution-relevant artifact presence requires analyst..."
+    assert "artif..." not in rendered
+    assert "n..." not in rendered
+    assert "e..." not in rendered

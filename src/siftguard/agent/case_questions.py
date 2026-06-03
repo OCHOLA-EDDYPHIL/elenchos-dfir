@@ -35,6 +35,7 @@ REPORT_TOP_N = 10
 REPORT_DISPLAY_MAX_CHARS = 120
 _HEX_BYTE_DUMP_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}[-\s]?){20,}$")
 _PRINTABLE_RUN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._:/\\?=&{}()[\]-]{2,}")
+_REPORT_WORD_BOUNDARY_RE = re.compile(r"[\s,;:]+")
 
 
 @dataclass(frozen=True, slots=True)
@@ -586,7 +587,24 @@ def _report_text(value: object, *, max_chars: int = REPORT_DISPLAY_MAX_CHARS) ->
     collapsed = " ".join(cleaned.split())
     if len(collapsed) <= max_chars:
         return collapsed
-    return f"{collapsed[: max_chars - 1].rstrip()}..."
+    if max_chars <= 3:
+        return "." * max_chars
+    limit = max_chars - 3
+    candidate = collapsed[:limit].rstrip()
+    min_boundary = min(max(12, limit // 2), max(0, limit - 1))
+    boundary = -1
+    for match in _REPORT_WORD_BOUNDARY_RE.finditer(candidate):
+        if match.start() >= min_boundary:
+            boundary = match.start()
+    if boundary == -1:
+        for separator in ("/", "\\", "-", "_", "."):
+            position = candidate.rfind(separator, min_boundary)
+            if position > boundary:
+                boundary = position
+    if boundary > 0:
+        candidate = candidate[:boundary].rstrip(" ,;:-_/\\.")
+    candidate = candidate.rstrip(" ,;:-_/\\.")
+    return f"{candidate}..." if candidate else "..."
 
 
 def _hex_bytes(value: str) -> bytes | None:
@@ -831,8 +849,17 @@ def _question_line(question: dict[str, Any]) -> str:
     refs = question.get("linked_evidence_refs", [])
     linked_count = len(linked) if isinstance(linked, list) else 0
     ref_count = len(refs) if isinstance(refs, list) else 0
+    answer = _question_answer(question)
+    answer_lower = answer.casefold()
+    status_lower = status.casefold()
+    status_and_answer = (
+        answer
+        if answer_lower.startswith(f"{status_lower}:")
+        or answer_lower.startswith(f"{status_lower},")
+        else f"{status}: {answer}"
+    )
     return (
-        f"- `{question_id}` — {status}: {_question_answer(question)} "
+        f"- `{question_id}` — {status_and_answer} "
         f"Checked: {checked_text or 'none'}; linked_findings={linked_count}; "
         f"evidence_refs={ref_count}."
     )
