@@ -231,6 +231,7 @@ def test_unsupported_questions_become_not_assessed(tmp_path: Path):
         question = question_by_id(result, question_id)
         assert question["status"] == "not_assessed"
         assert question["gaps"]
+        assert question["linked_evidence_refs"] == []
 
 
 def test_casebook_profile_keywords_prioritize_candidates_generically(tmp_path: Path):
@@ -334,6 +335,44 @@ def test_multiple_independent_supported_artifacts_may_infer(tmp_path: Path):
     )
 
     assert question_by_id(result, "q_program_presence_execution")["status"] == "inferred"
+
+
+def test_registry_user_activity_does_not_confirm_execution_without_execution_artifact(
+    tmp_path: Path,
+):
+    casebook, adapted = case_context(tmp_path)
+    result = evaluate_case_questions(
+        casebook=casebook,
+        adapted=adapted,
+        normalized_events=[
+            event(
+                event_id="evt_mft",
+                artifact_id="prep_mft",
+                artifact_type="mft",
+                parser_name="mftecmd",
+                event_type="file_created",
+                timestamp="2020-11-13T15:00:00Z",
+                path="C:/ProgramData/tool.exe",
+                row_number=2,
+            ),
+            event(
+                event_id="evt_lastvisited",
+                artifact_id="prep_software",
+                artifact_type="lastvisitedpidlmru",
+                parser_name="recmd",
+                event_type="registry_lastvisited_program_candidate",
+                timestamp="2020-11-13T15:05:00Z",
+                path="C:/ProgramData/tool.exe",
+                row_number=3,
+            ),
+        ],
+        findings=[],
+        created_at="2026-01-01T00:00:00Z",
+    )
+
+    question = question_by_id(result, "q_program_presence_execution")
+    assert question["status"] == "needs_review"
+    assert "incomplete" in question["reason"]
 
 
 def test_confirmed_requires_strict_threshold_and_evidence_refs(tmp_path: Path):

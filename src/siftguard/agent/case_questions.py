@@ -29,6 +29,8 @@ REGISTRY_USER_ACTIVITY_TYPES = {
     "lastvisitedpidlmru",
     "typedpaths",
 }
+EXECUTION_SPECIFIC_EVIDENCE_CLASSES = {"amcache", "prefetch", "event_log_execution"}
+REPORT_NEEDS_REVIEW_FINDING_LIMIT = 15
 
 
 @dataclass(frozen=True, slots=True)
@@ -301,6 +303,11 @@ def _events_for_question(
     *,
     casebook: Casebook,
 ) -> list[EventEvidence]:
+    if (
+        question.expected_status in UNSUPPORTED_EXPECTED_STATUSES
+        or question.supported_by_scope is False
+    ):
+        return []
     wanted = set(question.evidence_classes)
     matched = [
         event
@@ -342,6 +349,11 @@ def _can_confirm(question: CasebookQuestion, events: list[EventEvidence]) -> boo
     if question.status_policy in {"file_candidate_triage", "registry_persistence"}:
         return False
     classes = {event.evidence_class for event in events}
+    if (
+        question.status_policy == "multi_artifact_execution_presence"
+        and not classes & EXECUTION_SPECIFIC_EVIDENCE_CLASSES
+    ):
+        return False
     return (
         len(events) >= 2
         and len(classes) >= 2
@@ -359,6 +371,18 @@ def _can_infer(
     if question.expected_status in UNSUPPORTED_EXPECTED_STATUSES:
         return False
     classes = {event.evidence_class for event in events}
+    if question.status_policy == "multi_artifact_execution_presence":
+        if not classes & EXECUTION_SPECIFIC_EVIDENCE_CLASSES:
+            return False
+        if len(events) >= 2 and len(classes) >= 2:
+            return True
+        return any(
+            finding.get("status") == "inferred"
+            and (
+                _finding_evidence_classes(finding) & EXECUTION_SPECIFIC_EVIDENCE_CLASSES
+            )
+            for finding in linked_findings
+        )
     if len(events) >= 2 and len(classes) >= 2:
         return True
     return any(finding.get("status") == "inferred" for finding in linked_findings)
@@ -595,12 +619,24 @@ def render_case_question_report(
         lines.append(f"  - Reason: {question.get('reason')}")
         for gap in question.get("gaps", []):
             lines.append(f"  - Gap: {gap}")
-    for finding in sorted(findings, key=lambda item: str(item.get("finding_id", ""))):
-        if finding.get("status") != "needs_review":
-            continue
+    needs_review_findings = sorted(
+        (finding for finding in findings if finding.get("status") == "needs_review"),
+        key=lambda item: (
+            -len(
+                item.get("evidence_refs", [])
+                if isinstance(item.get("evidence_refs"), list)
+                else []
+            ),
+            str(item.get("finding_id", "")),
+        ),
+    )
+    for finding in needs_review_findings[:REPORT_NEEDS_REVIEW_FINDING_LIMIT]:
         lines.append(f"- `{finding.get('finding_id')}` {finding.get('claim')}")
         if finding.get("rationale"):
             lines.append(f"  - Rationale: {finding.get('rationale')}")
+    if len(needs_review_findings) > REPORT_NEEDS_REVIEW_FINDING_LIMIT:
+        remaining = len(needs_review_findings) - REPORT_NEEDS_REVIEW_FINDING_LIMIT
+        lines.append(f"- {remaining} additional needs_review finding(s) omitted from report.")
     lines.append("")
     user_activity_findings = [
         finding

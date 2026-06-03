@@ -13,6 +13,7 @@ def build_gap_analysis(
     casebook: Casebook | None,
     case_questions: dict[str, Any] | None,
     user_activity_summary: dict[str, Any] | None,
+    coverage_summary: dict[str, Any] | None,
     warnings: list[str],
     created_at: str,
 ) -> dict[str, Any]:
@@ -77,6 +78,19 @@ def build_gap_analysis(
             if user_activity_event_counts
             else "needs_review"
         )
+    parser_coverage_gaps: list[dict[str, Any]] = []
+    if coverage_summary is not None:
+        per_artifact = coverage_summary.get("per_artifact", [])
+        if isinstance(per_artifact, list):
+            for artifact in per_artifact:
+                if not isinstance(artifact, dict):
+                    continue
+                gaps = artifact.get("coverage_gaps", [])
+                if not isinstance(gaps, list):
+                    continue
+                parser_coverage_gaps.extend(
+                    dict(gap) for gap in gaps if isinstance(gap, dict)
+                )
     return {
         "case_id": adapted.case_id,
         "created_at": created_at,
@@ -94,6 +108,7 @@ def build_gap_analysis(
             "prepared_hive_scope_warnings": prepared_hive_scope_warnings,
             "profile_coverage": profile_coverage,
         },
+        "parser_coverage_gaps": parser_coverage_gaps,
         "memory_sources": [
             {
                 "source_id": source["source_id"],
