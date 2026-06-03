@@ -31,7 +31,8 @@
       "evidence_classes": [
         "mft",
         "amcache",
-        "registry_run_keys"
+        "registry_run_keys",
+        "registry_user_activity"
       ],
       "id": "q_when_activity",
       "question": "When did relevant activity occur?",
@@ -41,7 +42,9 @@
     {
       "evidence_classes": [
         "amcache",
-        "mft"
+        "mft",
+        "userassist",
+        "lastvisitedpidlmru"
       ],
       "id": "q_program_presence_execution",
       "question": "Was there evidence of suspicious program presence or execution-relevant artifacts?",
@@ -59,7 +62,10 @@
     },
     {
       "evidence_classes": [
-        "mft"
+        "mft",
+        "recentdocs",
+        "opensavepidlmru",
+        "typedpaths"
       ],
       "id": "q_project_file_candidates",
       "question": "What project or file candidates appear relevant?",
@@ -69,7 +75,7 @@
     {
       "evidence_classes": [],
       "expected_status": "not_assessed",
-      "gap_reason": "Current final scope does not parse file-open artifacts, cloud sync databases, browser history, USB history, network capture, or memory.",
+      "gap_reason": "Current final scope can list user-activity candidates but does not prove theft contents without direct supporting artifacts.",
       "id": "q_what_was_stolen",
       "question": "What was stolen?",
       "supported_by_scope": false
@@ -77,7 +83,7 @@
     {
       "evidence_classes": [],
       "expected_status": "not_assessed",
-      "gap_reason": "Current final scope does not parse network, browser, cloud sync, USB, or memory artifacts.",
+      "gap_reason": "Current final scope can list user-activity transfer review candidates but does not prove transfer destination without network, browser, cloud sync, USB, or memory artifacts.",
       "id": "q_where_transferred",
       "question": "Where was it transferred to?",
       "supported_by_scope": false
@@ -85,7 +91,7 @@
     {
       "evidence_classes": [],
       "expected_status": "not_assessed",
-      "gap_reason": "Current final scope does not parse the artifact classes required to reconstruct exfiltration path or method.",
+      "gap_reason": "Current final scope can list user-activity candidates but does not parse the artifact classes required to reconstruct exfiltration path or method.",
       "id": "q_how_stolen",
       "question": "How was it stolen?",
       "supported_by_scope": false

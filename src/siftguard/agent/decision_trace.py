@@ -38,6 +38,7 @@ def build_decision_trace(
     run: AgentRun,
     casebook: Casebook | None,
     case_questions: dict[str, Any] | None,
+    user_activity_summary: dict[str, Any] | None,
     warnings: list[str],
     created_at: str,
     event_selection_profile: str,
@@ -50,6 +51,21 @@ def build_decision_trace(
         question_count = len(rows) if isinstance(rows, list) else 0
         counts = case_questions.get("status_counts", {})
         status_counts = dict(counts) if isinstance(counts, dict) else {}
+    user_activity_event_count = 0
+    user_activity_finding_count = 0
+    user_activity_gap_count = 0
+    user_activity_scope_warning_count = 0
+    if user_activity_summary is not None:
+        event_count = user_activity_summary.get("event_count")
+        finding_count = user_activity_summary.get("finding_count")
+        gaps = user_activity_summary.get("coverage_gaps", [])
+        scope_warnings = user_activity_summary.get("prepared_hive_scope_warnings", [])
+        user_activity_event_count = event_count if isinstance(event_count, int) else 0
+        user_activity_finding_count = finding_count if isinstance(finding_count, int) else 0
+        user_activity_gap_count = len(gaps) if isinstance(gaps, list) else 0
+        user_activity_scope_warning_count = (
+            len(scope_warnings) if isinstance(scope_warnings, list) else 0
+        )
 
     decisions = [
         _decision(
@@ -167,6 +183,74 @@ def build_decision_trace(
             next_action="Correlate normalized events.",
         ),
         _decision(
+            decision_id="registry_user_activity_profile_selected",
+            phase="parse",
+            question="Should NTUSER.DAT user-activity keys be included in Registry parsing?",
+            available_inputs={
+                "registry_user_activity_supported": True,
+                "artifact_families": [
+                    "UserAssist",
+                    "RecentDocs",
+                    "OpenSavePidlMRU",
+                    "LastVisitedPidlMRU",
+                    "TypedPaths",
+                ],
+            },
+            selected_action="Use the generic Registry user-activity profile for NTUSER.DAT.",
+            rationale=(
+                "The profile covers general Windows user-activity artifacts without "
+                "case-specific detection strings."
+            ),
+            expected_outputs=["normalized_events.json", "coverage_summary.json"],
+            outcome="completed",
+            next_action="Select NTUSER.DAT artifacts when available.",
+        ),
+        _decision(
+            decision_id="ntuser_artifact_selected",
+            phase="parse",
+            question="Which prepared Registry hive can support user-activity parsing?",
+            available_inputs={
+                "parser_artifact_count": len(adapted.evidence_manifest.artifacts),
+            },
+            selected_action="Run user-activity parsing only against prepared NTUSER.DAT hives.",
+            rationale="UserAssist and MRU user-activity artifacts are stored in NTUSER.DAT.",
+            expected_outputs=["normalized_events.json"],
+            outcome="completed",
+            next_action="Execute the bounded user-activity parser.",
+        ),
+        _decision(
+            decision_id="user_activity_parser_execution",
+            phase="parse",
+            question="Did user-activity parsing produce rows or explicit gaps?",
+            available_inputs={
+                "event_count": user_activity_event_count,
+                "coverage_gap_count": user_activity_gap_count,
+                "prepared_hive_scope_warning_count": user_activity_scope_warning_count,
+            },
+            selected_action="Normalize available rows and record missing-key/tool gaps.",
+            rationale=(
+                "Missing user-activity keys and unprepared profile hives are coverage "
+                "gaps, not inferred findings."
+            ),
+            expected_outputs=["normalized_events.json", "coverage_summary.json"],
+            outcome="completed",
+            next_action="Normalize user-activity rows into typed events.",
+        ),
+        _decision(
+            decision_id="user_activity_normalization",
+            phase="parse",
+            question="How should Registry user-activity rows be interpreted?",
+            available_inputs={"event_count": user_activity_event_count},
+            selected_action="Create typed candidate events with provenance and limitations.",
+            rationale=(
+                "UserAssist and MRU artifacts provide review candidates but do not by "
+                "themselves prove compromise, theft, or exfiltration."
+            ),
+            expected_outputs=["normalized_events.json"],
+            outcome="completed",
+            next_action="Generate evidence-linked user-activity findings.",
+        ),
+        _decision(
             decision_id="event_selection_strategy",
             phase="parse",
             question="How should selected events be bounded for triage?",
@@ -231,6 +315,43 @@ def build_decision_trace(
             next_action="Map findings and events to case questions.",
         ),
         _decision(
+            decision_id="user_activity_finding_generation",
+            phase="validate",
+            question="Which user-activity observations should become findings?",
+            available_inputs={
+                "event_count": user_activity_event_count,
+                "finding_count": user_activity_finding_count,
+            },
+            selected_action="Emit candidate findings with strict status thresholds.",
+            rationale=(
+                "Single-source Registry user-activity stays needs_review; inferred "
+                "status requires independent corroboration."
+            ),
+            expected_outputs=["findings.json"],
+            outcome="completed",
+            next_action="Map user-activity findings to case questions.",
+        ),
+        _decision(
+            decision_id="user_activity_case_question_mapping",
+            phase="case_questions",
+            question="Which case questions can user-activity evidence support?",
+            available_inputs={
+                "event_count": user_activity_event_count,
+                "question_count": question_count,
+            },
+            selected_action=(
+                "Link user-activity evidence to supported timing, file, and "
+                "program questions."
+            ),
+            rationale=(
+                "User-activity events can provide review targets while unsupported "
+                "theft and exfiltration claims remain not_assessed."
+            ),
+            expected_outputs=["case_questions.json"],
+            outcome="completed" if casebook is not None else "not_available",
+            next_action="Assign strict case-question statuses.",
+        ),
+        _decision(
             decision_id="case_question_mapping",
             phase="case_questions",
             question="How do selected events answer the case questions?",
@@ -278,6 +399,17 @@ def build_decision_trace(
             ),
             expected_outputs=["gap_analysis.json"],
             outcome="completed" if casebook is not None else "not_available",
+            next_action="Generate case-question-aware report.",
+        ),
+        _decision(
+            decision_id="user_activity_coverage_gap_handling",
+            phase="gap_analysis",
+            question="How should missing user-activity keys or parser failures be represented?",
+            available_inputs={"coverage_gap_count": user_activity_gap_count},
+            selected_action="Carry user-activity parser/key gaps into gap analysis.",
+            rationale="Absent keys and decode/tool failures should be explicit analyst scope gaps.",
+            expected_outputs=["gap_analysis.json"],
+            outcome="completed",
             next_action="Generate case-question-aware report.",
         ),
         _decision(

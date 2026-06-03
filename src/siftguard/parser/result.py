@@ -51,6 +51,26 @@ def _validate_metadata(metadata: dict[str, JSON_SCALAR]) -> dict[str, JSON_SCALA
     return metadata
 
 
+def _validate_coverage_gaps(
+    coverage_gaps: list[dict[str, JSON_SCALAR]],
+) -> list[dict[str, JSON_SCALAR]]:
+    if not isinstance(coverage_gaps, list):
+        raise TypeError("coverage_gaps must be a list of dictionaries")
+    checked: list[dict[str, JSON_SCALAR]] = []
+    for gap in coverage_gaps:
+        if not isinstance(gap, dict):
+            raise TypeError("coverage_gaps must contain only dictionaries")
+        checked_gap: dict[str, JSON_SCALAR] = {}
+        for key, value in gap.items():
+            if not isinstance(key, str) or not key:
+                raise ValueError("coverage_gaps keys must be non-empty strings")
+            if not isinstance(value, (str, int, float, bool, type(None))):
+                raise TypeError("coverage_gaps values must be JSON scalar values")
+            checked_gap[key] = value
+        checked.append(checked_gap)
+    return checked
+
+
 def _normalize_command(command: Sequence[str] | None) -> tuple[str, ...] | None:
     if command is None:
         return None
@@ -79,6 +99,7 @@ class ParserResult:
     events: list[ParserEvent] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    coverage_gaps: list[dict[str, JSON_SCALAR]] = field(default_factory=list)
     started_at_utc: datetime | str | None = None
     ended_at_utc: datetime | str | None = None
     duration_ms: int | None = None
@@ -106,6 +127,7 @@ class ParserResult:
         self.audit_event_ids = _validate_string_list("audit_event_ids", self.audit_event_ids)
         self.warnings = _validate_string_list("warnings", self.warnings)
         self.errors = _validate_string_list("errors", self.errors)
+        self.coverage_gaps = _validate_coverage_gaps(self.coverage_gaps)
         if not all(isinstance(event, ParserEvent) for event in self.events):
             raise TypeError("events must contain only ParserEvent instances")
         if not isinstance(self.output_hashes, dict):
@@ -144,6 +166,7 @@ class ParserResult:
         parser_name: str,
         source_tool: str,
         reason: str,
+        coverage_gaps: list[dict[str, JSON_SCALAR]] | None = None,
     ) -> ParserResult:
         return cls(
             case_id=case_id,
@@ -154,6 +177,7 @@ class ParserResult:
             status="skipped",
             command=None,
             errors=[reason],
+            coverage_gaps=list(coverage_gaps or []),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -176,6 +200,7 @@ class ParserResult:
             "normalized_events": event_dicts,
             "warnings": list(self.warnings),
             "errors": list(self.errors),
+            "coverage_gaps": [dict(gap) for gap in self.coverage_gaps],
             "started_at_utc": self.started_at_utc,
             "ended_at_utc": self.ended_at_utc,
             "duration_ms": self.duration_ms,
@@ -189,6 +214,9 @@ class ParserResult:
         artifact_id = data.get("artifact_id", data.get("source_artifact_id"))
         if not isinstance(artifact_id, str):
             raise ValueError("artifact_id or source_artifact_id must be present")
+        raw_coverage_gaps = data.get("coverage_gaps", [])
+        if not isinstance(raw_coverage_gaps, list):
+            raw_coverage_gaps = []
         return cls(
             case_id=data["case_id"],
             artifact_id=artifact_id,
@@ -204,6 +232,11 @@ class ParserResult:
             events=[ParserEvent.from_dict(row) for row in event_rows],
             warnings=list(data.get("warnings", [])),
             errors=list(data.get("errors", [])),
+            coverage_gaps=[
+                dict(gap)
+                for gap in raw_coverage_gaps
+                if isinstance(gap, dict)
+            ],
             started_at_utc=data.get("started_at_utc"),
             ended_at_utc=data.get("ended_at_utc"),
             duration_ms=data.get("duration_ms"),

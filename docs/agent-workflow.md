@@ -62,8 +62,10 @@ Memory sources from `case_prep.json` remain inventoried/not assessed for final
 scope, and Amcache remains disk-first from the prepared artifact set.
 
 When a JSON casebook is provided, `agent run-case` maps normalized MFT,
-Amcache, and Registry Run/RunOnce evidence to explicit case questions. Statuses
-are intentionally strict:
+Amcache, Registry Run/RunOnce, and NTUSER Registry user-activity evidence to
+explicit case questions. User-activity coverage currently includes UserAssist,
+RecentDocs, OpenSavePidlMRU, LastVisitedPidlMRU, and TypedPaths. Statuses are
+intentionally strict:
 
 - `confirmed`: direct case context plus multiple supported artifacts with
   evidence references and same-source provenance.
@@ -83,6 +85,20 @@ Casebooks may include an optional `triage_profile` with `keywords`,
 `sensitive_paths`, and `file_extensions` to prioritize file-candidate review.
 These profile values are analyst-provided hints only; they do not prove theft,
 exfiltration, compromise, or any unsupported claim.
+
+Registry user-activity findings are review leads. RecentDocs and OpenSave
+events can identify file-access or open/save candidates; UserAssist and
+LastVisitedPidlMRU can identify program-use or dialog-interaction candidates;
+TypedPaths can identify user-navigation candidates. A single user-activity
+source remains `needs_review`. `inferred` requires independent corroboration
+from another supported artifact class, and transfer/cloud/archive candidates
+remain `needs_review` unless direct evidence supports a stronger claim.
+
+User-activity coverage is only complete for the NTUSER hives that `case prepare`
+actually staged. If case preparation reports that multiple `NTUSER.DAT`
+candidates were found but only one was extracted, `agent run-case` treats
+Registry user-activity as partial profile coverage and carries that limitation
+into gap analysis and the report.
 
 The lower-level manifest entrypoint remains available:
 
@@ -160,9 +176,10 @@ directory:
 `case_questions.json` records the casebook question status, linked evidence,
 and recommended manual review. `decision_trace.json` records concise product
 reasoning for manifest intake, provenance checks, casebook handling, scope
-selection, parser planning, validation, correction, case-question mapping,
-status assignment, and report generation. `gap_analysis.json` carries case-prep
-gaps forward and links unsupported areas back to the same question IDs.
+selection, parser planning, Registry user-activity handling, validation,
+correction, case-question mapping, status assignment, and report generation.
+`gap_analysis.json` carries case-prep and user-activity parser/key gaps forward
+and links unsupported areas back to the same question IDs.
 
 ## Limitations
 

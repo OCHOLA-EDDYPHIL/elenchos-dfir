@@ -42,6 +42,10 @@ from siftguard.parser.registry_runkeys import (
     normalize_recmd_runkeys_csv,
     parse_registry_runkeys_artifact,
 )
+from siftguard.parser.registry_user_activity import (
+    normalize_recmd_user_activity_csv,
+    parse_registry_user_activity_artifact,
+)
 from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import is_relative_to
 from siftguard.reporting.markdown_report import render_markdown_report
@@ -73,6 +77,7 @@ NORMALIZED_EVENT_ARTIFACT_TYPES = {
 SYNTHETIC_CSV_ARTIFACT_TYPES = {
     "mftecmd_csv",
     "recmd_runkeys_csv",
+    "recmd_user_activity_csv",
     "amcacheparser_csv",
 }
 RAW_PARSER_ARTIFACT_TYPES = {"mft", "registry", "registry_hive", "amcache"}
@@ -86,6 +91,7 @@ BOUNDED_ARTIFACT_TYPE_PRIORITY = {
     "registry": 0,
     "registry_hive": 0,
     "recmd_runkeys_csv": 0,
+    "recmd_user_activity_csv": 0,
     "amcache": 1,
     "amcacheparser_csv": 1,
     "mft": 2,
@@ -99,6 +105,7 @@ PARSER_NAME_BY_ARTIFACT_TYPE = {
     "registry": "recmd",
     "registry_hive": "recmd",
     "recmd_runkeys_csv": "recmd",
+    "recmd_user_activity_csv": "recmd",
     "amcache": "amcacheparser",
     "amcacheparser_csv": "amcacheparser",
 }
@@ -117,6 +124,7 @@ class ArtifactRows:
     dropped_due_to_cap: int = 0
     bounded: bool = False
     skip_reason: str | None = None
+    coverage_gaps: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -615,6 +623,97 @@ def _metadata_selection_counts(metadata: dict[str, Any]) -> dict[str, int]:
     return counts
 
 
+def _combined_parser_status(results: list[ParserResult], rows: list[dict[str, Any]]) -> str:
+    statuses = {result.status for result in results}
+    if "failed" in statuses and not rows:
+        return "failed"
+    if "partial_success" in statuses:
+        return "partial_success"
+    if "failed" in statuses or ("skipped" in statuses and rows):
+        return "partial_success"
+    if "skipped" in statuses:
+        return "skipped"
+    return "success"
+
+
+def _artifact_rows_from_parser_result(
+    *,
+    artifact: EvidenceArtifact,
+    result: ParserResult,
+    max_events: int | None,
+) -> ArtifactRows:
+    warnings = [f"{artifact.artifact_id}: {warning}" for warning in result.warnings]
+    errors = [f"{artifact.artifact_id}: {error}" for error in result.errors]
+    if result.status in {"failed", "skipped"} and not result.events:
+        errors.append(
+            f"{artifact.artifact_id}: parser result status={result.status} produced no events"
+        )
+    rows = [event.to_dict() for event in result.events]
+    return ArtifactRows(
+        rows=rows,
+        warnings=warnings,
+        errors=errors,
+        parser_name=result.parser_name,
+        parser_status=result.status,
+        source_rows_seen=_metadata_int(result.metadata, "source_rows_seen") or len(rows),
+        source_events_seen=_metadata_int(result.metadata, "source_events_seen") or len(rows),
+        selection_counts=_metadata_selection_counts(result.metadata),
+        dropped_due_to_cap=_metadata_int(result.metadata, "dropped_due_to_cap") or 0,
+        bounded=(
+            max_events is not None
+            and (_metadata_int(result.metadata, "source_events_seen") or len(rows)) > len(rows)
+        ),
+        coverage_gaps=[dict(gap) for gap in result.coverage_gaps],
+    )
+
+
+def _registry_rows_from_results(
+    *,
+    artifact: EvidenceArtifact,
+    results: list[ParserResult],
+    max_events: int | None,
+) -> ArtifactRows:
+    rows: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    errors: list[str] = []
+    coverage_gaps: list[dict[str, Any]] = []
+    source_events_seen = 0
+    source_rows_seen = 0
+    for result in results:
+        result_rows = [event.to_dict() for event in result.events]
+        rows.extend(result_rows)
+        warnings.extend(f"{artifact.artifact_id}: {warning}" for warning in result.warnings)
+        errors.extend(f"{artifact.artifact_id}: {error}" for error in result.errors)
+        if result.status in {"failed", "skipped"} and not result.events:
+            warning = (
+                f"{artifact.artifact_id}: parser result status={result.status} "
+                "produced no events"
+            )
+            if result.artifact_type == "registry_user_activity":
+                warnings.append(warning)
+            else:
+                errors.append(warning)
+        coverage_gaps.extend(dict(gap) for gap in result.coverage_gaps)
+        source_rows_seen += _metadata_int(result.metadata, "source_rows_seen") or len(result_rows)
+        source_events_seen += _metadata_int(result.metadata, "source_events_seen") or len(
+            result_rows
+        )
+    return ArtifactRows(
+        rows=rows,
+        warnings=warnings,
+        errors=errors,
+        parser_name="recmd",
+        parser_status=_combined_parser_status(results, rows),
+        source_rows_seen=source_rows_seen,
+        source_events_seen=source_events_seen,
+        bounded=(
+            max_events is not None
+            and source_events_seen > len(rows)
+        ),
+        coverage_gaps=coverage_gaps,
+    )
+
+
 def _increment_selection_counts(context: AgentWorkflowContext, counts: dict[str, int]) -> None:
     for key, value in counts.items():
         context.selection_counts[key] = context.selection_counts.get(key, 0) + value
@@ -639,6 +738,7 @@ def _artifact_coverage(
         "errors_count": len(result.errors),
         "bounded": result.bounded,
         "skip_reason": result.skip_reason,
+        "coverage_gaps": list(result.coverage_gaps),
     }
 
 
@@ -654,6 +754,17 @@ def _skipped_artifact_rows(
         parser_name=_parser_name_for_artifact(artifact),
         parser_status=parser_status,
         skip_reason=reason,
+        coverage_gaps=[
+            {
+                "gap_id": f"gap_{artifact.artifact_id}_skipped",
+                "artifact_family": artifact.artifact_type,
+                "artifact_type": artifact.artifact_type,
+                "source_artifact_id": artifact.artifact_id,
+                "reason": parser_status,
+                "impact": reason,
+                "recommended_next_step": "Review artifact availability and parser support.",
+            }
+        ],
     )
 
 
@@ -704,6 +815,7 @@ def _parser_result_rows(
         source_events_seen=source_events_seen,
         bounded=max_events is not None and source_events_seen > len(rows),
         dropped_due_to_cap=max(source_events_seen - len(rows), 0),
+        coverage_gaps=[dict(gap) for gap in result.coverage_gaps],
     )
 
 
@@ -744,6 +856,7 @@ def _synthetic_csv_rows(
     path: Path,
     max_events: int | None = None,
 ) -> ArtifactRows:
+    coverage_gaps: list[dict[str, Any]] = []
     if artifact.artifact_type == "mftecmd_csv":
         events, warnings, errors = normalize_mftecmd_csv(
             csv_path=path,
@@ -758,6 +871,17 @@ def _synthetic_csv_rows(
             artifact_id=artifact.artifact_id,
             max_events=max_events,
         )
+    elif artifact.artifact_type == "recmd_user_activity_csv":
+        events, warnings, errors, user_activity_gaps = normalize_recmd_user_activity_csv(
+            csv_path=path,
+            case_id=case_id,
+            artifact_id=artifact.artifact_id,
+            artifact_type="recentdocs",
+            source_id=artifact.source_image_id,
+            source_role="disk_image",
+            max_events=max_events,
+        )
+        coverage_gaps = [dict(gap) for gap in user_activity_gaps]
     elif artifact.artifact_type == "amcacheparser_csv":
         events, warnings, errors = normalize_amcache_csv(
             csv_path=path,
@@ -780,6 +904,7 @@ def _synthetic_csv_rows(
         source_rows_seen=len(rows) if not _has_event_limit_warning(warnings) else None,
         source_events_seen=len(rows) if not _has_event_limit_warning(warnings) else None,
         bounded=_has_event_limit_warning(warnings),
+        coverage_gaps=coverage_gaps,
     )
 
 
@@ -804,12 +929,34 @@ def _raw_parser_rows(
             max_events=max_events,
         )
     elif artifact.artifact_type in {"registry", "registry_hive"}:
-        result = parse_registry_runkeys_artifact(
+        runkey_result = parse_registry_runkeys_artifact(
             case_id=context.case_id,
             artifact=resolved_artifact,
             runs_root=context.paths.output_dir,
             evidence_root=evidence_root,
             ledger_path=context.paths.audit_path,
+            max_events=max_events,
+        )
+        results = [runkey_result]
+        remaining = (
+            None
+            if max_events is None
+            else max(max_events - len(runkey_result.events), 0)
+        )
+        if Path(resolved_artifact.path).name.casefold() == "ntuser.dat" and remaining != 0:
+            results.append(
+                parse_registry_user_activity_artifact(
+                    case_id=context.case_id,
+                    artifact=resolved_artifact,
+                    runs_root=context.paths.output_dir,
+                    evidence_root=evidence_root,
+                    ledger_path=context.paths.audit_path,
+                    max_events=remaining,
+                )
+            )
+        return _registry_rows_from_results(
+            artifact=artifact,
+            results=results,
             max_events=max_events,
         )
     elif artifact.artifact_type == "amcache":
@@ -824,27 +971,10 @@ def _raw_parser_rows(
     else:
         raise ValueError(f"unsupported raw parser artifact type: {artifact.artifact_type}")
 
-    warnings = [f"{artifact.artifact_id}: {warning}" for warning in result.warnings]
-    errors = [f"{artifact.artifact_id}: {error}" for error in result.errors]
-    if result.status in {"failed", "skipped"} and not result.events:
-        errors.append(
-            f"{artifact.artifact_id}: parser result status={result.status} produced no events"
-        )
-    rows = [event.to_dict() for event in result.events]
-    return ArtifactRows(
-        rows=rows,
-        warnings=warnings,
-        errors=errors,
-        parser_name=result.parser_name,
-        parser_status=result.status,
-        source_rows_seen=_metadata_int(result.metadata, "source_rows_seen") or len(rows),
-        source_events_seen=_metadata_int(result.metadata, "source_events_seen") or len(rows),
-        selection_counts=_metadata_selection_counts(result.metadata),
-        dropped_due_to_cap=_metadata_int(result.metadata, "dropped_due_to_cap") or 0,
-        bounded=(
-            max_events is not None
-            and (_metadata_int(result.metadata, "source_events_seen") or len(rows)) > len(rows)
-        ),
+    return _artifact_rows_from_parser_result(
+        artifact=artifact,
+        result=result,
+        max_events=max_events,
     )
 
 
@@ -955,6 +1085,7 @@ def _forensic_triage_rows_for_artifact(
             selection_counts=_metadata_selection_counts(result.metadata),
             dropped_due_to_cap=_metadata_int(result.metadata, "dropped_due_to_cap") or 0,
             bounded=(_metadata_int(result.metadata, "dropped_due_to_cap") or 0) > 0,
+            coverage_gaps=[dict(gap) for gap in result.coverage_gaps],
         )
 
     return _rows_for_artifact(
@@ -1197,11 +1328,20 @@ def _coverage_limitations(context: AgentWorkflowContext) -> list[str]:
 def _build_coverage_summary(context: AgentWorkflowContext) -> dict[str, Any]:
     total_source_events_seen = 0
     total_known = False
+    user_activity_gaps: list[dict[str, Any]] = []
     for artifact in context.coverage_artifacts:
         value = artifact.get("source_events_seen")
         if isinstance(value, int):
             total_source_events_seen += value
             total_known = True
+        gaps = artifact.get("coverage_gaps", [])
+        if isinstance(gaps, list):
+            user_activity_gaps.extend(
+                gap
+                for gap in gaps
+                if isinstance(gap, dict)
+                and gap.get("artifact_family") == "registry_user_activity"
+            )
     return {
         "case_id": context.case_id,
         "fixture_id": context.fixture_id,
@@ -1211,6 +1351,7 @@ def _build_coverage_summary(context: AgentWorkflowContext) -> dict[str, Any]:
         "normalized_events_written": len(context.normalized_event_rows),
         "total_source_events_seen": total_source_events_seen if total_known else None,
         "per_artifact": list(context.coverage_artifacts),
+        "registry_user_activity_gaps": user_activity_gaps,
         "selection_notes": dict(sorted(context.selection_counts.items())),
         "limitations": _coverage_limitations(context),
     }

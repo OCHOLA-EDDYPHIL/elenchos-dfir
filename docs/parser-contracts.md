@@ -106,6 +106,24 @@ Unit tests use synthetic RECmd-style CSV fixtures and fake runner injection.
 SIFT validation against the real tool is summarized in
 `docs/parser-validation.md`.
 
+## Registry User-Activity Parser Wrapper
+
+The Registry user-activity wrapper reuses the RECmd command configuration for
+prepared `NTUSER.DAT` hives. It runs bounded direct lookups for UserAssist,
+RecentDocs, OpenSavePidlMRU, LastVisitedPidlMRU, and TypedPaths, writes parser
+CSV/JSON outputs under `runs/<case_id>/parser_outputs/<artifact_id>/recmd/`,
+and records missing-key, parser-unavailable, parser-error, decode-error, and
+no-row conditions as structured coverage gaps.
+
+Normalization emits observational `ParserEvent` records with
+`artifact_family="registry_user_activity"` and typed event names such as
+`registry_userassist_program_use` and `registry_recent_document_candidate`.
+These events preserve the prepared artifact id, source id, Registry key/value
+context, decoded target where available, timestamp kind, evidence reference,
+raw row reference, and parser status. They produce analyst review candidates;
+they do not prove theft, transfer, exfiltration, compromise, or malware
+execution by themselves.
+
 ## Amcache Parser Wrapper
 
 The Amcache wrapper uses the verified `AmcacheParser` command configuration for
