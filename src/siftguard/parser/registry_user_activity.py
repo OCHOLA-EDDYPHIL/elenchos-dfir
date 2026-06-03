@@ -200,6 +200,45 @@ def _coverage_gap(
     }
 
 
+def _profile_fields(
+    *,
+    profile_id: str | None,
+    profile_display_name: str | None,
+    sanitized_profile_hint: str | None,
+    source_candidate_ref: str | None,
+) -> dict[str, JSON_SCALAR]:
+    fields: dict[str, JSON_SCALAR] = {}
+    for key, value in (
+        ("profile_id", profile_id),
+        ("profile_display_name", profile_display_name),
+        ("sanitized_profile_hint", sanitized_profile_hint),
+        ("source_candidate_ref", source_candidate_ref),
+    ):
+        if value:
+            fields[key] = value
+    return fields
+
+
+def _add_profile_fields_to_events(
+    events: list[ParserEvent],
+    profile_fields: dict[str, JSON_SCALAR],
+) -> list[ParserEvent]:
+    if not profile_fields:
+        return events
+    for event in events:
+        event.metadata.update(profile_fields)
+    return events
+
+
+def _add_profile_fields_to_gaps(
+    gaps: list[CoverageGap],
+    profile_fields: dict[str, JSON_SCALAR],
+) -> list[CoverageGap]:
+    if not profile_fields:
+        return gaps
+    return [dict(gap, **profile_fields) for gap in gaps]
+
+
 def _record_id(
     hive: str | None,
     key_path: str | None,
@@ -828,6 +867,10 @@ def parse_registry_user_activity(
     artifact_type: str = "registry_hive",
     source_id: str | None = None,
     source_role: str | None = "disk_image",
+    profile_id: str | None = None,
+    profile_display_name: str | None = None,
+    sanitized_profile_hint: str | None = None,
+    source_candidate_ref: str | None = None,
     max_events: int | None = None,
 ) -> ParserResult:
     _require_non_empty(case_id, "case_id")
@@ -863,19 +906,30 @@ def parse_registry_user_activity(
                 f"got {resolved_hive_path.name}"
             ),
         )
+    profile_fields = _profile_fields(
+        profile_id=profile_id,
+        profile_display_name=profile_display_name,
+        sanitized_profile_hint=sanitized_profile_hint,
+        source_candidate_ref=source_candidate_ref,
+    )
 
     try:
         command_base = resolve_parser_command(PARSER_NAME, command_config)
     except (KeyError, TypeError, ValueError) as exc:
-        return ParserResult.missing_command(
+        result = ParserResult.missing_command(
             case_id=case_id,
             artifact_id=artifact_id,
             artifact_type=OUTPUT_ARTIFACT_TYPE,
             parser_name=PARSER_NAME,
             source_tool=SOURCE_TOOL,
             reason=f"RECmd command is not available: {exc}",
-            coverage_gaps=_parser_unavailable_gaps(artifact_id, targets),
+            coverage_gaps=_add_profile_fields_to_gaps(
+                _parser_unavailable_gaps(artifact_id, targets),
+                profile_fields,
+            ),
         )
+        result.metadata.update(profile_fields)
+        return result
 
     output_dir = ensure_parser_output_dir(
         resolved_runs_root,
@@ -958,6 +1012,8 @@ def parse_registry_user_activity(
                     max_events=remaining,
                 )
             )
+            target_events = _add_profile_fields_to_events(target_events, profile_fields)
+            target_gaps = _add_profile_fields_to_gaps(target_gaps, profile_fields)
             events.extend(target_events)
             warnings.extend(f"{target.label}: {warning}" for warning in target_warnings)
             errors.extend(f"{target.label}: {error}" for error in target_errors)
@@ -979,6 +1035,8 @@ def parse_registry_user_activity(
                     max_events=remaining,
                 )
             )
+            target_events = _add_profile_fields_to_events(target_events, profile_fields)
+            target_gaps = _add_profile_fields_to_gaps(target_gaps, profile_fields)
             events.extend(target_events)
             warnings.extend(f"{target.label}: {warning}" for warning in target_warnings)
             errors.extend(f"{target.label}: {error}" for error in target_errors)
@@ -992,16 +1050,25 @@ def parse_registry_user_activity(
             if target_failed:
                 reason = "parser_error" if reason == "no_rows" else reason
             coverage_gaps.append(
-                _coverage_gap(
-                    artifact_id=artifact_id,
-                    artifact_type=target.artifact_type,
-                    reason=reason,
-                    impact="Registry user-activity key family did not produce parser rows.",
-                    recommended_next_step=(
-                        "Confirm the key exists in the NTUSER hive or review RECmd logs."
-                    ),
-                    key_path=_display_key_path(target),
-                )
+                _add_profile_fields_to_gaps(
+                    [
+                        _coverage_gap(
+                            artifact_id=artifact_id,
+                            artifact_type=target.artifact_type,
+                            reason=reason,
+                            impact=(
+                                "Registry user-activity key family did not produce "
+                                "parser rows."
+                            ),
+                            recommended_next_step=(
+                                "Confirm the key exists in the NTUSER hive or review "
+                                "RECmd logs."
+                            ),
+                            key_path=_display_key_path(target),
+                        )
+                    ],
+                    profile_fields,
+                )[0]
             )
             warnings.append(
                 f"expected RECmd CSV or JSON was not created: {csv_path} or {json_path}"
@@ -1041,6 +1108,7 @@ def parse_registry_user_activity(
         "source_rows_seen": len(events),
         "source_events_seen": len(events),
     }
+    metadata.update(profile_fields)
     for index, target in enumerate(targets, start=1):
         metadata[f"target_{index}_label"] = target.label
 
@@ -1096,5 +1164,9 @@ def parse_registry_user_activity_artifact(
         artifact_type=artifact.artifact_type,
         source_id=artifact.source_image_id,
         source_role="disk_image",
+        profile_id=artifact.profile_id,
+        profile_display_name=artifact.profile_display_name,
+        sanitized_profile_hint=artifact.sanitized_profile_hint,
+        source_candidate_ref=artifact.source_candidate_ref,
         max_events=max_events,
     )

@@ -19,6 +19,11 @@ class EvidenceArtifact:
     discovered_at_utc: str
     source_image_id: str | None = None
     source_image_label: str | None = None
+    registry_hive_type: str | None = None
+    profile_id: str | None = None
+    profile_display_name: str | None = None
+    sanitized_profile_hint: str | None = None
+    source_candidate_ref: str | None = None
 
 
 @dataclass(slots=True)

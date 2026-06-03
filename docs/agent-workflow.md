@@ -94,11 +94,12 @@ source remains `needs_review`. `inferred` requires independent corroboration
 from another supported artifact class, and transfer/cloud/archive candidates
 remain `needs_review` unless direct evidence supports a stronger claim.
 
-User-activity coverage is only complete for the NTUSER hives that `case prepare`
-actually staged. If case preparation reports that multiple `NTUSER.DAT`
-candidates were found but only one was extracted, `agent run-case` treats
-Registry user-activity as partial profile coverage and carries that limitation
-into gap analysis and the report.
+`case prepare` extracts each discovered `Users/*/NTUSER.DAT` hive into a
+sanitized profile-specific path such as
+`extracted/registry/profiles/profile-0001/NTUSER.DAT`. `agent run-case` parses
+each available profile hive independently and carries `profile_id` provenance
+into events, findings, gaps, and report sections. Coverage is not reported as
+complete when any discovered profile hive failed extraction or parsing.
 
 The lower-level manifest entrypoint remains available:
 

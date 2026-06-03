@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 
 from siftguard.audit.execution_ledger import read_events
-from siftguard.case_prep.extractors import SUPPORTED_TARGETS, FixtureExtractor
+from siftguard.case_prep.extractors import (
+    SUPPORTED_TARGETS,
+    FixtureExtractor,
+    _profile_ntuser_targets,
+)
+from siftguard.case_prep.models import ArtifactTarget, ExtractionOutcome
 from siftguard.case_prep.prepare import prepare_case
 from siftguard.case_prep.source_discovery import (
     discover_source_root,
@@ -41,6 +46,69 @@ def write_fixture_artifacts(root: Path) -> dict[str, Path]:
     for target_id, path in files.items():
         path.write_bytes(f"fixture-{target_id}".encode("utf-8"))
     return files
+
+
+def profile_ntuser_target(profile_id: str) -> ArtifactTarget:
+    return ArtifactTarget(
+        target_id=f"ntuser_{profile_id.replace('-', '_')}",
+        artifact_type="registry_hive",
+        display_name="NTUSER.DAT",
+        output_path=f"extracted/registry/profiles/{profile_id}/NTUSER.DAT",
+        candidate_paths=("Users/*/NTUSER.DAT",),
+        registry_hive_type="ntuser",
+        profile_id=profile_id,
+        profile_display_name=profile_id,
+        sanitized_profile_hint=profile_id,
+        source_candidate_ref=f"Users/{profile_id}/NTUSER.DAT",
+    )
+
+
+class MultiProfileFixtureExtractor:
+    def __init__(self, *, failed_profile_ids: set[str] | None = None) -> None:
+        self.failed_profile_ids = failed_profile_ids or set()
+
+    def extract(self, context) -> list[ExtractionOutcome]:
+        outcomes: list[ExtractionOutcome] = []
+        for target_id, relative_path in (
+            ("mft", "extracted/mft/$MFT"),
+            ("software", "extracted/registry/SOFTWARE"),
+            ("amcache", "extracted/amcache/Amcache.hve"),
+        ):
+            target = next(item for item in SUPPORTED_TARGETS if item.target_id == target_id)
+            output_path = context.output_dir / relative_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(f"fixture-{target_id}".encode("utf-8"))
+            outcomes.append(
+                ExtractionOutcome(
+                    target=target,
+                    status="available",
+                    extraction_method="fixture_copy",
+                )
+            )
+        for profile_id in ("profile-0001", "profile-0002"):
+            target = profile_ntuser_target(profile_id)
+            if profile_id in self.failed_profile_ids:
+                outcomes.append(
+                    ExtractionOutcome(
+                        target=target,
+                        status="extraction_failed",
+                        extraction_method=f"fixture_copy:{target.source_candidate_ref}",
+                        reason="extraction_failed",
+                        warnings=[f"fixture extraction failed for {profile_id}"],
+                    )
+                )
+                continue
+            output_path = context.output_dir / target.output_path
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(f"fixture-{profile_id}".encode("utf-8"))
+            outcomes.append(
+                ExtractionOutcome(
+                    target=target,
+                    status="available",
+                    extraction_method=f"fixture_copy:{target.source_candidate_ref}",
+                )
+            )
+        return outcomes
 
 
 def source_manifest_path(tmp_path: Path, manifest) -> Path:
@@ -238,10 +306,105 @@ def test_missing_ntuser_becomes_coverage_gap(tmp_path: Path):
     ntuser_gaps = [
         gap
         for gap in result.manifest.coverage_gaps
-        if gap.artifact_type == "registry_hive" and "NTUSER" in gap.impact
+        if gap.artifact_type == "ntuser_hive" and "NTUSER" in gap.impact
     ]
     assert len(ntuser_gaps) == 1
     assert ntuser_gaps[0].reason == "not_found"
+
+
+def test_profile_ntuser_candidate_discovery_uses_sanitized_targets():
+    targets = _profile_ntuser_targets(
+        [
+            ("11", "Users/Alpha/NTUSER.DAT"),
+            ("12", "Users/Alpha/AppData/Roaming/NTUSER.DAT"),
+            ("13", "Users/Beta/NTUSER.DAT"),
+            ("14", "Windows/System32/config/NTUSER.DAT"),
+        ]
+    )
+
+    assert [target.profile_id for target, _inode, _path in targets] == [
+        "profile-0001",
+        "profile-0002",
+    ]
+    assert [target.output_path for target, _inode, _path in targets] == [
+        "extracted/registry/profiles/profile-0001/NTUSER.DAT",
+        "extracted/registry/profiles/profile-0002/NTUSER.DAT",
+    ]
+    assert all(
+        "Alpha" not in target.output_path
+        and "Beta" not in target.output_path
+        and "Alpha" not in (target.source_candidate_ref or "")
+        and "Beta" not in (target.source_candidate_ref or "")
+        for target, _inode, _path in targets
+    )
+
+
+def test_case_prepare_stages_multiple_profile_ntuser_hives(tmp_path: Path):
+    source_root = tmp_path / "evidence" / "rocba"
+    write_sources(source_root)
+    manifest = discover_source_root(case_id=CASE_ID, source_root=source_root, clock=fixed_clock)
+
+    result = prepare_case(
+        case_id=CASE_ID,
+        source_manifest_path=source_manifest_path(tmp_path, manifest),
+        output_dir=output_dir(tmp_path),
+        extractor=MultiProfileFixtureExtractor(),
+        clock=fixed_clock,
+    )
+    payload = json.loads(result.case_prep_path.read_text(encoding="utf-8"))
+    ntuser_artifacts = [
+        artifact
+        for artifact in payload["prepared_artifacts"]
+        if artifact.get("registry_hive_type") == "ntuser"
+    ]
+
+    assert len(ntuser_artifacts) == 2
+    assert {artifact["profile_id"] for artifact in ntuser_artifacts} == {
+        "profile-0001",
+        "profile-0002",
+    }
+    assert {artifact["status"] for artifact in ntuser_artifacts} == {"available"}
+    assert all(artifact["parser_eligible"] is True for artifact in ntuser_artifacts)
+    assert {
+        artifact["path"] for artifact in ntuser_artifacts
+    } == {
+        "extracted/registry/profiles/profile-0001/NTUSER.DAT",
+        "extracted/registry/profiles/profile-0002/NTUSER.DAT",
+    }
+    assert all("Alpha" not in json.dumps(artifact) for artifact in ntuser_artifacts)
+    assert all("Beta" not in json.dumps(artifact) for artifact in ntuser_artifacts)
+
+
+def test_profile_ntuser_extraction_failure_is_gap_not_blocking(tmp_path: Path):
+    source_root = tmp_path / "evidence" / "rocba"
+    write_sources(source_root)
+    manifest = discover_source_root(case_id=CASE_ID, source_root=source_root, clock=fixed_clock)
+
+    result = prepare_case(
+        case_id=CASE_ID,
+        source_manifest_path=source_manifest_path(tmp_path, manifest),
+        output_dir=output_dir(tmp_path),
+        extractor=MultiProfileFixtureExtractor(failed_profile_ids={"profile-0002"}),
+        clock=fixed_clock,
+    )
+
+    artifacts = result.manifest.prepared_artifacts
+    by_profile = {
+        artifact.profile_id: artifact
+        for artifact in artifacts
+        if artifact.registry_hive_type == "ntuser"
+    }
+    assert by_profile["profile-0001"].status == "available"
+    assert by_profile["profile-0002"].status == "extraction_failed"
+    assert by_profile["profile-0002"].parser_eligible is False
+    gaps = [
+        gap
+        for gap in result.manifest.coverage_gaps
+        if gap.profile_id == "profile-0002"
+    ]
+    assert len(gaps) == 1
+    assert gaps[0].artifact_type == "ntuser_hive"
+    assert gaps[0].reason == "extraction_failed"
 
 
 def test_successful_fixture_extraction_writes_case_prep_json(tmp_path: Path):

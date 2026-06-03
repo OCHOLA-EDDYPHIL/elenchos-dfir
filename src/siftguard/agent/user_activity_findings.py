@@ -81,6 +81,14 @@ def _artifact_id(row: dict[str, Any]) -> str:
     return value if isinstance(value, str) and value else "unknown-artifact"
 
 
+def _profile_id(row: dict[str, Any]) -> str | None:
+    value = row.get("profile_id")
+    if isinstance(value, str) and value:
+        return value
+    value = _metadata(row).get("profile_id")
+    return value if isinstance(value, str) and value else None
+
+
 def _timestamp(row: dict[str, Any]) -> str | None:
     value = row.get("timestamp_utc")
     return value if isinstance(value, str) and value else None
@@ -253,6 +261,15 @@ def _artifact_hashes_for_rows(
     return values
 
 
+def _profile_ids_for_rows(rows: list[dict[str, Any]]) -> list[str]:
+    profile_ids: list[str] = []
+    for row in rows:
+        profile_id = _profile_id(row)
+        if profile_id is not None and profile_id not in profile_ids:
+            profile_ids.append(profile_id)
+    return sorted(profile_ids)
+
+
 def _candidate_from_rows(
     *,
     category: str,
@@ -291,6 +308,7 @@ def _candidate_from_rows(
     finding["finding_category"] = category
     finding["artifact_family"] = USER_ACTIVITY_FAMILY
     finding["linked_event_ids"] = sorted(_event_id(row) for row in rows)
+    finding["profile_ids"] = _profile_ids_for_rows(rows)
     finding["user_activity_artifact_types"] = sorted(
         {
             artifact_type
@@ -485,11 +503,14 @@ def _summary(
     coverage_gaps: list[dict[str, Any]],
 ) -> dict[str, Any]:
     event_counts: dict[str, int] = {}
+    event_counts_by_profile: dict[str, int] = {}
     finding_counts: dict[str, int] = {}
     status_counts: dict[str, int] = {}
     for row in user_activity_events:
         artifact_type = _artifact_type(row)
         event_counts[artifact_type] = event_counts.get(artifact_type, 0) + 1
+        profile_id = _profile_id(row) or "unknown_profile"
+        event_counts_by_profile[profile_id] = event_counts_by_profile.get(profile_id, 0) + 1
     for finding in generated:
         category = finding.get("finding_category")
         status = finding.get("status")
@@ -498,15 +519,105 @@ def _summary(
         if isinstance(status, str):
             status_counts[status] = status_counts.get(status, 0) + 1
     prepared_hive_scope_warnings = _prepared_ntuser_scope_warnings(adapted)
+    profile_coverage = _profile_hive_coverage(
+        adapted=adapted,
+        user_activity_events=user_activity_events,
+        parser_coverage_gaps=coverage_gaps,
+        prepared_hive_scope_warnings=prepared_hive_scope_warnings,
+    )
     return {
         "mode": "registry_user_activity_initial",
         "event_count": len(user_activity_events),
         "event_counts_by_artifact_type": dict(sorted(event_counts.items())),
+        "event_counts_by_profile": dict(sorted(event_counts_by_profile.items())),
         "finding_count": len(generated),
         "finding_counts_by_category": dict(sorted(finding_counts.items())),
         "finding_status_counts": dict(sorted(status_counts.items())),
         "coverage_gaps": list(coverage_gaps),
         "prepared_hive_scope_warnings": prepared_hive_scope_warnings,
+        "profile_coverage": profile_coverage,
+    }
+
+
+def _is_ntuser_artifact(artifact: dict[str, Any]) -> bool:
+    hive_type = artifact.get("registry_hive_type")
+    path = artifact.get("path")
+    normalized_path = path.replace("\\", "/").casefold() if isinstance(path, str) else ""
+    return hive_type == "ntuser" or (
+        normalized_path == "ntuser.dat" or normalized_path.endswith("/ntuser.dat")
+    )
+
+
+def _profile_hive_coverage(
+    *,
+    adapted: AdaptedCaseManifest,
+    user_activity_events: list[dict[str, Any]],
+    parser_coverage_gaps: list[dict[str, Any]],
+    prepared_hive_scope_warnings: list[dict[str, Any]],
+) -> dict[str, Any]:
+    ntuser_artifacts = [
+        dict(artifact)
+        for artifact in adapted.prepared_artifacts
+        if _is_ntuser_artifact(artifact)
+    ]
+    discovered_profile_ids = sorted(
+        {
+            str(artifact.get("profile_id"))
+            for artifact in ntuser_artifacts
+            if isinstance(artifact.get("profile_id"), str)
+        }
+    )
+    available_profile_ids = sorted(
+        {
+            str(artifact.get("profile_id"))
+            for artifact in ntuser_artifacts
+            if artifact.get("status") == "available"
+            and isinstance(artifact.get("profile_id"), str)
+        }
+    )
+    failed_profile_ids = sorted(
+        {
+            str(artifact.get("profile_id"))
+            for artifact in ntuser_artifacts
+            if artifact.get("status") in {"missing", "skipped", "extraction_failed"}
+            and isinstance(artifact.get("profile_id"), str)
+        }
+    )
+    parsed_profile_ids = sorted(
+        {
+            profile_id
+            for row in user_activity_events
+            if (profile_id := _profile_id(row)) is not None
+        }
+        | {
+            str(gap.get("profile_id"))
+            for gap in parser_coverage_gaps
+            if isinstance(gap.get("profile_id"), str)
+        }
+    )
+    case_prep_profile_gaps = [
+        dict(gap)
+        for gap in adapted.coverage_gaps
+        if gap.get("artifact_type") == "ntuser_hive"
+        or gap.get("artifact_family") == "registry_user_activity"
+    ]
+    if prepared_hive_scope_warnings or failed_profile_ids:
+        status = "partial_scope"
+    elif available_profile_ids:
+        status = "assessed"
+    else:
+        status = "needs_review"
+    return {
+        "status": status,
+        "discovered_profile_count": len(discovered_profile_ids),
+        "available_profile_count": len(available_profile_ids),
+        "failed_profile_count": len(failed_profile_ids),
+        "parsed_profile_count": len(parsed_profile_ids),
+        "discovered_profile_ids": discovered_profile_ids,
+        "available_profile_ids": available_profile_ids,
+        "failed_profile_ids": failed_profile_ids,
+        "parsed_profile_ids": parsed_profile_ids,
+        "case_prep_profile_gaps": case_prep_profile_gaps,
     }
 
 

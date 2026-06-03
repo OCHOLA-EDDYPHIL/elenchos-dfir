@@ -148,22 +148,30 @@ def _impact_for_target(target: ArtifactTarget) -> str:
         return "$MFT coverage is unavailable; file timeline coverage is incomplete."
     if target.target_id == "software":
         return "SOFTWARE hive coverage is unavailable; machine Run key coverage is incomplete."
-    if target.target_id == "ntuser":
-        return "NTUSER.DAT coverage is unavailable; user Run key coverage is incomplete."
+    if target.registry_hive_type == "ntuser" or target.target_id == "ntuser":
+        if target.profile_id:
+            return (
+                f"NTUSER.DAT coverage is unavailable for {target.profile_id}; "
+                "Registry user-activity coverage is incomplete."
+            )
+        return (
+            "NTUSER.DAT coverage is unavailable; Registry user-activity coverage "
+            "is incomplete."
+        )
     return "Amcache coverage is unavailable; execution metadata coverage is incomplete."
 
 
 def _next_step_for_target(target: ArtifactTarget, reason: str) -> str:
     if reason == "extractor_unavailable":
         return "Install or enable ewfinfo, ewfmount, mmls, fls, and icat, then rerun case prepare."
-    if reason == "tool_error":
+    if reason in {"tool_error", "extraction_failed"}:
         return "Review extraction_audit.jsonl and extractor stderr logs under the run output."
     if target.target_id == "amcache":
         return (
             "Review disk path Windows/AppCompat/Programs/Amcache.hve or confirm "
             "artifact absence manually."
         )
-    if target.target_id == "ntuser":
+    if target.registry_hive_type == "ntuser" or target.target_id == "ntuser":
         return "Review user profile hives on disk or confirm NTUSER.DAT absence manually."
     return f"Review disk source for {target.display_name} or confirm artifact absence manually."
 
@@ -176,17 +184,32 @@ def _coverage_gap_for_outcome(
     if outcome.status == "available":
         return None
     reason = outcome.reason or "not_found"
+    artifact_type = outcome.target.artifact_type
+    artifact_family = None
+    if outcome.target.registry_hive_type == "ntuser" or outcome.target.target_id == "ntuser":
+        artifact_type = "ntuser_hive"
+        artifact_family = "registry_user_activity"
     return CoverageGap(
         gap_id=gap_id_for(
             source_id=source.source_id,
             target_id=outcome.target.target_id,
             reason=reason,
         ),
-        artifact_type=outcome.target.artifact_type,
+        artifact_type=artifact_type,
         source_id=source.source_id,
         reason=reason,
         impact=_impact_for_target(outcome.target),
         recommended_next_step=_next_step_for_target(outcome.target, reason),
+        artifact_family=artifact_family,
+        source_artifact_id=artifact_id_for(
+            source_id=source.source_id,
+            target_id=outcome.target.target_id,
+            output_path=outcome.target.output_path,
+        ),
+        profile_id=outcome.target.profile_id,
+        profile_display_name=outcome.target.profile_display_name,
+        sanitized_profile_hint=outcome.target.sanitized_profile_hint,
+        source_candidate_ref=outcome.target.source_candidate_ref,
     )
 
 
@@ -222,6 +245,44 @@ def _artifact_for_outcome(
         hash_status=hash_status,
         extraction_method=outcome.extraction_method,
         warnings=list(outcome.warnings),
+        registry_hive_type=outcome.target.registry_hive_type,
+        profile_id=outcome.target.profile_id,
+        profile_display_name=outcome.target.profile_display_name,
+        sanitized_profile_hint=outcome.target.sanitized_profile_hint,
+        source_candidate_ref=outcome.target.source_candidate_ref,
+    )
+
+
+def _hash_gap_for_artifact(
+    *,
+    source: SourceRecord,
+    artifact: PreparedArtifact,
+) -> CoverageGap | None:
+    if artifact.hash_status != "failed":
+        return None
+    artifact_type = (
+        "ntuser_hive" if artifact.registry_hive_type == "ntuser" else artifact.artifact_type
+    )
+    artifact_family = (
+        "registry_user_activity" if artifact.registry_hive_type == "ntuser" else None
+    )
+    return CoverageGap(
+        gap_id=gap_id_for(
+            source_id=source.source_id,
+            target_id=artifact.artifact_id,
+            reason="hash_failed",
+        ),
+        artifact_type=artifact_type,
+        source_id=source.source_id,
+        reason="hash_failed",
+        impact=f"Hashing failed for prepared artifact {artifact.artifact_id}.",
+        recommended_next_step="Review filesystem permissions and rerun case prepare.",
+        artifact_family=artifact_family,
+        source_artifact_id=artifact.artifact_id,
+        profile_id=artifact.profile_id,
+        profile_display_name=artifact.profile_display_name,
+        sanitized_profile_hint=artifact.sanitized_profile_hint,
+        source_candidate_ref=artifact.source_candidate_ref,
     )
 
 
@@ -389,6 +450,14 @@ def prepare_case(
                     audit_path=extraction_audit_path,
                 )
             )
+            profile_outcome_count = sum(
+                1 for outcome in outcomes if outcome.target.profile_id is not None
+            )
+            if profile_outcome_count:
+                warnings.append(
+                    f"discovered {profile_outcome_count} user profile NTUSER.DAT "
+                    "hive candidate(s)"
+                )
             for outcome in outcomes:
                 artifact = _artifact_for_outcome(
                     output_dir=resolved_output_dir,
@@ -400,6 +469,9 @@ def prepare_case(
                 gap = _coverage_gap_for_outcome(source=source, outcome=outcome)
                 if gap is not None:
                     coverage_gaps.append(gap)
+                hash_gap = _hash_gap_for_artifact(source=source, artifact=artifact)
+                if hash_gap is not None:
+                    coverage_gaps.append(hash_gap)
                 _append_case_prep_audit(
                     extraction_audit_path,
                     case_id=case_id,
@@ -410,6 +482,7 @@ def prepare_case(
                         "artifact_id": artifact.artifact_id,
                         "artifact_type": artifact.artifact_type,
                         "path": artifact.path,
+                        "profile_id": artifact.profile_id,
                         "source_id": source.source_id,
                     },
                 )
