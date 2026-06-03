@@ -12,6 +12,7 @@ from siftguard.case_prep.extractors import (
     SiftEwfExtractor,
 )
 from siftguard.case_prep.models import (
+    ArtifactSidecar,
     ArtifactTarget,
     CasePrepManifest,
     CoverageGap,
@@ -229,6 +230,30 @@ def _artifact_for_outcome(
         except OSError:
             hash_status = "failed"
 
+    sidecars: list[ArtifactSidecar] = []
+    for sidecar in outcome.sidecars:
+        sidecar_sha256: str | None = None
+        sidecar_hash_status = "skipped"
+        sidecar_path = _resolve_output_path(output_dir, sidecar.path)
+        if sidecar.status == "available" and sidecar_path.exists() and sidecar_path.is_file():
+            try:
+                sidecar_sha256 = sha256_file(sidecar_path)
+                sidecar_hash_status = "computed"
+            except OSError:
+                sidecar_hash_status = "failed"
+        sidecars.append(
+            ArtifactSidecar(
+                role=sidecar.role,
+                display_name=sidecar.display_name,
+                path=sidecar.path,
+                source_candidate_ref=sidecar.source_candidate_ref,
+                status=sidecar.status,
+                sha256=sidecar_sha256,
+                hash_status=sidecar_hash_status,
+                warnings=list(sidecar.warnings),
+            )
+        )
+
     return PreparedArtifact(
         artifact_id=artifact_id_for(
             source_id=source.source_id,
@@ -250,6 +275,7 @@ def _artifact_for_outcome(
         profile_display_name=outcome.target.profile_display_name,
         sanitized_profile_hint=outcome.target.sanitized_profile_hint,
         source_candidate_ref=outcome.target.source_candidate_ref,
+        sidecars=sidecars,
     )
 
 
@@ -466,6 +492,8 @@ def prepare_case(
                 )
                 prepared_artifacts.append(artifact)
                 warnings.extend(outcome.warnings)
+                for sidecar in artifact.sidecars:
+                    warnings.extend(sidecar.warnings)
                 gap = _coverage_gap_for_outcome(source=source, outcome=outcome)
                 if gap is not None:
                     coverage_gaps.append(gap)

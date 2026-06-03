@@ -917,16 +917,16 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
             "next_action",
         } <= set(decision)
     for heading in (
+        "## Executive Summary",
         "## Case Questions Summary",
         "## Supported Findings",
-        "## Needs Review",
-        "## User Activity Summary",
-        "## File Access / Recent Document Candidates",
-        "## Program Use Candidates",
-        "## Typed Path / User Navigation Candidates",
-        "## Parser Coverage and User-Activity Gaps",
+        "## Needs Review Highlights",
+        "## User Activity Highlights",
+        "## Program / Execution-Relevant Artifact Highlights",
+        "## Parser Coverage Summary",
         "## Not Assessed / Scope Gaps",
         "## Evidence Provenance Summary",
+        "## Traceability",
         "## Analyst Next Steps",
     ):
         assert heading in report
@@ -993,9 +993,9 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
         "user_activity_case_question_mapping",
         "user_activity_coverage_gap_handling",
     } <= decision_ids
-    assert "## User Activity Summary" in report
-    assert "## Parser Coverage and User-Activity Gaps" in report
-    assert "partial profile coverage" in report
+    assert "## User Activity Highlights" in report
+    assert "## Parser Coverage Summary" in report
+    assert "Profile hive coverage" in report
     assert "user_activity_analysis_completed" in actions
 
 
@@ -1048,10 +1048,10 @@ def test_run_case_integrates_multiple_profile_ntuser_hives(tmp_path: Path):
         "profile_coverage_assessment",
         "multi_profile_finding_aggregation",
     } <= decision_ids
-    assert "## User Profile Hive Coverage" in report
-    assert "## User Activity Summary by Profile" in report
-    assert "`profile-0001`" in report
-    assert "`profile-0002`" in report
+    assert "## Parser Coverage Summary" in report
+    assert "User-activity events by profile" in report
+    assert "profile-0001" in report
+    assert "profile-0002" in report
 
 
 def test_yaml_casebook_input_is_rejected(tmp_path: Path):

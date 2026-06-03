@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
-from siftguard.case_prep.models import ArtifactTarget, ExtractionOutcome, SourceRecord
+from siftguard.case_prep.models import (
+    ArtifactSidecar,
+    ArtifactTarget,
+    ExtractionOutcome,
+    SourceRecord,
+)
 from siftguard.policy.paths import is_relative_to
 from siftguard.runner.subprocess_runner import run_command
 
@@ -46,6 +51,20 @@ SUPPORTED_TARGETS: tuple[ArtifactTarget, ...] = (*STATIC_TARGETS, NTUSER_TARGET)
 
 _REQUIRED_EWF_TOOLS = ("ewfinfo", "ewfmount", "mmls", "fls", "icat")
 _FLS_ENTRY_RE = re.compile(r"^\s*\S+(?:\s+\*)?\s+([0-9-]+):\s+(.+?)\s*$")
+_AMCACHE_SIDECARS = (
+    (
+        "amcache_log1",
+        "Amcache.hve.LOG1",
+        "Windows/AppCompat/Programs/Amcache.hve.LOG1",
+        "extracted/amcache/Amcache.hve.LOG1",
+    ),
+    (
+        "amcache_log2",
+        "Amcache.hve.LOG2",
+        "Windows/AppCompat/Programs/Amcache.hve.LOG2",
+        "extracted/amcache/Amcache.hve.LOG2",
+    ),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,14 +124,52 @@ class FixtureExtractor:
             output_path = _safe_output_path(context.output_dir, target.output_path)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(fixture_path.read_bytes())
+            sidecars = (
+                self._copy_fixture_amcache_sidecars(context)
+                if target.target_id == "amcache"
+                else []
+            )
             outcomes.append(
                 ExtractionOutcome(
                     target=target,
                     status="available",
                     extraction_method="fixture_copy",
+                    sidecars=sidecars,
                 )
             )
         return outcomes
+
+    def _copy_fixture_amcache_sidecars(
+        self,
+        context: ExtractorContext,
+    ) -> list[ArtifactSidecar]:
+        sidecars: list[ArtifactSidecar] = []
+        for sidecar_id, display_name, source_ref, output_path in _AMCACHE_SIDECARS:
+            fixture_path = self._files.get(sidecar_id)
+            if fixture_path is None:
+                sidecars.append(
+                    ArtifactSidecar(
+                        role="transaction_log",
+                        display_name=display_name,
+                        path=output_path,
+                        source_candidate_ref=source_ref,
+                        status="missing",
+                    )
+                )
+                continue
+            destination = _safe_output_path(context.output_dir, output_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(fixture_path.read_bytes())
+            sidecars.append(
+                ArtifactSidecar(
+                    role="transaction_log",
+                    display_name=display_name,
+                    path=output_path,
+                    source_candidate_ref=source_ref,
+                    status="available",
+                )
+            )
+        return sidecars
 
 
 class SiftEwfExtractor:
@@ -285,18 +342,25 @@ class SiftEwfExtractor:
                 continue
 
             inode, source_path = match
-            outcomes.append(
-                self._extract_one_target(
+            outcome = self._extract_one_target(
+                context=context,
+                image_path=image_path,
+                offset=offset,
+                logs_dir=logs_dir,
+                target=target,
+                inode=inode,
+                source_path=source_path,
+                log_slug=f"icat_{target.target_id}",
+            )
+            if target.target_id == "amcache":
+                outcome.sidecars = self._extract_amcache_sidecars(
                     context=context,
                     image_path=image_path,
                     offset=offset,
                     logs_dir=logs_dir,
-                    target=target,
-                    inode=inode,
-                    source_path=source_path,
-                    log_slug=f"icat_{target.target_id}",
+                    matches=matches,
                 )
-            )
+            outcomes.append(outcome)
 
         if ntuser_targets:
             for target, inode, source_path in ntuser_targets:
@@ -322,6 +386,61 @@ class SiftEwfExtractor:
                 )
             )
         return outcomes
+
+    def _extract_amcache_sidecars(
+        self,
+        *,
+        context: ExtractorContext,
+        image_path: Path,
+        offset: int,
+        logs_dir: Path,
+        matches: Mapping[str, tuple[str, str]],
+    ) -> list[ArtifactSidecar]:
+        sidecars: list[ArtifactSidecar] = []
+        for sidecar_id, display_name, source_ref, output_path in _AMCACHE_SIDECARS:
+            match = matches.get(sidecar_id)
+            if match is None:
+                sidecars.append(
+                    ArtifactSidecar(
+                        role="transaction_log",
+                        display_name=display_name,
+                        path=output_path,
+                        source_candidate_ref=source_ref,
+                        status="missing",
+                    )
+                )
+                continue
+
+            inode, source_path = match
+            destination = _safe_output_path(context.output_dir, output_path)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            result = run_command(
+                ["icat", "-o", str(offset), str(image_path), inode],
+                stdout_path=destination,
+                stderr_path=logs_dir / f"icat_{sidecar_id}.stderr.txt",
+                timeout_seconds=900,
+                ledger_path=context.audit_path,
+                case_id=context.case_id,
+                tool_name="icat",
+                runs_root=context.output_dir,
+            )
+            if result.status == "success" and destination.exists() and destination.is_file():
+                status = "available"
+                warnings: list[str] = []
+            else:
+                status = "extraction_failed"
+                warnings = [f"icat failed for {display_name}"]
+            sidecars.append(
+                ArtifactSidecar(
+                    role="transaction_log",
+                    display_name=display_name,
+                    path=output_path,
+                    source_candidate_ref=source_ref if source_ref else source_path,
+                    status=status,
+                    warnings=warnings,
+                )
+            )
+        return sidecars
 
     def _extract_one_target(
         self,
@@ -419,6 +538,10 @@ def _target_matches(entries: list[tuple[str, str]]) -> dict[str, tuple[str, str]
             and "amcache" not in matches
         ):
             matches["amcache"] = (inode, path)
+        else:
+            for sidecar_id, _display_name, source_ref, _output_path in _AMCACHE_SIDECARS:
+                if normalized == _normalize_tsk_path(source_ref) and sidecar_id not in matches:
+                    matches[sidecar_id] = (inode, path)
 
     return matches
 

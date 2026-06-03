@@ -201,7 +201,6 @@ def test_parse_amcache_builds_expected_argv_and_success_result(tmp_path):
         str(output_dir.resolve()),
         "--csvf",
         DEFAULT_AMCACHE_CSV_NAME,
-        "--nl",
     )
     assert isinstance(result.command, tuple)
     assert result.parser_name == PARSER_NAME
@@ -260,6 +259,9 @@ def test_parse_amcache_returns_failed_when_runner_fails_without_csv(tmp_path):
     assert result.status == "failed"
     assert result.events == []
     assert result.errors
+    assert result.coverage_gaps
+    assert result.coverage_gaps[0]["artifact_family"] == "amcache"
+    assert result.coverage_gaps[0]["reason"] == "parser_error"
     assert any("exit_code=9" in error for error in result.errors)
     assert any(path.endswith("_stderr.log") for path in result.output_files)
     assert any(path.endswith("_stderr.log") for path in result.output_hashes)
@@ -322,7 +324,31 @@ def test_parse_amcache_returns_skipped_when_command_missing(tmp_path):
 
     assert result.status == "skipped"
     assert result.command is None
+    assert result.coverage_gaps[0]["reason"] == "parser_unavailable"
     assert any("AmcacheParser command is not available" in error for error in result.errors)
+
+
+def test_parse_amcache_does_not_disable_transaction_log_replay(tmp_path):
+    captured: dict[str, object] = {}
+    amcache_path = make_amcache(tmp_path)
+    (amcache_path.parent / "Amcache.hve.LOG1").write_bytes(b"log1")
+    (amcache_path.parent / "Amcache.hve.LOG2").write_bytes(b"log2")
+
+    result = parse_amcache(
+        case_id="case-001",
+        artifact_id="EV-AMCACHE-0001",
+        amcache_path=amcache_path,
+        runs_root=tmp_path / "runs",
+        evidence_root=amcache_path.parent,
+        command_config=make_config(),
+        runner=fake_runner_success(captured),
+    )
+
+    command = captured["command"]
+    assert "--nl" not in command
+    assert result.metadata["transaction_log_statuses"] == (
+        '{"Amcache.hve.LOG1": "available", "Amcache.hve.LOG2": "available"}'
+    )
 
 
 def test_parse_amcache_rejects_missing_input(tmp_path):

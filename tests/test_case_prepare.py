@@ -10,6 +10,7 @@ from siftguard.case_prep.extractors import (
     SUPPORTED_TARGETS,
     FixtureExtractor,
     _profile_ntuser_targets,
+    _target_matches,
 )
 from siftguard.case_prep.models import ArtifactTarget, ExtractionOutcome
 from siftguard.case_prep.prepare import prepare_case
@@ -265,6 +266,61 @@ def test_disk_first_amcache_target_is_represented():
     amcache_target = next(target for target in SUPPORTED_TARGETS if target.target_id == "amcache")
 
     assert amcache_target.candidate_paths == ("Windows/AppCompat/Programs/Amcache.hve",)
+
+
+def test_amcache_transaction_log_candidates_are_discovered():
+    matches = _target_matches(
+        [
+            ("10", "Windows/AppCompat/Programs/Amcache.hve"),
+            ("11", "Windows/AppCompat/Programs/Amcache.hve.LOG1"),
+            ("12", "Windows/AppCompat/Programs/Amcache.hve.LOG2"),
+        ]
+    )
+
+    assert matches["amcache"] == ("10", "Windows/AppCompat/Programs/Amcache.hve")
+    assert matches["amcache_log1"] == (
+        "11",
+        "Windows/AppCompat/Programs/Amcache.hve.LOG1",
+    )
+    assert matches["amcache_log2"] == (
+        "12",
+        "Windows/AppCompat/Programs/Amcache.hve.LOG2",
+    )
+
+
+def test_case_prepare_stages_amcache_transaction_log_sidecars(tmp_path: Path):
+    source_root = tmp_path / "evidence" / "rocba"
+    write_sources(source_root)
+    manifest = discover_source_root(case_id=CASE_ID, source_root=source_root, clock=fixed_clock)
+    fixtures = write_fixture_artifacts(tmp_path / "fixtures")
+    fixtures["amcache_log1"] = tmp_path / "fixtures" / "Amcache.hve.LOG1"
+    fixtures["amcache_log2"] = tmp_path / "fixtures" / "Amcache.hve.LOG2"
+    fixtures["amcache_log1"].write_bytes(b"synthetic-log1")
+    fixtures["amcache_log2"].write_bytes(b"synthetic-log2")
+
+    result = prepare_case(
+        case_id=CASE_ID,
+        source_manifest_path=source_manifest_path(tmp_path, manifest),
+        output_dir=output_dir(tmp_path),
+        extractor=FixtureExtractor(fixtures),
+        clock=fixed_clock,
+    )
+    payload = json.loads(result.case_prep_path.read_text(encoding="utf-8"))
+    amcache = next(
+        artifact
+        for artifact in payload["prepared_artifacts"]
+        if artifact["artifact_type"] == "amcache_hive"
+    )
+
+    assert {sidecar["display_name"] for sidecar in amcache["sidecars"]} == {
+        "Amcache.hve.LOG1",
+        "Amcache.hve.LOG2",
+    }
+    assert {sidecar["status"] for sidecar in amcache["sidecars"]} == {"available"}
+    assert all(sidecar["sha256"] for sidecar in amcache["sidecars"])
+    assert all(sidecar["hash_status"] == "computed" for sidecar in amcache["sidecars"])
+    assert (result.output_dir / "extracted/amcache/Amcache.hve.LOG1").is_file()
+    assert (result.output_dir / "extracted/amcache/Amcache.hve.LOG2").is_file()
 
 
 def test_missing_amcache_becomes_coverage_gap(tmp_path: Path):
