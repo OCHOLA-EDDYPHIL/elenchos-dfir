@@ -149,7 +149,10 @@ def _metadata_for_row(
     sha1: str | None,
     timestamp_column: str | None,
 ) -> dict[str, JSON_SCALAR]:
-    metadata: dict[str, JSON_SCALAR] = {"parser": PARSER_NAME}
+    metadata: dict[str, JSON_SCALAR] = {
+        "artifact_family": EXPECTED_ARTIFACT_TYPE,
+        "parser": PARSER_NAME,
+    }
     for column, key in (
         ("ProgramName", "program_name"),
         ("FileName", "file_name"),

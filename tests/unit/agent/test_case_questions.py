@@ -7,7 +7,7 @@ from typing import Any
 
 from siftguard.agent import case_questions as case_questions_module
 from siftguard.agent.case_manifest_adapter import adapt_case_prep_to_evidence_manifest
-from siftguard.agent.case_questions import evaluate_case_questions
+from siftguard.agent.case_questions import evaluate_case_questions, render_case_question_report
 from siftguard.agent.casebook import Casebook, casebook_from_dict, load_casebook
 
 CASE_ID = "rocba-standard"
@@ -440,3 +440,144 @@ def test_rejected_finding_maps_question_to_rejected(tmp_path: Path):
     question = question_by_id(result, "q_persistence")
     assert question["status"] == "rejected"
     assert question["linked_finding_ids"] == ["F-REJECTED-001"]
+
+
+def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
+    casebook, adapted = case_context(tmp_path)
+    rows = [
+        event(
+            event_id="evt_mft",
+            artifact_id="prep_mft",
+            artifact_type="mft",
+            parser_name="mftecmd",
+            event_type="file_created",
+            timestamp="2020-11-13T15:00:00Z",
+            path="C:/Projects/Example/tool.exe",
+            row_number=2,
+        ),
+        event(
+            event_id="evt_amcache",
+            artifact_id="prep_amcache",
+            artifact_type="amcache",
+            parser_name="amcacheparser",
+            event_type="amcache_execution",
+            timestamp="2020-11-13T15:05:00Z",
+            path="C:/Projects/Example/tool.exe",
+            row_number=3,
+        ),
+    ]
+    case_questions = evaluate_case_questions(
+        casebook=casebook,
+        adapted=adapted,
+        normalized_events=rows,
+        findings=[],
+        created_at="2026-01-01T00:00:00Z",
+    )
+    bulk_linked_ids = [f"F-LINK-{index:03d}" for index in range(25)]
+    question_by_id(case_questions, "q_when_activity")["linked_finding_ids"] = bulk_linked_ids
+    hex_mru = (
+        "41-00-69-00-72-00-77-00-6F-00-6C-00-66-00-2D-00-41-00-52-00-"
+        "4C-00-2E-00-6C-00-6E-00-6B-00"
+    )
+    findings: list[dict[str, Any]] = [
+        {
+            "artifact_family": "registry_user_activity",
+            "claim": (
+                "Registry recentdocs data identifies a file access/recent-use "
+                f"candidate: {hex_mru}"
+            ),
+            "evidence_refs": [{"evidence_id": "evt_hex"}],
+            "finding_category": "file_access_candidate",
+            "finding_id": "F-UA-HEX",
+            "linked_event_ids": ["evt_hex"],
+            "profile_ids": ["profile-0001"],
+            "status": "needs_review",
+        },
+        {
+            "claim": "Registry user-activity artifacts contain timestamped observations.",
+            "evidence_refs": [{"evidence_id": "evt_supported"}],
+            "finding_category": "user_activity_case_window",
+            "finding_id": "F-SUPPORTED-001",
+            "status": "confirmed",
+        },
+    ]
+    for index in range(12):
+        findings.append(
+            {
+                "claim": (
+                    f"Timeline for C:/Program Files/Synthetic/App{index}.exe "
+                    "has incomplete correlation coverage."
+                ),
+                "evidence_refs": [{"evidence_id": f"evt_review_{index}"}],
+                "finding_id": f"F-REVIEW-{index:03d}",
+                "kind": "conclusion",
+                "status": "needs_review",
+            }
+        )
+    coverage_summary = {
+        "normalized_events_written": 42,
+        "per_artifact": [
+            {
+                "artifact_type": "amcache",
+                "coverage_gaps": [],
+                "normalized_rows_selected": 2,
+                "parser_status": "success",
+            },
+            {
+                "artifact_type": "mft",
+                "coverage_gaps": [],
+                "parser_status": "partial_success",
+            },
+        ],
+    }
+    user_activity_summary = {
+        "coverage_gaps": [],
+        "event_counts_by_artifact_type": {"recentdocs": 1, "typedpaths": 1},
+        "event_counts_by_profile": {"profile-0001": 2},
+        "profile_coverage": {
+            "available_profile_count": 1,
+            "discovered_profile_count": 1,
+            "failed_profile_count": 0,
+            "parsed_profile_count": 1,
+            "status": "assessed",
+        },
+    }
+
+    first = render_case_question_report(
+        case_id=CASE_ID,
+        case_questions=case_questions,
+        findings=findings,
+        coverage_summary=coverage_summary,
+        adapted=adapted,
+        user_activity_summary=user_activity_summary,
+    )
+    second = render_case_question_report(
+        case_id=CASE_ID,
+        case_questions=case_questions,
+        findings=list(reversed(findings)),
+        coverage_summary=coverage_summary,
+        adapted=adapted,
+        user_activity_summary=user_activity_summary,
+    )
+
+    assert first == second
+    assert len(first.splitlines()) < 160
+    assert "## Traceability" in first
+    assert "What SIFTGuard did not prove:" in first
+    assert "F-LINK-024" not in first
+    assert "F-LINK-024" in question_by_id(case_questions, "q_when_activity")[
+        "linked_finding_ids"
+    ]
+    assert hex_mru not in first
+    assert "Airwolf-ARL.lnk" in first
+    assert "q_program_presence_execution" in first
+    assert "confirmed, narrowly" in first
+    assert "does not label activity as malicious" in first
+    assert "additional needs_review finding(s) omitted" in first
+    forbidden = (
+        "confirmed compromise",
+        "confirmed theft",
+        "confirmed exfiltration",
+        "confirmed malware execution",
+    )
+    assert not any(phrase in first.casefold() for phrase in forbidden)

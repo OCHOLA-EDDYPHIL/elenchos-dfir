@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +31,10 @@ REGISTRY_USER_ACTIVITY_TYPES = {
     "typedpaths",
 }
 EXECUTION_SPECIFIC_EVIDENCE_CLASSES = {"amcache", "prefetch", "event_log_execution"}
-REPORT_NEEDS_REVIEW_FINDING_LIMIT = 15
+REPORT_TOP_N = 10
+REPORT_DISPLAY_MAX_CHARS = 120
+_HEX_BYTE_DUMP_RE = re.compile(r"^(?:[0-9A-Fa-f]{2}[-\s]?){20,}$")
+_PRINTABLE_RUN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ._:/\\?=&{}()[\]-]{2,}")
 
 
 @dataclass(frozen=True, slots=True)
@@ -573,6 +577,278 @@ def question_mappings_for_findings(
     return mappings
 
 
+def _report_text(value: object, *, max_chars: int = REPORT_DISPLAY_MAX_CHARS) -> str:
+    text = "" if value is None else str(value)
+    cleaned = "".join(
+        char if char.isprintable() and char not in "\r\n\t" else " "
+        for char in text
+    )
+    collapsed = " ".join(cleaned.split())
+    if len(collapsed) <= max_chars:
+        return collapsed
+    return f"{collapsed[: max_chars - 1].rstrip()}..."
+
+
+def _hex_bytes(value: str) -> bytes | None:
+    text = value.strip()
+    if not _HEX_BYTE_DUMP_RE.match(text):
+        return None
+    cleaned = re.sub(r"[^0-9A-Fa-f]", "", text)
+    if len(cleaned) < 40 or len(cleaned) % 2:
+        return None
+    try:
+        return bytes.fromhex(cleaned)
+    except ValueError:
+        return None
+
+
+def _printable_runs(decoded: str) -> list[str]:
+    normalized = decoded.replace("\x00", " ")
+    runs = [
+        _report_text(match.group(), max_chars=REPORT_DISPLAY_MAX_CHARS)
+        for match in _PRINTABLE_RUN_RE.finditer(normalized)
+    ]
+    return [
+        run for run in runs
+        if len(run) >= 4 and any(char.isalpha() for char in run)
+    ]
+
+
+def _best_printable_run(runs: list[str]) -> str | None:
+    if not runs:
+        return None
+    extensions = (".exe", ".dll", ".lnk", ".docx", ".xlsx", ".pptx", ".pdf", ".jpg", ".png")
+
+    def score(value: str) -> tuple[int, int, str]:
+        lowered = value.casefold()
+        has_extension = int(any(extension in lowered for extension in extensions))
+        return has_extension, len(value), value
+
+    return sorted(dict.fromkeys(runs), key=score, reverse=True)[0]
+
+
+def _decode_hex_display_value(value: str) -> str | None:
+    raw = _hex_bytes(value)
+    if raw is None:
+        return None
+    runs: list[str] = []
+    for encoding in ("utf-16le", "utf-8", "latin-1"):
+        try:
+            decoded = raw.decode(encoding, errors="ignore")
+        except LookupError:
+            continue
+        runs.extend(_printable_runs(decoded))
+    return _best_printable_run(runs)
+
+
+def _first_linked_event_id(finding: dict[str, Any]) -> str | None:
+    refs = finding.get("linked_event_ids", [])
+    if isinstance(refs, list):
+        for ref in refs:
+            if isinstance(ref, str) and ref:
+                return ref
+    evidence_refs = finding.get("evidence_refs", [])
+    if isinstance(evidence_refs, list):
+        for ref in evidence_refs:
+            if isinstance(ref, dict) and isinstance(ref.get("evidence_id"), str):
+                return ref["evidence_id"]
+    return None
+
+
+def _candidate_target_from_claim(claim: str) -> str:
+    marker = "candidate:"
+    if marker in claim.casefold():
+        start = claim.casefold().rfind(marker)
+        return claim[start + len(marker):].strip()
+    if claim.casefold().startswith("timeline for "):
+        return claim.removeprefix("Timeline for ").removesuffix(
+            " has incomplete correlation coverage."
+        ).strip().strip('"')
+    return claim
+
+
+def _report_display_value(value: object, *, event_id: str | None = None) -> str:
+    text = _report_text(value, max_chars=10_000)
+    decoded = _decode_hex_display_value(text)
+    if decoded is not None:
+        return _report_text(decoded)
+    if _hex_bytes(text) is not None:
+        ref = event_id or "unknown-event"
+        return f"[decoded MRU value unavailable; see normalized_events.json:{ref}]"
+    return _report_text(text)
+
+
+def _finding_category(finding: dict[str, Any]) -> str:
+    for key in ("finding_category", "category", "kind"):
+        value = finding.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return "finding"
+
+
+def _evidence_count(finding: dict[str, Any]) -> int:
+    refs = finding.get("evidence_refs", [])
+    return len(refs) if isinstance(refs, list) else 0
+
+
+def _top_findings(
+    findings: list[dict[str, Any]],
+    *,
+    statuses: set[str] | None = None,
+    categories: set[str] | None = None,
+    predicate: Any | None = None,
+) -> list[dict[str, Any]]:
+    selected = []
+    for finding in findings:
+        status = finding.get("status")
+        category = _finding_category(finding)
+        if statuses is not None and status not in statuses:
+            continue
+        if categories is not None and category not in categories:
+            continue
+        if predicate is not None and not predicate(finding):
+            continue
+        selected.append(finding)
+    return sorted(
+        selected,
+        key=lambda item: (-_evidence_count(item), str(item.get("finding_id", ""))),
+    )
+
+
+def _finding_summary_line(finding: dict[str, Any]) -> str:
+    finding_id = _report_text(finding.get("finding_id", "unknown-finding"))
+    status = _report_text(finding.get("status", "unknown"))
+    category = _report_text(_finding_category(finding).replace("_", " "))
+    claim = str(finding.get("claim", ""))
+    target = _candidate_target_from_claim(claim)
+    display = _report_display_value(target, event_id=_first_linked_event_id(finding))
+    evidence_refs = _evidence_count(finding)
+    profile_ids = finding.get("profile_ids", [])
+    profile_text = ""
+    if isinstance(profile_ids, list) and profile_ids:
+        profile_text = f"; profiles={', '.join(_report_text(item) for item in profile_ids[:3])}"
+    return (
+        f"- `{finding_id}` status=`{status}`; {category}: {display}; "
+        f"evidence_refs={evidence_refs}{profile_text}"
+    )
+
+
+def _append_top_findings(
+    lines: list[str],
+    findings: list[dict[str, Any]],
+    *,
+    empty_text: str,
+    omitted_label: str,
+) -> None:
+    if not findings:
+        lines.append(f"- {empty_text}")
+        return
+    for finding in findings[:REPORT_TOP_N]:
+        lines.append(_finding_summary_line(finding))
+    if len(findings) > REPORT_TOP_N:
+        lines.append(
+            f"- {len(findings) - REPORT_TOP_N} additional {omitted_label} omitted; "
+            "see findings.json and case_questions.json for the full list."
+        )
+
+
+def _status_counts(rows: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = row.get("status")
+        if isinstance(status, str):
+            counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _parser_status_counts(coverage_summary: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in coverage_summary.get("per_artifact", []):
+        if not isinstance(item, dict):
+            continue
+        status = item.get("parser_status")
+        if isinstance(status, str):
+            counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _parser_gap_count(coverage_summary: dict[str, Any]) -> int:
+    count = 0
+    for item in coverage_summary.get("per_artifact", []):
+        if isinstance(item, dict) and isinstance(item.get("coverage_gaps"), list):
+            count += len(item["coverage_gaps"])
+    return count
+
+
+def _amcache_event_count(coverage_summary: dict[str, Any]) -> int:
+    total = 0
+    for item in coverage_summary.get("per_artifact", []):
+        if not isinstance(item, dict) or item.get("artifact_type") != "amcache":
+            continue
+        value = item.get("normalized_rows_selected", item.get("source_events_seen", 0))
+        if isinstance(value, int):
+            total += value
+    return total
+
+
+def _compact_counts(counts: dict[str, int]) -> str:
+    if not counts:
+        return "none"
+    return ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+
+
+def _question_answer(question: dict[str, Any]) -> str:
+    question_id = question.get("question_id")
+    status = question.get("status")
+    if question_id == "q_when_activity" and status == "confirmed":
+        return (
+            "selected MFT, Amcache, Registry, and user-activity evidence contains "
+            "timestamped activity inside the configured case window."
+        )
+    if question_id == "q_program_presence_execution" and status == "confirmed":
+        return (
+            "confirmed, narrowly: Amcache and related timeline evidence provide "
+            "execution-relevant artifact presence; this does not label activity as malicious."
+        )
+    if question_id == "q_project_file_candidates":
+        return (
+            "candidate project/file relevance was identified; this does not prove theft."
+        )
+    if status == "not_assessed":
+        gaps = question.get("gaps", [])
+        if isinstance(gaps, list) and gaps:
+            return _report_text(gaps[0])
+        return "not assessed under the current supported artifact scope."
+    return _report_text(question.get("summary", "manual review remains required."))
+
+
+def _question_line(question: dict[str, Any]) -> str:
+    question_id = _report_text(question.get("question_id", "unknown-question"))
+    status = _report_text(question.get("status", "unknown"))
+    checked = question.get("evidence_classes_checked", [])
+    checked_text = ", ".join(str(item) for item in checked) if isinstance(checked, list) else "none"
+    linked = question.get("linked_finding_ids", [])
+    refs = question.get("linked_evidence_refs", [])
+    linked_count = len(linked) if isinstance(linked, list) else 0
+    ref_count = len(refs) if isinstance(refs, list) else 0
+    return (
+        f"- `{question_id}` — {status}: {_question_answer(question)} "
+        f"Checked: {checked_text or 'none'}; linked_findings={linked_count}; "
+        f"evidence_refs={ref_count}."
+    )
+
+
+def _is_program_or_execution_finding(finding: dict[str, Any]) -> bool:
+    category = _finding_category(finding)
+    claim = str(finding.get("claim", "")).casefold()
+    return (
+        category == "program_use_candidate"
+        or "execution" in claim
+        or ".exe" in claim
+        or "amcache" in claim
+    )
+
+
 def render_case_question_report(
     *,
     case_id: str,
@@ -587,211 +863,182 @@ def render_case_question_report(
         for question in case_questions.get("questions", [])
         if isinstance(question, dict)
     ]
-    supported = [q for q in questions if q.get("status") in {"confirmed", "inferred"}]
-    needs_review = [q for q in questions if q.get("status") == "needs_review"]
     not_assessed = [q for q in questions if q.get("status") == "not_assessed"]
-    lines = ["# Case Report", ""]
-    lines.extend(["## Case Questions Summary"])
-    if not questions:
-        lines.append("- No case questions were available.")
-    for question in questions:
-        lines.append(
-            f"- `{question.get('question_id')}` status=`{question.get('status')}`: "
-            f"{question.get('summary')}"
-        )
-    lines.append("")
-    lines.append("## Supported Findings")
-    if not supported:
-        lines.append("- No inferred or confirmed case-question findings.")
-    for question in supported:
-        linked = ", ".join(f"`{item}`" for item in question.get("linked_finding_ids", []))
-        lines.append(
-            f"- `{question.get('question_id')}` {question.get('question')} "
-            f"status=`{question.get('status')}` linked_findings={linked or 'none'}"
-        )
-        lines.append(f"  - Reason: {question.get('reason')}")
-    lines.append("")
-    lines.append("## Needs Review")
-    if not needs_review:
-        lines.append("- No case-question items require review.")
-    for question in needs_review:
-        lines.append(f"- `{question.get('question_id')}` {question.get('question')}")
-        lines.append(f"  - Reason: {question.get('reason')}")
-        for gap in question.get("gaps", []):
-            lines.append(f"  - Gap: {gap}")
-    needs_review_findings = sorted(
-        (finding for finding in findings if finding.get("status") == "needs_review"),
-        key=lambda item: (
-            -len(
-                item.get("evidence_refs", [])
-                if isinstance(item.get("evidence_refs"), list)
-                else []
-            ),
-            str(item.get("finding_id", "")),
-        ),
-    )
-    for finding in needs_review_findings[:REPORT_NEEDS_REVIEW_FINDING_LIMIT]:
-        lines.append(f"- `{finding.get('finding_id')}` {finding.get('claim')}")
-        if finding.get("rationale"):
-            lines.append(f"  - Rationale: {finding.get('rationale')}")
-    if len(needs_review_findings) > REPORT_NEEDS_REVIEW_FINDING_LIMIT:
-        remaining = len(needs_review_findings) - REPORT_NEEDS_REVIEW_FINDING_LIMIT
-        lines.append(f"- {remaining} additional needs_review finding(s) omitted from report.")
-    lines.append("")
+    supported_findings = _top_findings(findings, statuses={"confirmed", "inferred"})
+    needs_review_findings = _top_findings(findings, statuses={"needs_review"})
     user_activity_findings = [
         finding
         for finding in findings
         if finding.get("artifact_family") == "registry_user_activity"
     ]
-    event_counts = {}
-    event_counts_by_profile = {}
-    user_activity_gaps = []
-    prepared_hive_scope_warnings = []
-    profile_coverage = {}
+    user_activity_highlights = _top_findings(
+        user_activity_findings,
+        categories={
+            "file_access_candidate",
+            "typed_path_navigation_candidate",
+            "cloud_or_transfer_candidate",
+        },
+    )
+    program_highlights = _top_findings(findings, predicate=_is_program_or_execution_finding)
+
+    event_counts: dict[str, int] = {}
+    event_counts_by_profile: dict[str, int] = {}
+    user_activity_gaps: list[dict[str, Any]] = []
+    profile_coverage: dict[str, Any] = {}
     if user_activity_summary is not None:
         raw_counts = user_activity_summary.get("event_counts_by_artifact_type", {})
         if isinstance(raw_counts, dict):
-            event_counts = raw_counts
+            event_counts = {
+                str(key): value for key, value in raw_counts.items()
+                if isinstance(value, int)
+            }
         raw_profile_counts = user_activity_summary.get("event_counts_by_profile", {})
         if isinstance(raw_profile_counts, dict):
-            event_counts_by_profile = raw_profile_counts
+            event_counts_by_profile = {
+                str(key): value for key, value in raw_profile_counts.items()
+                if isinstance(value, int)
+            }
         raw_gaps = user_activity_summary.get("coverage_gaps", [])
         if isinstance(raw_gaps, list):
             user_activity_gaps = [gap for gap in raw_gaps if isinstance(gap, dict)]
-        raw_scope_warnings = user_activity_summary.get("prepared_hive_scope_warnings", [])
-        if isinstance(raw_scope_warnings, list):
-            prepared_hive_scope_warnings = [
-                warning for warning in raw_scope_warnings if isinstance(warning, dict)
-            ]
         raw_profile_coverage = user_activity_summary.get("profile_coverage", {})
         if isinstance(raw_profile_coverage, dict):
             profile_coverage = raw_profile_coverage
-    lines.append("## User Profile Hive Coverage")
-    if profile_coverage:
-        lines.append(
-            f"- Status: `{profile_coverage.get('status')}`; "
-            f"discovered={profile_coverage.get('discovered_profile_count', 0)}, "
-            f"available={profile_coverage.get('available_profile_count', 0)}, "
-            f"failed={profile_coverage.get('failed_profile_count', 0)}, "
-            f"parsed={profile_coverage.get('parsed_profile_count', 0)}"
-        )
-        profile_ids = profile_coverage.get("available_profile_ids", [])
-        if isinstance(profile_ids, list) and profile_ids:
-            rendered_profiles = ", ".join(f"`{profile}`" for profile in profile_ids[:8])
-            lines.append(f"- Available prepared profile hives: {rendered_profiles}")
-    else:
-        lines.append("- No NTUSER.DAT profile coverage summary was generated.")
-    lines.append("")
-    lines.append("## User Activity Summary")
-    if not user_activity_findings and not event_counts:
-        lines.append("- No Registry user-activity events were normalized.")
-    for artifact_type, count in sorted(event_counts.items()):
-        lines.append(f"- `{artifact_type}` events: {count}")
-    lines.append("")
-    lines.append("## User Activity Summary by Profile")
-    if not event_counts_by_profile:
-        lines.append("- No per-profile Registry user-activity events were normalized.")
-    for profile_id, count in sorted(event_counts_by_profile.items()):
-        lines.append(f"- `{profile_id}` events: {count}")
-    lines.append("")
-    category_sections = (
-        (
-            "File Access / Recent Document Candidates",
-            {"file_access_candidate", "cloud_or_transfer_candidate"},
-        ),
-        ("Program Use Candidates", {"program_use_candidate"}),
-        ("Typed Path / User Navigation Candidates", {"typed_path_navigation_candidate"}),
+
+    lines = ["# Case Report", ""]
+    lines.append("## Executive Summary")
+    lines.append("- Bounded autonomous run completed for the prepared case manifest.")
+    lines.append("- Amcache transaction sidecars were staged and used when present.")
+    lines.append(
+        f"- Amcache produced {_amcache_event_count(coverage_summary)} "
+        "normalized execution-relevant event(s)."
     )
-    for title, categories in category_sections:
-        lines.append(f"## {title}")
-        category_findings = [
-            finding
-            for finding in user_activity_findings
-            if finding.get("finding_category") in categories
-        ]
-        if not category_findings:
-            lines.append("- No candidates in this category.")
-        for finding in sorted(category_findings, key=lambda item: str(item.get("finding_id", ""))):
-            refs = finding.get("linked_event_ids", [])
-            rendered_refs = (
-                ", ".join(f"`{ref}`" for ref in refs[:3])
-                if isinstance(refs, list)
-                else ""
-            )
-            lines.append(
-                f"- `{finding.get('finding_id')}` status=`{finding.get('status')}` "
-                f"{finding.get('claim')}"
-            )
-            if finding.get("rationale"):
-                lines.append(f"  - Reason: {finding.get('rationale')}")
-            profile_ids = finding.get("profile_ids", [])
-            if isinstance(profile_ids, list) and profile_ids:
-                rendered_profiles = ", ".join(f"`{profile}`" for profile in profile_ids[:5])
-                lines.append(f"  - Profiles: {rendered_profiles}")
-            if rendered_refs:
-                lines.append(f"  - Evidence refs: {rendered_refs}")
-            lines.append(
-                "  - Limitation: Candidate evidence is not proof of theft or exfiltration."
-            )
-        lines.append("")
-    lines.append("## Parser Coverage and User-Activity Gaps")
-    if prepared_hive_scope_warnings:
-        lines.append(
-            "- Registry user-activity partial profile coverage: coverage is limited "
-            "to the prepared NTUSER.DAT hive(s); one or more additional profile "
-            "hives were not extracted."
-        )
-        lines.append(
-            "  - Next step: extract and inventory all user profile NTUSER.DAT hives."
-        )
-    if not user_activity_gaps:
-        lines.append("- No Registry user-activity parser/key gaps were recorded.")
-    for gap in user_activity_gaps:
-        profile_label = ""
-        if gap.get("profile_id"):
-            profile_label = f" profile=`{gap.get('profile_id')}`"
-        lines.append(
-            f"- `{gap.get('artifact_type')}`{profile_label} "
-            f"reason=`{gap.get('reason')}`: "
-            f"{gap.get('impact')}"
-        )
-        if gap.get("recommended_next_step"):
-            lines.append(f"  - Next step: {gap.get('recommended_next_step')}")
+    profile_status = profile_coverage.get("status", "not_summarized")
+    discovered_profiles = profile_coverage.get("discovered_profile_count", 0)
+    parsed_profiles = profile_coverage.get("parsed_profile_count", 0)
+    lines.append(
+        f"- NTUSER profile hives considered: discovered={discovered_profiles}, "
+        f"parsed={parsed_profiles}, status=`{profile_status}`."
+    )
+    lines.append(
+        "- Theft, transfer destination, exfiltration method, and memory remain "
+        "`not_assessed` under the current supported scope."
+    )
+    lines.append(
+        "- Full traceability remains in JSON outputs and `audit.jsonl`; this report "
+        "shows curated highlights only."
+    )
     lines.append("")
-    lines.append("## Not Assessed / Scope Gaps")
-    if not not_assessed:
-        lines.append("- No unsupported case questions were marked not_assessed.")
-    for question in not_assessed:
-        lines.append(f"- `{question.get('question_id')}` {question.get('question')}")
-        for gap in question.get("gaps", []):
-            lines.append(f"  - Gap: {gap}")
+
+    lines.append("## Case Questions Summary")
+    if not questions:
+        lines.append("- No case questions were available.")
+    for question in questions:
+        lines.append(_question_line(question))
     lines.append("")
-    lines.append("## Evidence Provenance Summary")
-    lines.append(f"- Case ID: `{case_id}`")
-    lines.append(f"- Source records: {len(adapted.sources)}")
+
+    lines.append("## Supported Findings")
+    _append_top_findings(
+        lines,
+        supported_findings,
+        empty_text="No confirmed or inferred findings were generated.",
+        omitted_label="supported finding(s)",
+    )
+    lines.append("")
+
+    lines.append("## Needs Review Highlights")
+    _append_top_findings(
+        lines,
+        needs_review_findings,
+        empty_text="No needs_review findings were generated.",
+        omitted_label="needs_review finding(s)",
+    )
+    lines.append("")
+
+    lines.append("## User Activity Highlights")
+    lines.append("- Candidate evidence is not proof of theft or exfiltration.")
+    _append_top_findings(
+        lines,
+        user_activity_highlights,
+        empty_text="No file/user-activity candidate highlights were generated.",
+        omitted_label="user-activity candidate(s)",
+    )
+    lines.append("")
+
+    lines.append("## Program / Execution-Relevant Artifact Highlights")
+    lines.append(
+        "- Execution-relevant artifacts require analyst review before labeling activity "
+        "as malicious."
+    )
+    _append_top_findings(
+        lines,
+        program_highlights,
+        empty_text="No program/execution-relevant highlights were generated.",
+        omitted_label="program/execution candidate(s)",
+    )
+    lines.append("")
+
+    lines.append("## Parser Coverage Summary")
     lines.append(f"- Prepared parser artifacts: {len(adapted.evidence_manifest.artifacts)}")
     lines.append(
         f"- Normalized events written: {coverage_summary.get('normalized_events_written', 0)}"
     )
-    parser_statuses = [
-        item.get("parser_status")
-        for item in coverage_summary.get("per_artifact", [])
-        if isinstance(item, dict)
-    ]
-    if parser_statuses:
-        rendered = ", ".join(sorted(str(status) for status in parser_statuses))
-        lines.append(f"- Parser statuses observed: {rendered}")
+    lines.append(f"- Parser statuses: {_compact_counts(_parser_status_counts(coverage_summary))}")
+    lines.append(f"- Amcache events: {_amcache_event_count(coverage_summary)}")
+    lines.append(f"- User-activity events: {_compact_counts(event_counts)}")
+    if event_counts_by_profile:
+        profile_counts = _compact_counts(event_counts_by_profile)
+        lines.append(f"- User-activity events by profile: {profile_counts}")
+    if profile_coverage:
+        lines.append(
+            f"- Profile hive coverage: discovered={discovered_profiles}, "
+            f"available={profile_coverage.get('available_profile_count', 0)}, "
+            f"failed={profile_coverage.get('failed_profile_count', 0)}, "
+            f"parsed={parsed_profiles}, status=`{profile_status}`."
+        )
+    total_gap_count = (
+        len(adapted.coverage_gaps) + len(user_activity_gaps) + _parser_gap_count(coverage_summary)
+    )
+    lines.append(f"- Coverage gaps recorded: {total_gap_count}")
+    lines.append("")
+
+    lines.append("## Not Assessed / Scope Gaps")
+    lines.append("What SIFTGuard did not prove:")
+    lines.append("- Theft contents were not proven.")
+    lines.append("- Transfer destination was not proven.")
+    lines.append("- Exfiltration method was not reconstructed.")
+    lines.append("- Memory was not analyzed.")
+    lines.append("- Candidate evidence requires analyst review before incident conclusions.")
+    if not not_assessed:
+        lines.append("- No unsupported case questions were marked not_assessed.")
+    for question in not_assessed:
+        lines.append(f"- `{question.get('question_id')}`: {_question_answer(question)}")
+    lines.append("")
+
+    lines.append("## Evidence Provenance Summary")
+    lines.append(f"- Case ID: `{case_id}`")
+    lines.append(f"- Source records: {len(adapted.sources)}")
+    lines.append(f"- Prepared parser artifacts: {len(adapted.evidence_manifest.artifacts)}")
+    lines.append("- Every finding links back to prepared artifact IDs in JSON outputs.")
     if adapted.memory_sources:
         lines.append("- Memory sources: inventoried only; final scope marks memory not_assessed.")
     lines.append("")
+
+    lines.append("## Traceability")
+    lines.append("- `findings.json`: complete finding records and evidence refs.")
+    lines.append("- `normalized_events.json`: normalized parser events.")
+    lines.append("- `case_questions.json`: full question-to-finding mappings.")
+    lines.append("- `audit.jsonl`: step-by-step execution audit.")
+    lines.append("- `decision_trace.json`: product-level forensic decisions.")
+    lines.append("- `gap_analysis.json`: unsupported areas and coverage gaps.")
+    lines.append("")
+
     lines.append("## Analyst Next Steps")
-    next_steps: list[str] = []
-    for question in questions:
-        for item in question.get("recommended_next_manual_review", []):
-            if isinstance(item, str) and item not in next_steps:
-                next_steps.append(item)
-    if not next_steps:
-        lines.append("- No additional manual next steps were generated.")
-    for item in next_steps:
-        lines.append(f"- {item}")
+    lines.append("- Review the top candidate files/programs against full JSON evidence refs.")
+    lines.append(
+        "- Inspect complete evidence mappings in `case_questions.json` and `findings.json`."
+    )
+    lines.append("- Collect/parse additional artifacts if theft or exfiltration must be proven.")
+    lines.append("- Preserve generated JSON outputs and `audit.jsonl` with the case record.")
+    lines.append("- Do not treat candidate file activity as proof of exfiltration.")
     return "\n".join(lines).rstrip() + "\n"
