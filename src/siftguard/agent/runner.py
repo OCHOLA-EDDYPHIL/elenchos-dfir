@@ -729,6 +729,11 @@ def _artifact_coverage(
         "artifact_type": artifact.artifact_type,
         "source_image_id": artifact.source_image_id,
         "source_image_label": artifact.source_image_label,
+        "registry_hive_type": artifact.registry_hive_type,
+        "profile_id": artifact.profile_id,
+        "profile_display_name": artifact.profile_display_name,
+        "sanitized_profile_hint": artifact.sanitized_profile_hint,
+        "source_candidate_ref": artifact.source_candidate_ref,
         "parser_name": result.parser_name,
         "parser_status": result.parser_status,
         "source_rows_seen": result.source_rows_seen,
@@ -763,6 +768,7 @@ def _skipped_artifact_rows(
                 "reason": parser_status,
                 "impact": reason,
                 "recommended_next_step": "Review artifact availability and parser support.",
+                "profile_id": artifact.profile_id,
             }
         ],
     )

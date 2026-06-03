@@ -608,12 +608,17 @@ def render_case_question_report(
         if finding.get("artifact_family") == "registry_user_activity"
     ]
     event_counts = {}
+    event_counts_by_profile = {}
     user_activity_gaps = []
     prepared_hive_scope_warnings = []
+    profile_coverage = {}
     if user_activity_summary is not None:
         raw_counts = user_activity_summary.get("event_counts_by_artifact_type", {})
         if isinstance(raw_counts, dict):
             event_counts = raw_counts
+        raw_profile_counts = user_activity_summary.get("event_counts_by_profile", {})
+        if isinstance(raw_profile_counts, dict):
+            event_counts_by_profile = raw_profile_counts
         raw_gaps = user_activity_summary.get("coverage_gaps", [])
         if isinstance(raw_gaps, list):
             user_activity_gaps = [gap for gap in raw_gaps if isinstance(gap, dict)]
@@ -622,11 +627,36 @@ def render_case_question_report(
             prepared_hive_scope_warnings = [
                 warning for warning in raw_scope_warnings if isinstance(warning, dict)
             ]
+        raw_profile_coverage = user_activity_summary.get("profile_coverage", {})
+        if isinstance(raw_profile_coverage, dict):
+            profile_coverage = raw_profile_coverage
+    lines.append("## User Profile Hive Coverage")
+    if profile_coverage:
+        lines.append(
+            f"- Status: `{profile_coverage.get('status')}`; "
+            f"discovered={profile_coverage.get('discovered_profile_count', 0)}, "
+            f"available={profile_coverage.get('available_profile_count', 0)}, "
+            f"failed={profile_coverage.get('failed_profile_count', 0)}, "
+            f"parsed={profile_coverage.get('parsed_profile_count', 0)}"
+        )
+        profile_ids = profile_coverage.get("available_profile_ids", [])
+        if isinstance(profile_ids, list) and profile_ids:
+            rendered_profiles = ", ".join(f"`{profile}`" for profile in profile_ids[:8])
+            lines.append(f"- Available prepared profile hives: {rendered_profiles}")
+    else:
+        lines.append("- No NTUSER.DAT profile coverage summary was generated.")
+    lines.append("")
     lines.append("## User Activity Summary")
     if not user_activity_findings and not event_counts:
         lines.append("- No Registry user-activity events were normalized.")
     for artifact_type, count in sorted(event_counts.items()):
         lines.append(f"- `{artifact_type}` events: {count}")
+    lines.append("")
+    lines.append("## User Activity Summary by Profile")
+    if not event_counts_by_profile:
+        lines.append("- No per-profile Registry user-activity events were normalized.")
+    for profile_id, count in sorted(event_counts_by_profile.items()):
+        lines.append(f"- `{profile_id}` events: {count}")
     lines.append("")
     category_sections = (
         (
@@ -658,6 +688,10 @@ def render_case_question_report(
             )
             if finding.get("rationale"):
                 lines.append(f"  - Reason: {finding.get('rationale')}")
+            profile_ids = finding.get("profile_ids", [])
+            if isinstance(profile_ids, list) and profile_ids:
+                rendered_profiles = ", ".join(f"`{profile}`" for profile in profile_ids[:5])
+                lines.append(f"  - Profiles: {rendered_profiles}")
             if rendered_refs:
                 lines.append(f"  - Evidence refs: {rendered_refs}")
             lines.append(
@@ -677,8 +711,12 @@ def render_case_question_report(
     if not user_activity_gaps:
         lines.append("- No Registry user-activity parser/key gaps were recorded.")
     for gap in user_activity_gaps:
+        profile_label = ""
+        if gap.get("profile_id"):
+            profile_label = f" profile=`{gap.get('profile_id')}`"
         lines.append(
-            f"- `{gap.get('artifact_type')}` reason=`{gap.get('reason')}`: "
+            f"- `{gap.get('artifact_type')}`{profile_label} "
+            f"reason=`{gap.get('reason')}`: "
             f"{gap.get('impact')}"
         )
         if gap.get("recommended_next_step"):

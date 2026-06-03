@@ -11,7 +11,7 @@ from siftguard.case_prep.models import ArtifactTarget, ExtractionOutcome, Source
 from siftguard.policy.paths import is_relative_to
 from siftguard.runner.subprocess_runner import run_command
 
-SUPPORTED_TARGETS: tuple[ArtifactTarget, ...] = (
+STATIC_TARGETS: tuple[ArtifactTarget, ...] = (
     ArtifactTarget(
         target_id="mft",
         artifact_type="mft",
@@ -27,13 +27,6 @@ SUPPORTED_TARGETS: tuple[ArtifactTarget, ...] = (
         candidate_paths=("Windows/System32/config/SOFTWARE",),
     ),
     ArtifactTarget(
-        target_id="ntuser",
-        artifact_type="registry_hive",
-        display_name="NTUSER.DAT",
-        output_path="extracted/registry/NTUSER.DAT",
-        candidate_paths=("Users/*/NTUSER.DAT",),
-    ),
-    ArtifactTarget(
         target_id="amcache",
         artifact_type="amcache_hive",
         display_name="Amcache.hve",
@@ -41,6 +34,15 @@ SUPPORTED_TARGETS: tuple[ArtifactTarget, ...] = (
         candidate_paths=("Windows/AppCompat/Programs/Amcache.hve",),
     ),
 )
+NTUSER_TARGET = ArtifactTarget(
+    target_id="ntuser",
+    artifact_type="registry_hive",
+    display_name="NTUSER.DAT",
+    output_path="extracted/registry/NTUSER.DAT",
+    candidate_paths=("Users/*/NTUSER.DAT",),
+    registry_hive_type="ntuser",
+)
+SUPPORTED_TARGETS: tuple[ArtifactTarget, ...] = (*STATIC_TARGETS, NTUSER_TARGET)
 
 _REQUIRED_EWF_TOOLS = ("ewfinfo", "ewfmount", "mmls", "fls", "icat")
 _FLS_ENTRY_RE = re.compile(r"^\s*\S+(?:\s+\*)?\s+([0-9-]+):\s+(.+?)\s*$")
@@ -213,10 +215,18 @@ class SiftEwfExtractor:
 
             entries = _parse_fls_entries(fls_path)
             matches = _target_matches(entries)
-            if not matches:
+            ntuser_targets = _profile_ntuser_targets(entries)
+            if not matches and not ntuser_targets:
                 last_error = f"no supported artifacts found at partition offset {offset}"
                 continue
-            return self._extract_matches(context, image_path, offset, logs_dir, matches)
+            return self._extract_matches(
+                context,
+                image_path,
+                offset,
+                logs_dir,
+                matches,
+                ntuser_targets,
+            )
 
         return _missing_outcomes("tool_error", "sift_ewf_tsk", last_error)
 
@@ -258,9 +268,10 @@ class SiftEwfExtractor:
         offset: int,
         logs_dir: Path,
         matches: Mapping[str, tuple[str, str]],
+        ntuser_targets: list[tuple[ArtifactTarget, str, str]],
     ) -> list[ExtractionOutcome]:
         outcomes: list[ExtractionOutcome] = []
-        for target in SUPPORTED_TARGETS:
+        for target in STATIC_TARGETS:
             match = matches.get(target.target_id)
             if match is None:
                 outcomes.append(
@@ -274,41 +285,85 @@ class SiftEwfExtractor:
                 continue
 
             inode, source_path = match
-            destination = _safe_output_path(context.output_dir, target.output_path)
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            result = run_command(
-                ["icat", "-o", str(offset), str(image_path), inode],
-                stdout_path=destination,
-                stderr_path=logs_dir / f"icat_{target.target_id}.stderr.txt",
-                timeout_seconds=900,
-                ledger_path=context.audit_path,
-                case_id=context.case_id,
-                tool_name="icat",
-                runs_root=context.output_dir,
+            outcomes.append(
+                self._extract_one_target(
+                    context=context,
+                    image_path=image_path,
+                    offset=offset,
+                    logs_dir=logs_dir,
+                    target=target,
+                    inode=inode,
+                    source_path=source_path,
+                    log_slug=f"icat_{target.target_id}",
+                )
             )
-            if result.status == "success" and destination.exists() and destination.is_file():
-                warnings = []
-                if target.target_id == "ntuser" and _has_multiple_ntuser(matches):
-                    warnings.append("multiple NTUSER.DAT candidates found; extracted first")
+
+        if ntuser_targets:
+            for target, inode, source_path in ntuser_targets:
                 outcomes.append(
-                    ExtractionOutcome(
+                    self._extract_one_target(
+                        context=context,
+                        image_path=image_path,
+                        offset=offset,
+                        logs_dir=logs_dir,
                         target=target,
-                        status="available",
-                        extraction_method=f"sift_ewf_tsk:{source_path}",
-                        warnings=warnings,
+                        inode=inode,
+                        source_path=source_path,
+                        log_slug=f"icat_{target.profile_id or target.target_id}",
                     )
                 )
-            else:
-                outcomes.append(
-                    ExtractionOutcome(
-                        target=target,
-                        status="missing",
-                        extraction_method="sift_ewf_tsk",
-                        reason="tool_error",
-                        warnings=[f"icat failed for {target.display_name}"],
-                    )
+        else:
+            outcomes.append(
+                ExtractionOutcome(
+                    target=NTUSER_TARGET,
+                    status="missing",
+                    extraction_method="sift_ewf_tsk",
+                    reason="not_found",
                 )
+            )
         return outcomes
+
+    def _extract_one_target(
+        self,
+        *,
+        context: ExtractorContext,
+        image_path: Path,
+        offset: int,
+        logs_dir: Path,
+        target: ArtifactTarget,
+        inode: str,
+        source_path: str,
+        log_slug: str,
+    ) -> ExtractionOutcome:
+        destination = _safe_output_path(context.output_dir, target.output_path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        result = run_command(
+            ["icat", "-o", str(offset), str(image_path), inode],
+            stdout_path=destination,
+            stderr_path=logs_dir / f"{log_slug}.stderr.txt",
+            timeout_seconds=900,
+            ledger_path=context.audit_path,
+            case_id=context.case_id,
+            tool_name="icat",
+            runs_root=context.output_dir,
+        )
+        if result.status == "success" and destination.exists() and destination.is_file():
+            return ExtractionOutcome(
+                target=target,
+                status="available",
+                extraction_method=(
+                    f"sift_ewf_tsk:{target.source_candidate_ref or source_path}"
+                ),
+            )
+        return ExtractionOutcome(
+            target=target,
+            status="extraction_failed",
+            extraction_method=(
+                f"sift_ewf_tsk:{target.source_candidate_ref or source_path}"
+            ),
+            reason="extraction_failed",
+            warnings=[f"icat failed for {target.display_name}"],
+        )
 
     def _unmount(self, context: ExtractorContext, mount_dir: Path, logs_dir: Path) -> None:
         executable = (
@@ -352,7 +407,6 @@ def _normalize_tsk_path(path: str) -> str:
 
 def _target_matches(entries: list[tuple[str, str]]) -> dict[str, tuple[str, str]]:
     matches: dict[str, tuple[str, str]] = {}
-    ntuser_matches: list[tuple[str, str]] = []
 
     for inode, path in entries:
         normalized = _normalize_tsk_path(path)
@@ -360,20 +414,58 @@ def _target_matches(entries: list[tuple[str, str]]) -> dict[str, tuple[str, str]
             matches["mft"] = (inode, path)
         elif normalized == "windows/system32/config/software" and "software" not in matches:
             matches["software"] = (inode, path)
-        elif normalized.endswith("/ntuser.dat"):
-            ntuser_matches.append((inode, path))
         elif (
             normalized == "windows/appcompat/programs/amcache.hve"
             and "amcache" not in matches
         ):
             matches["amcache"] = (inode, path)
 
-    if ntuser_matches:
-        matches["ntuser"] = sorted(ntuser_matches, key=lambda item: item[1].casefold())[0]
-        if len(ntuser_matches) > 1:
-            matches["_multiple_ntuser"] = ("", "")
     return matches
 
 
-def _has_multiple_ntuser(matches: Mapping[str, tuple[str, str]]) -> bool:
-    return "_multiple_ntuser" in matches
+def _profile_ntuser_source_ref(profile_id: str) -> str:
+    return f"Users/{profile_id}/NTUSER.DAT"
+
+
+def _ntuser_profile_candidate(path: str) -> bool:
+    normalized = path.replace("\\", "/").lstrip("/")
+    parts = normalized.split("/")
+    if len(parts) != 3:
+        return False
+    return bool(parts[1]) and parts[0].casefold() == "users" and parts[2].casefold() == "ntuser.dat"
+
+
+def _profile_ntuser_targets(
+    entries: list[tuple[str, str]],
+) -> list[tuple[ArtifactTarget, str, str]]:
+    candidates = [
+        (inode, path)
+        for inode, path in entries
+        if _ntuser_profile_candidate(path)
+    ]
+    targets: list[tuple[ArtifactTarget, str, str]] = []
+    for index, (inode, source_path) in enumerate(
+        sorted(candidates, key=lambda item: item[1].casefold()),
+        start=1,
+    ):
+        profile_id = f"profile-{index:04d}"
+        source_ref = _profile_ntuser_source_ref(profile_id)
+        targets.append(
+            (
+                ArtifactTarget(
+                    target_id=f"ntuser_{profile_id.replace('-', '_')}",
+                    artifact_type="registry_hive",
+                    display_name="NTUSER.DAT",
+                    output_path=f"extracted/registry/profiles/{profile_id}/NTUSER.DAT",
+                    candidate_paths=("Users/*/NTUSER.DAT",),
+                    registry_hive_type="ntuser",
+                    profile_id=profile_id,
+                    profile_display_name=profile_id,
+                    sanitized_profile_hint=profile_id,
+                    source_candidate_ref=source_ref,
+                ),
+                inode,
+                source_path,
+            )
+        )
+    return targets

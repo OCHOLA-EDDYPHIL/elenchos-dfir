@@ -55,6 +55,7 @@ def build_decision_trace(
     user_activity_finding_count = 0
     user_activity_gap_count = 0
     user_activity_scope_warning_count = 0
+    profile_coverage: dict[str, Any] = {}
     if user_activity_summary is not None:
         event_count = user_activity_summary.get("event_count")
         finding_count = user_activity_summary.get("finding_count")
@@ -66,6 +67,9 @@ def build_decision_trace(
         user_activity_scope_warning_count = (
             len(scope_warnings) if isinstance(scope_warnings, list) else 0
         )
+        raw_profile_coverage = user_activity_summary.get("profile_coverage", {})
+        if isinstance(raw_profile_coverage, dict):
+            profile_coverage = dict(raw_profile_coverage)
 
     decisions = [
         _decision(
@@ -206,6 +210,30 @@ def build_decision_trace(
             next_action="Select NTUSER.DAT artifacts when available.",
         ),
         _decision(
+            decision_id="all_user_profile_hive_discovery",
+            phase="case_prepare",
+            question="How many prepared NTUSER.DAT profile hives were discovered?",
+            available_inputs={
+                "discovered_profile_count": profile_coverage.get(
+                    "discovered_profile_count",
+                    0,
+                ),
+                "available_profile_count": profile_coverage.get(
+                    "available_profile_count",
+                    0,
+                ),
+                "failed_profile_count": profile_coverage.get("failed_profile_count", 0),
+            },
+            selected_action="Use each prepared profile hive as a separate provenance unit.",
+            rationale=(
+                "Registry user-activity coverage is profile-scoped and should not be "
+                "represented by only one arbitrary NTUSER.DAT hive."
+            ),
+            expected_outputs=["case_prep.json", "adapted_manifest.json"],
+            outcome=str(profile_coverage.get("status", "unknown")),
+            next_action="Select available NTUSER.DAT artifacts for parsing.",
+        ),
+        _decision(
             decision_id="ntuser_artifact_selected",
             phase="parse",
             question="Which prepared Registry hive can support user-activity parsing?",
@@ -217,6 +245,20 @@ def build_decision_trace(
             expected_outputs=["normalized_events.json"],
             outcome="completed",
             next_action="Execute the bounded user-activity parser.",
+        ),
+        _decision(
+            decision_id="per_profile_hive_extraction",
+            phase="case_prepare",
+            question="Were discovered profile hives extracted or gap-recorded?",
+            available_inputs={
+                "available_profile_ids": profile_coverage.get("available_profile_ids", []),
+                "failed_profile_ids": profile_coverage.get("failed_profile_ids", []),
+            },
+            selected_action="Continue with available profile hives and keep failures as gaps.",
+            rationale="A failed profile extraction should not block other prepared hives.",
+            expected_outputs=["case_prep.json", "gap_analysis.json"],
+            outcome=str(profile_coverage.get("status", "unknown")),
+            next_action="Run user-activity parsing per available profile.",
         ),
         _decision(
             decision_id="user_activity_parser_execution",
@@ -235,6 +277,35 @@ def build_decision_trace(
             expected_outputs=["normalized_events.json", "coverage_summary.json"],
             outcome="completed",
             next_action="Normalize user-activity rows into typed events.",
+        ),
+        _decision(
+            decision_id="per_profile_user_activity_parsing",
+            phase="parse",
+            question="Which profile hives produced events or parser gaps?",
+            available_inputs={
+                "parsed_profile_ids": profile_coverage.get("parsed_profile_ids", []),
+                "event_count": user_activity_event_count,
+                "coverage_gap_count": user_activity_gap_count,
+            },
+            selected_action="Parse every available NTUSER.DAT profile hive independently.",
+            rationale="Per-profile parser results preserve provenance and avoid silent omissions.",
+            expected_outputs=["normalized_events.json", "coverage_summary.json"],
+            outcome="completed",
+            next_action="Assess profile coverage before finding aggregation.",
+        ),
+        _decision(
+            decision_id="profile_coverage_assessment",
+            phase="gap_analysis",
+            question="Is Registry user-activity coverage complete for prepared profiles?",
+            available_inputs=profile_coverage,
+            selected_action="Report assessed, partial, or needs_review profile coverage.",
+            rationale=(
+                "Registry user-activity should not be called complete when discovered "
+                "profile hives were not extracted or parsed."
+            ),
+            expected_outputs=["gap_analysis.json", "report.md"],
+            outcome=str(profile_coverage.get("status", "unknown")),
+            next_action="Aggregate candidate findings without losing profile provenance.",
         ),
         _decision(
             decision_id="user_activity_normalization",
@@ -330,6 +401,20 @@ def build_decision_trace(
             expected_outputs=["findings.json"],
             outcome="completed",
             next_action="Map user-activity findings to case questions.",
+        ),
+        _decision(
+            decision_id="multi_profile_finding_aggregation",
+            phase="validate",
+            question="How should user-activity findings across profiles be represented?",
+            available_inputs={
+                "profile_count": profile_coverage.get("parsed_profile_count", 0),
+                "finding_count": user_activity_finding_count,
+            },
+            selected_action="Preserve profile IDs and evidence refs on each candidate finding.",
+            rationale="Multiple profiles can share similar paths without proving the same claim.",
+            expected_outputs=["findings.json", "report.md"],
+            outcome="completed",
+            next_action="Map profile-aware findings to case questions.",
         ),
         _decision(
             decision_id="user_activity_case_question_mapping",

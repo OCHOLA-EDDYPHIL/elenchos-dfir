@@ -109,7 +109,7 @@ SIFT validation against the real tool is summarized in
 ## Registry User-Activity Parser Wrapper
 
 The Registry user-activity wrapper reuses the RECmd command configuration for
-prepared `NTUSER.DAT` hives. It runs bounded direct lookups for UserAssist,
+each prepared profile `NTUSER.DAT` hive. It runs bounded direct lookups for UserAssist,
 RecentDocs, OpenSavePidlMRU, LastVisitedPidlMRU, and TypedPaths, writes parser
 CSV/JSON outputs under `runs/<case_id>/parser_outputs/<artifact_id>/recmd/`,
 and records missing-key, parser-unavailable, parser-error, decode-error, and
@@ -120,6 +120,7 @@ Normalization emits observational `ParserEvent` records with
 `registry_userassist_program_use` and `registry_recent_document_candidate`.
 These events preserve the prepared artifact id, source id, Registry key/value
 context, decoded target where available, timestamp kind, evidence reference,
+sanitized `profile_id` where available,
 raw row reference, and parser status. They produce analyst review candidates;
 they do not prove theft, transfer, exfiltration, compromise, or malware
 execution by themselves.

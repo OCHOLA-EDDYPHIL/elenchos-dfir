@@ -269,9 +269,12 @@ generic Registry user-activity coverage for UserAssist, RecentDocs,
 OpenSavePidlMRU, LastVisitedPidlMRU, and TypedPaths. These events can produce
 file, program, and navigation review candidates with provenance; they do not
 prove theft, transfer, exfiltration, or compromise by themselves.
-Coverage is limited to the NTUSER hives prepared by `case prepare`; if multiple
-profile hives were discovered but only one was staged, the run records partial
-profile coverage rather than treating the result as complete.
+`case prepare` stages each discovered `Users/*/NTUSER.DAT` profile hive under a
+sanitized profile path such as
+`extracted/registry/profiles/profile-0001/NTUSER.DAT`. Coverage is only complete
+for profile hives that were discovered, extracted, and considered by
+`agent run-case`; per-profile extraction or parser failures remain explicit
+coverage gaps.
 
 ```bash
 .venv/bin/python -m siftguard agent run \

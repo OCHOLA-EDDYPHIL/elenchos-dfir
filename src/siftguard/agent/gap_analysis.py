@@ -46,6 +46,7 @@ def build_gap_analysis(
     user_activity_gaps: list[dict[str, Any]] = []
     user_activity_event_counts: dict[str, int] = {}
     prepared_hive_scope_warnings: list[dict[str, Any]] = []
+    profile_coverage: dict[str, Any] = {}
     if user_activity_summary is not None:
         raw_gaps = user_activity_summary.get("coverage_gaps", [])
         if isinstance(raw_gaps, list):
@@ -64,6 +65,18 @@ def build_gap_analysis(
                 for warning in raw_scope_warnings
                 if isinstance(warning, dict)
             ]
+        raw_profile_coverage = user_activity_summary.get("profile_coverage", {})
+        if isinstance(raw_profile_coverage, dict):
+            profile_coverage = dict(raw_profile_coverage)
+    registry_user_activity_status = profile_coverage.get("status")
+    if not isinstance(registry_user_activity_status, str):
+        registry_user_activity_status = (
+            "partial_scope"
+            if prepared_hive_scope_warnings
+            else "assessed"
+            if user_activity_event_counts
+            else "needs_review"
+        )
     return {
         "case_id": adapted.case_id,
         "created_at": created_at,
@@ -75,16 +88,11 @@ def build_gap_analysis(
         "status_counts": status_counts,
         "carried_forward_case_prep_gaps": list(adapted.coverage_gaps),
         "registry_user_activity": {
-            "status": (
-                "partial_scope"
-                if prepared_hive_scope_warnings
-                else "assessed"
-                if user_activity_event_counts
-                else "needs_review"
-            ),
+            "status": registry_user_activity_status,
             "event_counts_by_artifact_type": user_activity_event_counts,
             "coverage_gaps": user_activity_gaps,
             "prepared_hive_scope_warnings": prepared_hive_scope_warnings,
+            "profile_coverage": profile_coverage,
         },
         "memory_sources": [
             {
