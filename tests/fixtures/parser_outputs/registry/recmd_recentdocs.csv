@@ -1,0 +1,2 @@
+Hive,KeyPath,ValueName,ValueData,DecodedValue,LastWriteTime
+NTUSER.DAT,HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\RecentDocs\.docx,0,,C:\Users\analyst\Documents\ProjectAlpha\design.docx,2020-11-13 15:12:00

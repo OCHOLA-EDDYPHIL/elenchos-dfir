@@ -27,6 +27,7 @@ from siftguard.agent.decision_trace import build_decision_trace
 from siftguard.agent.gap_analysis import build_gap_analysis
 from siftguard.agent.models import AgentRun
 from siftguard.agent.runner import run_agent_workflow
+from siftguard.agent.user_activity_findings import generate_user_activity_findings
 from siftguard.audit.execution_ledger import utc_now
 from siftguard.evidence.manifest import write_manifest
 from siftguard.policy.paths import (
@@ -295,10 +296,19 @@ def _write_case_question_outputs(
     adapted: AdaptedCaseManifest,
     casebook: Casebook | None,
     created_at: str,
-) -> tuple[Path, dict[str, Any]]:
+) -> tuple[Path, dict[str, Any], dict[str, Any]]:
     case_questions_path = output_dir / "case_questions.json"
     findings_payload = _findings_payload(output_dir)
     findings = [dict(row) for row in findings_payload.get("findings", [])]
+    coverage = _load_json_object(output_dir / "coverage_summary.json", "coverage_summary")
+    user_activity_findings, user_activity_summary = generate_user_activity_findings(
+        adapted=adapted,
+        normalized_events=_events_from_normalized_output(output_dir),
+        existing_findings=findings,
+        coverage_summary=coverage,
+        casebook=casebook,
+    )
+    findings.extend(user_activity_findings)
     if casebook is None:
         case_questions = _empty_case_questions(case_id=adapted.case_id, created_at=created_at)
         mappings: list[dict[str, Any]] = []
@@ -319,21 +329,22 @@ def _write_case_question_outputs(
     findings_payload["finding_count"] = len(findings)
     findings_payload["case_questions"] = case_questions.get("questions", [])
     findings_payload["question_mappings"] = mappings
+    findings_payload["user_activity_summary"] = user_activity_summary
     _write_json(output_dir / "findings.json", findings_payload)
     _write_json(case_questions_path, case_questions)
 
     if casebook is not None:
-        coverage = _load_json_object(output_dir / "coverage_summary.json", "coverage_summary")
         report = render_case_question_report(
             case_id=adapted.case_id,
             case_questions=case_questions,
             findings=findings,
             coverage_summary=coverage,
             adapted=adapted,
+            user_activity_summary=user_activity_summary,
         )
         (output_dir / "report.md").write_text(report, encoding="utf-8")
 
-    return case_questions_path, case_questions
+    return case_questions_path, case_questions, user_activity_summary
 
 
 def _performance_summary(
@@ -372,6 +383,7 @@ def _write_sidecars(
     run: AgentRun,
     casebook: Casebook | None,
     case_questions: dict[str, Any] | None,
+    user_activity_summary: dict[str, Any] | None,
     warnings: list[str],
     total_wall_clock_seconds: float,
     event_selection_profile: str,
@@ -388,6 +400,7 @@ def _write_sidecars(
             run=run,
             casebook=casebook,
             case_questions=case_questions,
+            user_activity_summary=user_activity_summary,
             warnings=warnings,
             created_at=clock(),
             event_selection_profile=event_selection_profile,
@@ -400,6 +413,7 @@ def _write_sidecars(
             adapted=adapted,
             casebook=casebook,
             case_questions=case_questions,
+            user_activity_summary=user_activity_summary,
             warnings=warnings,
             created_at=clock(),
         ),
@@ -414,6 +428,33 @@ def _write_sidecars(
         ),
     )
     return decision_trace_path, gap_analysis_path, performance_summary_path
+
+
+def _append_user_activity_audit_event(
+    *,
+    output_dir: Path,
+    run: AgentRun,
+    user_activity_summary: dict[str, Any],
+    clock: Clock,
+) -> None:
+    append_agent_audit_event(
+        output_dir / "audit.jsonl",
+        event_type="user_activity_analysis_completed",
+        case_id=run.case_id,
+        run_id=run.run_id,
+        status="completed",
+        output_refs={
+            "normalized_events": "normalized_events.json",
+            "findings": "findings.json",
+            "gap_analysis": "gap_analysis.json",
+        },
+        extra={
+            "event_count": user_activity_summary.get("event_count", 0),
+            "finding_count": user_activity_summary.get("finding_count", 0),
+            "coverage_gap_count": len(user_activity_summary.get("coverage_gaps", [])),
+        },
+        clock=clock,
+    )
 
 
 def _update_agent_run_output_refs(
@@ -526,7 +567,7 @@ def run_case_workflow(
 
     _ensure_agent_placeholders(resolved_output_dir, case_id=adapted.case_id, run=run)
     _augment_coverage_summary(output_dir=resolved_output_dir, adapted=adapted)
-    case_questions_path, case_questions = _write_case_question_outputs(
+    case_questions_path, case_questions, user_activity_summary = _write_case_question_outputs(
         output_dir=resolved_output_dir,
         adapted=adapted,
         casebook=casebook,
@@ -538,10 +579,17 @@ def run_case_workflow(
         run=run,
         casebook=casebook,
         case_questions=case_questions,
+        user_activity_summary=user_activity_summary,
         warnings=warnings,
         total_wall_clock_seconds=total_wall_clock_seconds,
         event_selection_profile=event_selection_profile,
         max_normalized_events=max_normalized_events,
+        clock=clock,
+    )
+    _append_user_activity_audit_event(
+        output_dir=resolved_output_dir,
+        run=run,
+        user_activity_summary=user_activity_summary,
         clock=clock,
     )
     _update_agent_run_output_refs(
