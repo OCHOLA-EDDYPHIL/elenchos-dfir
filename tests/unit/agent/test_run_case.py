@@ -10,6 +10,10 @@ from siftguard.agent.audit import append_agent_audit_event
 from siftguard.agent.models import AgentRun, AgentRunStatus, AgentState
 from siftguard.agent.planner import build_default_agent_plan
 from siftguard.agent.run_case import CASEBOOK_YAML_REJECTION, run_case_workflow
+from siftguard.agent.self_correction_events import (
+    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+    THEFT_EXFILTRATION_STRICT_WORDING,
+)
 from siftguard.audit.execution_ledger import read_events
 from siftguard.cli import main
 from siftguard.evidence.manifest import read_manifest
@@ -587,6 +591,7 @@ def test_run_case_loads_synthetic_case_prep_and_writes_outputs(tmp_path: Path):
         "case_questions.json",
         "decision_trace.json",
         "gap_analysis.json",
+        "self_correction_events.json",
         "performance_summary.json",
     ):
         assert (output_dir / filename).is_file()
@@ -831,6 +836,7 @@ def test_run_case_outputs_do_not_expose_arbitrary_shell_fields(tmp_path: Path):
             "case_questions.json",
             "decision_trace.json",
             "gap_analysis.json",
+            "self_correction_events.json",
             "performance_summary.json",
         )
     ).lower()
@@ -878,6 +884,9 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
     )
     gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
     decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    self_correction_events = json.loads(
+        (output_dir / "self_correction_events.json").read_text(encoding="utf-8")
+    )
     report = (output_dir / "report.md").read_text(encoding="utf-8")
 
     assert case_questions["casebook_id"] == CASE_ID
@@ -894,6 +903,23 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
     } == {"not_assessed"}
     assert gap_analysis["case_questions"]
     assert "not_assessed" in gap_analysis["status_counts"]
+    assert gap_analysis["claim_boundaries"][0]["final_wording"] == (
+        THEFT_EXFILTRATION_STRICT_WORDING
+    )
+    assert gap_analysis["claim_boundaries"][0]["scope_boundary"] == (
+        THEFT_EXFILTRATION_SCOPE_BOUNDARY
+    )
+    assert self_correction_events["event_count"] == 1
+    assert self_correction_events["events"][0]["event_id"] == "real-gap-001"
+    assert self_correction_events["events"][0]["final_wording"] == (
+        THEFT_EXFILTRATION_STRICT_WORDING
+    )
+    assert self_correction_events["events"][0]["claim_boundary"] == (
+        THEFT_EXFILTRATION_SCOPE_BOUNDARY
+    )
+    assert self_correction_events["events"][0]["human_intervention"] is False
+    assert THEFT_EXFILTRATION_STRICT_WORDING in report
+    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in report
     decision_ids = {decision["decision_id"] for decision in decision_trace["decisions"]}
     assert {
         "casebook_intake",
@@ -953,6 +979,9 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
     questions = json.loads((output_dir / "case_questions.json").read_text(encoding="utf-8"))
     gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
     decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    self_correction_events = json.loads(
+        (output_dir / "self_correction_events.json").read_text(encoding="utf-8")
+    )
     report = (output_dir / "report.md").read_text(encoding="utf-8")
     actions = [event["action"] for event in read_events(output_dir / "audit.jsonl")]
 
@@ -966,6 +995,12 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
     }
     assert "file_access_candidate" in categories
     assert any(finding["status"] == "inferred" for finding in findings["findings"])
+    for finding in findings["findings"]:
+        if finding.get("status") in {"confirmed", "inferred"}:
+            assert finding.get("evidence_refs")
+            claim = str(finding.get("claim", "")).casefold()
+            assert "theft" not in claim
+            assert "exfiltration" not in claim
     question_by_id = {
         question["question_id"]: question for question in questions["questions"]
     }
@@ -974,6 +1009,15 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
     assert question_by_id["q_where_transferred"]["status"] == "not_assessed"
     assert question_by_id["q_how_stolen"]["status"] == "not_assessed"
     assert question_by_id["q_memory"]["status"] == "not_assessed"
+    assert self_correction_events["events"][0]["final_wording"] == (
+        THEFT_EXFILTRATION_STRICT_WORDING
+    )
+    assert self_correction_events["events"][0]["source_question_ids"] == [
+        "q_what_was_stolen",
+        "q_where_transferred",
+        "q_how_stolen",
+        "q_memory",
+    ]
     assert gap_analysis["registry_user_activity"]["status"] == "partial_scope"
     assert (
         gap_analysis["registry_user_activity"]["prepared_hive_scope_warnings"][0][

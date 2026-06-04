@@ -5,6 +5,10 @@ from typing import Any
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.case_questions import QUESTION_STATUSES
 from siftguard.agent.casebook import Casebook
+from siftguard.agent.self_correction_events import (
+    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+    THEFT_EXFILTRATION_STRICT_WORDING,
+)
 
 
 def build_gap_analysis(
@@ -109,6 +113,14 @@ def build_gap_analysis(
             "profile_coverage": profile_coverage,
         },
         "parser_coverage_gaps": parser_coverage_gaps,
+        "claim_boundaries": [
+            {
+                "claim_area": "theft/exfiltration",
+                "status": "not_assessed",
+                "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
+                "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+            }
+        ],
         "memory_sources": [
             {
                 "source_id": source["source_id"],
@@ -128,10 +140,7 @@ def build_gap_analysis(
             {
                 "area": "theft and exfiltration reconstruction",
                 "status": "not_assessed",
-                "reason": (
-                    "Current final scope excludes browser, cloud, USB, network, "
-                    "file-open, and memory artifacts."
-                ),
+                "reason": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
             },
         ],
         "missing_parser_eligible_artifacts": [

@@ -39,6 +39,7 @@ REQUIRED_RUN_OUTPUTS = (
     "audit.jsonl",
     "decision_trace.json",
     "gap_analysis.json",
+    "self_correction_events.json",
     "performance_summary.json",
     "findings.json",
     "case_questions.json",
@@ -202,6 +203,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "decision_trace": _path_output_schema(),
                 "case_questions": _path_output_schema(),
                 "gap_analysis": _path_output_schema(),
+                "self_correction_events": _path_output_schema(),
                 "performance_summary": _path_output_schema(),
                 "duration_ms": {"type": "integer"},
                 "trace_stdout": {"type": "string"},
@@ -513,12 +515,24 @@ def _not_assessed_questions(output_dir: Path) -> list[dict[str, object]]:
     return rows
 
 
+def _self_correction_events(output_dir: Path) -> list[dict[str, Any]]:
+    payload = _read_json_object(
+        output_dir / "self_correction_events.json",
+        "self_correction_events",
+    )
+    rows = payload.get("events", [])
+    if not isinstance(rows, list):
+        return []
+    return [dict(row) for row in rows if isinstance(row, dict)]
+
+
 def _traceability_files(output_dir: Path) -> dict[str, str | None]:
     paths = {
         "report": output_dir / "report.md",
         "audit": output_dir / "audit.jsonl",
         "decision_trace": output_dir / "decision_trace.json",
         "gap_analysis": output_dir / "gap_analysis.json",
+        "self_correction_events": output_dir / "self_correction_events.json",
         "performance_summary": output_dir / "performance_summary.json",
         "findings": output_dir / "findings.json",
         "case_questions": output_dir / "case_questions.json",
@@ -772,6 +786,11 @@ def run_case(
         "gap_analysis",
         output_dir / "gap_analysis.json",
     )
+    self_correction_events_path = _path_from_stdout_or_default(
+        parsed,
+        "self_correction_events",
+        output_dir / "self_correction_events.json",
+    )
     performance_summary_path = _path_from_stdout_or_default(
         parsed,
         "performance_summary",
@@ -788,6 +807,7 @@ def run_case(
         "decision_trace": display_path(decision_trace_path),
         "case_questions": display_path(case_questions_path),
         "gap_analysis": display_path(gap_analysis_path),
+        "self_correction_events": display_path(self_correction_events_path),
         "performance_summary": display_path(performance_summary_path),
         "finding_status_counts": _findings_status_counts(output_dir),
         "case_question_status_counts": _case_question_status_counts(output_dir),
@@ -825,6 +845,7 @@ def summarize_run(request: Mapping[str, object]) -> dict[str, object]:
         "amcache_event_count": _amcache_event_count(output_dir),
         "registry_user_activity_family_counts": _registry_user_activity_family_counts(output_dir),
         "unsupported_not_assessed_areas": _not_assessed_questions(output_dir),
+        "real_gap_self_correction_events": _self_correction_events(output_dir),
         "required_trace_files": _traceability_files(output_dir),
         "limitations": limitations,
     }
@@ -889,6 +910,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
     report_path = output_dir / "report.md"
     forbidden_hits = _forbidden_wording_hits(report_path)
     unsupported_violations = _unsupported_question_violations(output_dir / "case_questions.json")
+    self_correction_events = _self_correction_events(output_dir)
     report_line_count = (
         len(report_path.read_text(encoding="utf-8").splitlines())
         if report_path.exists()
@@ -904,12 +926,17 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         notes.append("required generated outputs are present and report wording is bounded")
     if "q_memory" in UNSUPPORTED_QUESTION_IDS:
         notes.append("unsupported theft, transfer, exfiltration, and memory questions checked")
+    for event in self_correction_events:
+        final_wording = event.get("final_wording")
+        if isinstance(final_wording, str) and final_wording:
+            notes.append(final_wording)
     return {
         "validation_status": validation_status,
         "output_dir": display_path(output_dir),
         "missing_files": missing_files,
         "forbidden_wording_hits": forbidden_hits,
         "unsupported_question_violations": unsupported_violations,
+        "self_correction_event_count": len(self_correction_events),
         "report_line_count": report_line_count,
         "traceability_files": _traceability_files(output_dir),
         "notes": notes,

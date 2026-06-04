@@ -27,6 +27,7 @@ from siftguard.agent.decision_trace import build_decision_trace
 from siftguard.agent.gap_analysis import build_gap_analysis
 from siftguard.agent.models import AgentRun
 from siftguard.agent.runner import run_agent_workflow
+from siftguard.agent.self_correction_events import build_self_correction_events
 from siftguard.agent.user_activity_findings import generate_user_activity_findings
 from siftguard.audit.execution_ledger import utc_now
 from siftguard.evidence.manifest import write_manifest
@@ -48,6 +49,7 @@ RUN_CASE_OUTPUTS = (
     "case_questions.json",
     "decision_trace.json",
     "gap_analysis.json",
+    "self_correction_events.json",
     "performance_summary.json",
 )
 
@@ -73,6 +75,7 @@ class RunCaseResult:
     case_questions_path: Path
     decision_trace_path: Path
     gap_analysis_path: Path
+    self_correction_events_path: Path
     performance_summary_path: Path
     casebook_path: Path | None
 
@@ -174,6 +177,7 @@ def _sidecar_output_refs(output_dir: Path) -> dict[str, str]:
         "case_questions": "case_questions.json",
         "decision_trace": "decision_trace.json",
         "gap_analysis": "gap_analysis.json",
+        "self_correction_events": "self_correction_events.json",
         "performance_summary": "performance_summary.json",
     }
     refs: dict[str, str] = {}
@@ -389,9 +393,10 @@ def _write_sidecars(
     event_selection_profile: str,
     max_normalized_events: int | None,
     clock: Clock,
-) -> tuple[Path, Path, Path]:
+) -> tuple[Path, Path, Path, Path]:
     decision_trace_path = output_dir / "decision_trace.json"
     gap_analysis_path = output_dir / "gap_analysis.json"
+    self_correction_events_path = output_dir / "self_correction_events.json"
     performance_summary_path = output_dir / "performance_summary.json"
     _write_json(
         decision_trace_path,
@@ -423,6 +428,14 @@ def _write_sidecars(
         ),
     )
     _write_json(
+        self_correction_events_path,
+        build_self_correction_events(
+            case_id=adapted.case_id,
+            created_at=clock(),
+            case_questions=case_questions,
+        ),
+    )
+    _write_json(
         performance_summary_path,
         _performance_summary(
             output_dir=output_dir,
@@ -431,7 +444,12 @@ def _write_sidecars(
             clock=clock,
         ),
     )
-    return decision_trace_path, gap_analysis_path, performance_summary_path
+    return (
+        decision_trace_path,
+        gap_analysis_path,
+        self_correction_events_path,
+        performance_summary_path,
+    )
 
 
 def _append_user_activity_audit_event(
@@ -577,7 +595,12 @@ def run_case_workflow(
         casebook=casebook,
         created_at=clock(),
     )
-    decision_trace_path, gap_analysis_path, performance_summary_path = _write_sidecars(
+    (
+        decision_trace_path,
+        gap_analysis_path,
+        self_correction_events_path,
+        performance_summary_path,
+    ) = _write_sidecars(
         output_dir=resolved_output_dir,
         adapted=adapted,
         run=run,
@@ -617,6 +640,7 @@ def run_case_workflow(
         case_questions_path=case_questions_path,
         decision_trace_path=decision_trace_path,
         gap_analysis_path=gap_analysis_path,
+        self_correction_events_path=self_correction_events_path,
         performance_summary_path=performance_summary_path,
         casebook_path=casebook_path.resolve() if casebook_path is not None else None,
     )
@@ -633,6 +657,7 @@ def run_case_output_summary(result: RunCaseResult) -> dict[str, str | int | None
         "case_questions": str(result.case_questions_path),
         "decision_trace": str(result.decision_trace_path),
         "gap_analysis": str(result.gap_analysis_path),
+        "self_correction_events": str(result.self_correction_events_path),
         "performance_summary": str(result.performance_summary_path),
         "casebook": str(result.casebook_path) if result.casebook_path is not None else None,
         "output_dir_display": generated_output_display_path(result.output_dir),

@@ -298,6 +298,8 @@ Expected agent outputs:
 - `$RUN_DIR/agent-run/case_questions.json` for `agent run-case`
 - `$RUN_DIR/agent-run/decision_trace.json` for `agent run-case`
 - `$RUN_DIR/agent-run/gap_analysis.json` for `agent run-case`
+- `$RUN_DIR/agent-run/self_correction_events.json` for real unsupported-scope
+  posture revisions
 - `$RUN_DIR/agent-run/performance_summary.json` for `agent run-case`
 
 The agent records plan, execute, verify, correct, and report phases. Unsupported
@@ -325,7 +327,11 @@ model-agnostic forensic core. The model may request typed tools, but SIFTGuard
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
 
-See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md).
+See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md). The final
+ROCBA demo prompt and real-gap self-correction runbook are in
+[docs/demo/openclaw-rocba-gap-demo-prompt.md](docs/demo/openclaw-rocba-gap-demo-prompt.md)
+and
+[docs/demo/openclaw-gap-self-correction-runbook.md](docs/demo/openclaw-gap-self-correction-runbook.md).
 
 Preferred final OpenClaw/MCP path:
 
@@ -351,6 +357,13 @@ The direct CLI remains the reproducible fallback:
 ```bash
 .venv/bin/python -m siftguard case prepare ...
 .venv/bin/python -m siftguard agent run-case ...
+```
+
+Final ROCBA demo posture:
+
+```text
+SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
+The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required.
 ```
 
 ## Controlled Validation Fixtures

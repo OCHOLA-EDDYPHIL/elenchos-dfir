@@ -165,12 +165,34 @@ Expected generated outputs include:
 - `runs/<CASE_ID>/agent-run/audit.jsonl`
 - `runs/<CASE_ID>/agent-run/decision_trace.json`
 - `runs/<CASE_ID>/agent-run/gap_analysis.json`
+- `runs/<CASE_ID>/agent-run/self_correction_events.json`
 - `runs/<CASE_ID>/agent-run/performance_summary.json`
 - `runs/<CASE_ID>/agent-run/openclaw-trace/*.stdout|*.stderr`
 
 Unsupported theft contents, transfer destination, exfiltration method, and
 memory questions remain `not_assessed` unless future supported parsers produce
 direct evidence.
+
+For the final ROCBA demo, use the copy-paste prompt in
+[`docs/demo/openclaw-rocba-gap-demo-prompt.md`](demo/openclaw-rocba-gap-demo-prompt.md)
+and the runbook in
+[`docs/demo/openclaw-gap-self-correction-runbook.md`](demo/openclaw-gap-self-correction-runbook.md).
+The real-gap self-correction story is not an induced parser failure. It is the
+posture revision recorded when generated case-question and gap outputs show
+that the submitted artifact scope does not support a theft/exfiltration
+conclusion.
+
+OpenClaw should use this final wording when presenting that revision:
+
+```text
+SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
+```
+
+OpenClaw should also preserve this claim boundary:
+
+```text
+The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required.
+```
 
 ## Model Statement
 

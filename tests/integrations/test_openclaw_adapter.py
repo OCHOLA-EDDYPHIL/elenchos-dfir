@@ -7,6 +7,10 @@ from typing import Any
 
 import pytest
 
+from siftguard.agent.self_correction_events import (
+    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+    THEFT_EXFILTRATION_STRICT_WORDING,
+)
 from siftguard.integrations import mcp_server
 from siftguard.integrations.safe_paths import (
     resolve_user_path,
@@ -81,6 +85,30 @@ def write_good_run(output_dir: Path) -> None:
         {"case_id": CASE_ID, "decisions": [{"decision_id": "test"}]},
     )
     _write_json(output_dir / "gap_analysis.json", {"case_id": CASE_ID})
+    _write_json(
+        output_dir / "self_correction_events.json",
+        {
+            "case_id": CASE_ID,
+            "created_at": "2026-01-01T00:00:00Z",
+            "event_count": 1,
+            "events": [
+                {
+                    "claim_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+                    "event_id": "real-gap-001",
+                    "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
+                    "human_intervention": False,
+                    "phase": "claim_validation",
+                    "source_question_ids": [
+                        "q_what_was_stolen",
+                        "q_where_transferred",
+                        "q_how_stolen",
+                        "q_memory",
+                    ],
+                }
+            ],
+            "mode": "real_gap_self_correction",
+        },
+    )
     _write_json(
         output_dir / "performance_summary.json",
         {"case_id": CASE_ID, "run_status": "completed"},
@@ -332,6 +360,7 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
                     f"case_questions={output_dir / 'case_questions.json'}",
                     f"decision_trace={output_dir / 'decision_trace.json'}",
                     f"gap_analysis={output_dir / 'gap_analysis.json'}",
+                    f"self_correction_events={output_dir / 'self_correction_events.json'}",
                     f"performance_summary={output_dir / 'performance_summary.json'}",
                 ]
             ),
@@ -352,6 +381,7 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
     assert result["command_name"] == "siftguard agent run-case"
     assert result["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert result["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
+    assert str(result["self_correction_events"]).endswith("self_correction_events.json")
     assert "parser_status_summary" in result
 
 
@@ -395,12 +425,16 @@ def test_summarize_run_parses_counts_and_traceability(tmp_path: Path):
 
     assert summary["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert summary["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
+    assert summary["real_gap_self_correction_events"][0]["final_wording"] == (
+        THEFT_EXFILTRATION_STRICT_WORDING
+    )
     assert summary["amcache_event_count"] == 1
     assert summary["registry_user_activity_family_counts"] == {"recentdocs": 1}
     trace_files = summary["required_trace_files"]
     assert isinstance(trace_files, dict)
     assert trace_files["audit"].endswith("audit.jsonl")
     assert trace_files["decision_trace"].endswith("decision_trace.json")
+    assert trace_files["self_correction_events"].endswith("self_correction_events.json")
     assert trace_files["trace_run_case_stdout"].endswith("run_case.stdout")
     assert trace_files["trace_run_case_stderr"].endswith("run_case.stderr")
 
@@ -415,6 +449,8 @@ def test_validate_run_outputs_passes_for_safe_generated_outputs(tmp_path: Path):
     assert validation["missing_files"] == []
     assert validation["forbidden_wording_hits"] == []
     assert validation["unsupported_question_violations"] == []
+    assert validation["self_correction_event_count"] == 1
+    assert THEFT_EXFILTRATION_STRICT_WORDING in validation["notes"]
 
 
 def test_validate_run_outputs_fails_on_forbidden_wording(tmp_path: Path):
@@ -432,11 +468,15 @@ def test_validate_run_outputs_detects_missing_required_files(tmp_path: Path):
     output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
     write_good_run(output_dir)
     (output_dir / "decision_trace.json").unlink()
+    (output_dir / "self_correction_events.json").unlink()
 
     validation = validate_run_outputs({"output_dir": str(output_dir)})
 
     assert validation["validation_status"] == "fail"
-    assert validation["missing_files"] == ["decision_trace.json"]
+    assert validation["missing_files"] == [
+        "decision_trace.json",
+        "self_correction_events.json",
+    ]
 
 
 def test_validate_run_outputs_detects_unsupported_question_evidence_refs(

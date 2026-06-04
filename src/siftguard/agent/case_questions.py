@@ -9,6 +9,10 @@ from typing import Any
 
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.casebook import Casebook, CasebookAnalysisWindow, CasebookQuestion
+from siftguard.agent.self_correction_events import (
+    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+    THEFT_EXFILTRATION_STRICT_WORDING,
+)
 
 QUESTION_STATUSES = {"confirmed", "inferred", "needs_review", "not_assessed", "rejected"}
 UNSUPPORTED_EXPECTED_STATUSES = {"not_assessed"}
@@ -830,7 +834,8 @@ def _question_answer(question: dict[str, Any]) -> str:
         )
     if question_id == "q_project_file_candidates":
         return (
-            "candidate project/file relevance was identified; this does not prove theft."
+            "candidate project/file relevance was identified; this does not support "
+            "a theft conclusion by itself."
         )
     if status == "not_assessed":
         gaps = question.get("gaps", [])
@@ -948,8 +953,14 @@ def render_case_question_report(
         f"parsed={parsed_profiles}, status=`{profile_status}`."
     )
     lines.append(
-        "- Theft, transfer destination, exfiltration method, and memory remain "
-        "`not_assessed` under the current supported scope."
+        f"- {THEFT_EXFILTRATION_STRICT_WORDING}"
+    )
+    lines.append(
+        f"- {THEFT_EXFILTRATION_SCOPE_BOUNDARY}"
+    )
+    lines.append(
+        "- Memory remains `not_assessed`; memory forensics is outside the current "
+        "final scope."
     )
     lines.append(
         "- Full traceability remains in JSON outputs and `audit.jsonl`; this report "
@@ -983,7 +994,9 @@ def render_case_question_report(
     lines.append("")
 
     lines.append("## User Activity Highlights")
-    lines.append("- Candidate evidence is not proof of theft or exfiltration.")
+    lines.append(
+        "- Candidate evidence is not sufficient support for theft or exfiltration."
+    )
     _append_top_findings(
         lines,
         user_activity_highlights,
@@ -1030,11 +1043,12 @@ def render_case_question_report(
     lines.append("")
 
     lines.append("## Not Assessed / Scope Gaps")
-    lines.append("What SIFTGuard did not prove:")
-    lines.append("- Theft contents were not proven.")
-    lines.append("- Transfer destination was not proven.")
+    lines.append("What SIFTGuard did not assess within the submitted artifact scope:")
+    lines.append(f"- {THEFT_EXFILTRATION_STRICT_WORDING}")
+    lines.append(f"- {THEFT_EXFILTRATION_SCOPE_BOUNDARY}")
+    lines.append("- Transfer destination was not assessed.")
     lines.append("- Exfiltration method was not reconstructed.")
-    lines.append("- Memory was not analyzed.")
+    lines.append("- Memory forensics was not performed; memory remains `not_assessed`.")
     lines.append("- Candidate evidence requires analyst review before incident conclusions.")
     if not not_assessed:
         lines.append("- No unsupported case questions were marked not_assessed.")
@@ -1065,7 +1079,10 @@ def render_case_question_report(
     lines.append(
         "- Inspect complete evidence mappings in `case_questions.json` and `findings.json`."
     )
-    lines.append("- Collect/parse additional artifacts if theft or exfiltration must be proven.")
+    lines.append(
+        "- Collect and parse additional artifacts before drawing theft or "
+        "exfiltration conclusions."
+    )
     lines.append("- Preserve generated JSON outputs and `audit.jsonl` with the case record.")
     lines.append("- Do not treat candidate file activity as proof of exfiltration.")
     return "\n".join(lines).rstrip() + "\n"

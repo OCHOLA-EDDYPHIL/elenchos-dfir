@@ -9,6 +9,10 @@ from siftguard.agent import case_questions as case_questions_module
 from siftguard.agent.case_manifest_adapter import adapt_case_prep_to_evidence_manifest
 from siftguard.agent.case_questions import evaluate_case_questions, render_case_question_report
 from siftguard.agent.casebook import Casebook, casebook_from_dict, load_casebook
+from siftguard.agent.self_correction_events import (
+    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+    THEFT_EXFILTRATION_STRICT_WORDING,
+)
 
 CASE_ID = "rocba-standard"
 CASEBOOK_PATH = Path("docs/casebooks/rocba-standard.json")
@@ -563,7 +567,9 @@ def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
     assert first == second
     assert len(first.splitlines()) < 160
     assert "## Traceability" in first
-    assert "What SIFTGuard did not prove:" in first
+    assert "What SIFTGuard did not assess within the submitted artifact scope:" in first
+    assert THEFT_EXFILTRATION_STRICT_WORDING in first
+    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in first
     assert "F-LINK-024" not in first
     assert "F-LINK-024" in question_by_id(case_questions, "q_when_activity")[
         "linked_finding_ids"
