@@ -237,8 +237,9 @@ emits a supportable finding when a coherent chain is present.
 
 The verifier fixture is synthetic and introduces an unsupported proposed
 `inferred` claim. It remains useful for regression testing verifier downgrade
-behavior, but it is not the final OpenClaw self-correction demo. The final demo
-uses the real ROCBA evidence-gap posture revision recorded by SIFTGuard outputs.
+behavior, but it is not the final OpenClaw self-correction path. The bounded
+OpenClaw workflow uses casebook-defined claim-boundary posture revisions
+recorded by SIFTGuard outputs.
 
 | Item | Value |
 | --- | --- |
@@ -270,7 +271,7 @@ Sanitized summary:
 | Validation status | `pass` |
 | Finding status counts | `{}` |
 | Case-question status counts | `not_assessed`: 4 |
-| Real-gap self-correction events | `real-gap-001`: 1 |
+| Claim-boundary self-correction events | `claim-boundary-001`: 1 |
 
 Adapter trace outputs:
 
@@ -281,27 +282,27 @@ Adapter trace outputs:
 | `runs/openclaw-smoke/openclaw-trace/run_case.stdout` | Run-case adapter stdout |
 | `runs/openclaw-smoke/openclaw-trace/run_case.stderr` | Run-case adapter stderr |
 | `runs/openclaw-smoke/openclaw-trace/summary.json` | Combined smoke summary |
-| `runs/openclaw-smoke/agent-run/self_correction_events.json` | Real-gap posture event |
+| `runs/openclaw-smoke/agent-run/self_correction_events.json` | Casebook-defined claim-boundary posture event |
 
 ## Real-Gap OpenClaw Self-Correction Path
 
 The final OpenClaw demo self-correction is not an induced error. OpenClaw calls
 the bounded SIFTGuard tools, reads generated outputs only, and discovers that
-the ROCBA theft/exfiltration questions remain unsupported by the submitted
-artifact scope. SIFTGuard records this as `self_correction_events.json` so
-OpenClaw can revise its final investigative posture without treating model
-output as evidence.
+the configured claim-boundary questions remain unsupported by the submitted
+artifact scope. SIFTGuard records this as `self_correction_events.json` from
+casebook metadata so OpenClaw can revise its final investigative posture without
+treating model output as evidence.
 
 Sanitized summary:
 
 | Item | Value |
 | --- | --- |
-| Event id | `real-gap-001` |
+| Event id | `claim-boundary-001` |
 | Phase | `claim_validation` |
 | Human intervention | `false` |
-| Source questions | `q_what_was_stolen`, `q_where_transferred`, `q_how_stolen`, `q_memory` |
+| Source questions | Casebook-defined primary and related claim-boundary question IDs |
 | Final wording | SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope. |
-| Claim boundary | The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required. |
+| Scope boundary | The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required. |
 
 ## Sanitized Examples
 

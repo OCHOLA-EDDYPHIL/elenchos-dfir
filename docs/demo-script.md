@@ -1,4 +1,4 @@
-# Demo Script v0 (Under 5 Minutes)
+# Operator Demo Checklist
 
 1. Show repository hygiene
 - `git status --short`
@@ -11,7 +11,7 @@
   keys or raw ROCBA evidence.
 
 3. Show real-gap self-correction posture
-- Open `docs/demo/openclaw-rocba-gap-demo-prompt.md`.
+- Open `examples/openclaw/case-triage.prompt.md`.
 - Show `runs/openclaw-smoke/agent-run/self_correction_events.json`.
 - State: SIFTGuard did not find sufficient support for a theft or exfiltration
   conclusion within the submitted artifact scope.
@@ -20,10 +20,10 @@
   network telemetry, removable-device artifacts, or memory analysis would be
   required.
 
-4. Show real staged primary bounded triage
-- `.venv/bin/python -m siftguard agent run --case-id case_staged-primary --manifest runs/case_staged-primary/manifest.json --output-dir runs/case_staged-primary/agent-run-final --max-iterations 7 --max-normalized-events 5000 --event-selection-profile forensic-triage`
-- Show sanitized summary: 5000 normalized events, 1347 timelines, 128
-  `needs_review` findings, 0 confirmed/inferred/rejected, 0 MFT-only findings.
+4. Show the reproducible direct CLI fallback when local evidence is available
+- `.venv/bin/python -m siftguard case prepare ...`
+- `.venv/bin/python -m siftguard agent run-case ...`
+- Show a sanitized summary from generated outputs under ignored `runs/`.
 
 5. Show local outputs without committing them
 - `find runs/openclaw-smoke/agent-run -maxdepth 1 -type f -printf '%f\n' | sort`

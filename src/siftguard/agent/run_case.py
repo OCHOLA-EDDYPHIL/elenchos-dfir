@@ -23,11 +23,11 @@ from siftguard.agent.casebook import (
     analysis_window_bounds,
     load_casebook,
 )
+from siftguard.agent.claim_boundaries import build_self_correction_events
 from siftguard.agent.decision_trace import build_decision_trace
 from siftguard.agent.gap_analysis import build_gap_analysis
 from siftguard.agent.models import AgentRun
 from siftguard.agent.runner import run_agent_workflow
-from siftguard.agent.self_correction_events import build_self_correction_events
 from siftguard.agent.user_activity_findings import generate_user_activity_findings
 from siftguard.audit.execution_ledger import utc_now
 from siftguard.evidence.manifest import write_manifest
@@ -432,6 +432,7 @@ def _write_sidecars(
         build_self_correction_events(
             case_id=adapted.case_id,
             created_at=clock(),
+            casebook=casebook,
             case_questions=case_questions,
         ),
     )

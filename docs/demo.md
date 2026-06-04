@@ -106,9 +106,10 @@ to demonstrate the typed tool boundary without provider keys or ROCBA evidence:
 For a live OpenClaw setup, register the MCP server documented in
 [OpenClaw MCP Workflow](openclaw-mcp-workflow.md), then have OpenClaw invoke
 `prepare_case`, `run_case`, `summarize_run`, and `validate_run_outputs`.
-Use the copy-paste prompt in
-[OpenClaw ROCBA Gap Demo Prompt](demo/openclaw-rocba-gap-demo-prompt.md) and the
-[OpenClaw Gap Self-Correction Runbook](demo/openclaw-gap-self-correction-runbook.md).
+Use the reusable operator prompt in
+[`examples/openclaw/case-triage.prompt.md`](../examples/openclaw/case-triage.prompt.md).
+Case-specific claim-boundary wording is read from the JSON casebook metadata,
+not from OpenClaw.
 
 ## Cleanup
 

@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
+from siftguard.agent.casebook import casebook_from_dict
 from siftguard.agent.gap_analysis import build_gap_analysis
-from siftguard.agent.self_correction_events import (
-    RECOMMENDED_NEXT_ARTIFACTS,
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
 from siftguard.evidence.manifest import EvidenceManifest
+
+FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
+RECOMMENDED_NEXT_ARTIFACTS = ["network telemetry", "browser history"]
 
 
 def _adapted_manifest(tmp_path: Path) -> AdaptedCaseManifest:
@@ -44,10 +44,53 @@ def _adapted_manifest(tmp_path: Path) -> AdaptedCaseManifest:
     )
 
 
+def _casebook():
+    return casebook_from_dict(
+        {
+            "analysis_windows": [],
+            "case_id": "case-001",
+            "case_questions": [
+                {
+                    "evidence_classes": [],
+                    "id": "q_claim_subject",
+                    "question": "What claim subject is supported?",
+                    "supported_by_scope": False,
+                },
+                {
+                    "evidence_classes": [],
+                    "id": "q_claim_transfer",
+                    "question": "What transfer path is supported?",
+                    "supported_by_scope": False,
+                },
+                {
+                    "evidence_classes": [],
+                    "id": "q_context",
+                    "question": "What additional context is available?",
+                    "supported_by_scope": False,
+                },
+            ],
+            "claim_boundaries": [
+                {
+                    "claim_area": "configured claim",
+                    "emit_when_all_statuses": ["not_assessed"],
+                    "final_wording": FINAL_WORDING,
+                    "question_ids": ["q_claim_subject", "q_claim_transfer"],
+                    "recommended_next_artifacts": RECOMMENDED_NEXT_ARTIFACTS,
+                    "related_question_ids": ["q_context"],
+                    "scope_boundary": SCOPE_BOUNDARY,
+                }
+            ],
+            "display_name": "Synthetic Claim Boundary Case",
+            "key_dates": [],
+            "time_zone": None,
+        }
+    )
+
+
 def _gap_analysis(tmp_path: Path, questions: list[dict[str, str]]) -> dict[str, object]:
     return build_gap_analysis(
         adapted=_adapted_manifest(tmp_path),
-        casebook=None,
+        casebook=_casebook(),
         case_questions={"questions": questions},
         user_activity_summary=None,
         coverage_summary=None,
@@ -56,45 +99,46 @@ def _gap_analysis(tmp_path: Path, questions: list[dict[str, str]]) -> dict[str, 
     )
 
 
-def test_gap_analysis_records_claim_boundary_for_real_theft_exfiltration_gap(
+def test_gap_analysis_records_metadata_driven_claim_boundary(
     tmp_path: Path,
 ) -> None:
     payload = _gap_analysis(
         tmp_path,
         [
-            {"question_id": "q_what_was_stolen", "status": "not_assessed"},
-            {"question_id": "q_where_transferred", "status": "not_assessed"},
-            {"question_id": "q_how_stolen", "status": "not_assessed"},
-            {"question_id": "q_memory", "status": "not_assessed"},
+            {"question_id": "q_claim_subject", "status": "not_assessed"},
+            {"question_id": "q_claim_transfer", "status": "not_assessed"},
+            {"question_id": "q_context", "status": "not_assessed"},
         ],
     )
 
     assert payload["claim_boundaries"] == [
         {
-            "claim_area": "theft/exfiltration",
-            "status": "not_assessed",
-            "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
-            "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-            "recommended_next_artifacts": list(RECOMMENDED_NEXT_ARTIFACTS),
+            "claim_area": "configured claim",
+            "emit_when_all_statuses": ["not_assessed"],
+            "final_wording": FINAL_WORDING,
+            "recommended_next_artifacts": RECOMMENDED_NEXT_ARTIFACTS,
+            "scope_boundary": SCOPE_BOUNDARY,
             "source_question_ids": [
-                "q_what_was_stolen",
-                "q_where_transferred",
-                "q_how_stolen",
-                "q_memory",
+                "q_claim_subject",
+                "q_claim_transfer",
+                "q_context",
             ],
+            "status": "not_assessed",
         }
     ]
+    assert payload["unsupported_areas"][-1]["area"] == "configured claim"
+    assert payload["unsupported_areas"][-1]["reason"] == SCOPE_BOUNDARY
 
 
-def test_gap_analysis_omits_claim_boundary_without_real_theft_exfiltration_gap(
+def test_gap_analysis_omits_claim_boundary_without_matching_question_statuses(
     tmp_path: Path,
 ) -> None:
     payload = _gap_analysis(
         tmp_path,
         [
-            {"question_id": "q_what_was_stolen", "status": "not_assessed"},
-            {"question_id": "q_where_transferred", "status": "needs_review"},
-            {"question_id": "q_how_stolen", "status": "not_assessed"},
+            {"question_id": "q_claim_subject", "status": "not_assessed"},
+            {"question_id": "q_claim_transfer", "status": "needs_review"},
+            {"question_id": "q_context", "status": "not_assessed"},
         ],
     )
 

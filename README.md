@@ -327,11 +327,9 @@ model-agnostic forensic core. The model may request typed tools, but SIFTGuard
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
 
-See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md). The final
-ROCBA demo prompt and real-gap self-correction runbook are in
-[docs/demo/openclaw-rocba-gap-demo-prompt.md](docs/demo/openclaw-rocba-gap-demo-prompt.md)
-and
-[docs/demo/openclaw-gap-self-correction-runbook.md](docs/demo/openclaw-gap-self-correction-runbook.md).
+See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md). A reusable
+operator prompt is available at
+[examples/openclaw/case-triage.prompt.md](examples/openclaw/case-triage.prompt.md).
 
 Preferred final OpenClaw/MCP path:
 
@@ -359,12 +357,9 @@ The direct CLI remains the reproducible fallback:
 .venv/bin/python -m siftguard agent run-case ...
 ```
 
-Final ROCBA demo posture:
-
-```text
-SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
-The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required.
-```
+Case-specific claim boundaries belong in JSON casebook metadata. When
+SIFTGuard emits claim-boundary events, OpenClaw should repeat the generated
+`final_wording` and `scope_boundary` rather than inventing model wording.
 
 ## Controlled Validation Fixtures
 
@@ -418,7 +413,7 @@ events while downgrading the final status to `needs_review`.
 | Evidence dataset handling | `docs/dataset.md` |
 | Accuracy report template | `docs/accuracy-report.md` |
 | Execution-log traceability | `docs/execution-log-traceability.md` |
-| Demo script | `docs/demo-script.md` |
+| Demo workflow | `docs/demo.md` |
 | Limitations | `docs/limitations.md` |
 | Security boundaries | `docs/security-boundaries.md` |
 | Parser tooling matrix | `docs/parser-tooling-matrix.md` |

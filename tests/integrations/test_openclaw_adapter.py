@@ -7,10 +7,6 @@ from typing import Any
 
 import pytest
 
-from siftguard.agent.self_correction_events import (
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
 from siftguard.integrations import mcp_server
 from siftguard.integrations.safe_paths import (
     resolve_user_path,
@@ -29,6 +25,8 @@ from siftguard.integrations.tool_adapter import (
 )
 
 CASE_ID = "case-openclaw-test"
+FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -93,20 +91,20 @@ def write_good_run(output_dir: Path) -> None:
             "event_count": 1,
             "events": [
                 {
-                    "claim_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-                    "event_id": "real-gap-001",
-                    "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
+                    "event_id": "claim-boundary-001",
+                    "final_wording": FINAL_WORDING,
                     "human_intervention": False,
                     "phase": "claim_validation",
+                    "scope_boundary": SCOPE_BOUNDARY,
                     "source_question_ids": [
-                        "q_what_was_stolen",
-                        "q_where_transferred",
-                        "q_how_stolen",
-                        "q_memory",
+                        "q_claim_subject",
+                        "q_claim_transfer",
+                        "q_claim_method",
+                        "q_claim_context",
                     ],
                 }
             ],
-            "mode": "real_gap_self_correction",
+            "mode": "claim_boundary_self_correction",
         },
     )
     _write_json(
@@ -128,30 +126,34 @@ def write_good_run(output_dir: Path) -> None:
     questions = [
         {
             "linked_evidence_refs": [],
-            "question": "What was stolen?",
-            "question_id": "q_what_was_stolen",
+            "question": "What claim subject is supported?",
+            "question_id": "q_claim_subject",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "Where was it transferred?",
-            "question_id": "q_where_transferred",
+            "question": "What transfer path is supported?",
+            "question_id": "q_claim_transfer",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "How was it stolen?",
-            "question_id": "q_how_stolen",
+            "question": "What method is supported?",
+            "question_id": "q_claim_method",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "What did memory show?",
-            "question_id": "q_memory",
+            "question": "What additional context is supported?",
+            "question_id": "q_claim_context",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
@@ -425,9 +427,7 @@ def test_summarize_run_parses_counts_and_traceability(tmp_path: Path):
 
     assert summary["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert summary["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
-    assert summary["real_gap_self_correction_events"][0]["final_wording"] == (
-        THEFT_EXFILTRATION_STRICT_WORDING
-    )
+    assert summary["real_gap_self_correction_events"][0]["final_wording"] == FINAL_WORDING
     assert summary["amcache_event_count"] == 1
     assert summary["registry_user_activity_family_counts"] == {"recentdocs": 1}
     trace_files = summary["required_trace_files"]
@@ -450,7 +450,7 @@ def test_validate_run_outputs_passes_for_safe_generated_outputs(tmp_path: Path):
     assert validation["forbidden_wording_hits"] == []
     assert validation["unsupported_question_violations"] == []
     assert validation["self_correction_event_count"] == 1
-    assert THEFT_EXFILTRATION_STRICT_WORDING in validation["notes"]
+    assert FINAL_WORDING in validation["notes"]
 
 
 def test_validate_run_outputs_fails_on_forbidden_wording(tmp_path: Path):
@@ -493,7 +493,7 @@ def test_validate_run_outputs_detects_unsupported_question_evidence_refs(
     assert validation["validation_status"] == "fail"
     violations = validation["unsupported_question_violations"]
     assert isinstance(violations, list)
-    assert violations[0]["question_id"] == "q_what_was_stolen"
+    assert violations[0]["question_id"] == "q_claim_subject"
 
 
 def test_summarize_and_validate_do_not_read_raw_evidence_paths(

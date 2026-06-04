@@ -49,9 +49,9 @@ they cannot alone establish execution, user action, or maliciousness.
 - Controlled self-correction fixtures prove downgrade and audit behavior for an
   induced unsupported claim. They are separate from primary evidence accuracy
   results and are not the final OpenClaw demo self-correction story.
-- The final OpenClaw demo self-correction is a real evidence-gap posture
-  revision: the submitted artifact scope does not support a theft/exfiltration
-  conclusion.
+- The final OpenClaw workflow can expose real evidence-gap posture revisions
+  from casebook-defined claim boundaries; for ROCBA, the submitted artifact
+  scope does not support a theft/exfiltration conclusion.
 - The real staged primary run did not emit confirmed or inferred compromise
   findings. Its final result remains bounded `needs_review` triage with no
   MFT-only findings.

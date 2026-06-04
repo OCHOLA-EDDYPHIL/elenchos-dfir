@@ -9,6 +9,13 @@ from typing import Any
 from siftguard.agent.models import BLOCKED_EXECUTION_KEYS
 
 CASEBOOK_YAML_REJECTION = "YAML casebooks are not supported in the final sprint; use JSON."
+CASEBOOK_CLAIM_BOUNDARY_STATUSES = {
+    "confirmed",
+    "inferred",
+    "needs_review",
+    "not_assessed",
+    "rejected",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +58,18 @@ class CasebookQuestion:
 
 
 @dataclass(frozen=True, slots=True)
+class CasebookClaimBoundary:
+    claim_area: str
+    question_ids: tuple[str, ...]
+    related_question_ids: tuple[str, ...]
+    emit_when_all_statuses: tuple[str, ...]
+    final_wording: str
+    scope_boundary: str
+    recommended_next_artifacts: tuple[str, ...]
+    initial_investigative_pressure: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class Casebook:
     case_id: str
     display_name: str
@@ -60,6 +79,7 @@ class Casebook:
     key_dates: tuple[CasebookKeyDate, ...]
     analysis_windows: tuple[CasebookAnalysisWindow, ...]
     case_questions: tuple[CasebookQuestion, ...]
+    claim_boundaries: tuple[CasebookClaimBoundary, ...] = ()
     path: Path | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,6 +127,19 @@ class Casebook:
                     "gap_reason": item.gap_reason,
                 }
                 for item in self.case_questions
+            ],
+            "claim_boundaries": [
+                {
+                    "claim_area": item.claim_area,
+                    "question_ids": list(item.question_ids),
+                    "related_question_ids": list(item.related_question_ids),
+                    "emit_when_all_statuses": list(item.emit_when_all_statuses),
+                    "final_wording": item.final_wording,
+                    "scope_boundary": item.scope_boundary,
+                    "recommended_next_artifacts": list(item.recommended_next_artifacts),
+                    "initial_investigative_pressure": item.initial_investigative_pressure,
+                }
+                for item in self.claim_boundaries
             ],
         }
 
@@ -305,8 +338,77 @@ def _questions(payload: dict[str, Any]) -> tuple[CasebookQuestion, ...]:
     return tuple(questions)
 
 
+def _claim_boundaries(
+    payload: dict[str, Any],
+    *,
+    question_ids: set[str],
+) -> tuple[CasebookClaimBoundary, ...]:
+    rows = payload.get("claim_boundaries", [])
+    if not isinstance(rows, list) or not all(isinstance(row, dict) for row in rows):
+        raise ValueError("casebook.claim_boundaries must be a list of objects")
+    boundaries: list[CasebookClaimBoundary] = []
+    seen_areas: set[str] = set()
+    for index, row in enumerate(rows):
+        label = f"casebook.claim_boundaries[{index}]"
+        claim_area = _required_string(row, "claim_area", label=label)
+        if claim_area in seen_areas:
+            raise ValueError(f"duplicate casebook claim boundary area: {claim_area}")
+        seen_areas.add(claim_area)
+        boundary_question_ids = _optional_string_list(row, "question_ids", label=label)
+        if not boundary_question_ids:
+            raise ValueError(f"{label}.question_ids must contain at least one question id")
+        related_question_ids = _optional_string_list(
+            row,
+            "related_question_ids",
+            label=label,
+        )
+        unknown_ids = sorted(
+            question_id
+            for question_id in (*boundary_question_ids, *related_question_ids)
+            if question_id not in question_ids
+        )
+        if unknown_ids:
+            raise ValueError(
+                f"{label} references unknown case question id(s): {', '.join(unknown_ids)}"
+            )
+        statuses = _optional_string_list(row, "emit_when_all_statuses", label=label)
+        if not statuses:
+            raise ValueError(f"{label}.emit_when_all_statuses must contain at least one status")
+        invalid_statuses = sorted(
+            status for status in statuses if status not in CASEBOOK_CLAIM_BOUNDARY_STATUSES
+        )
+        if invalid_statuses:
+            allowed = ", ".join(sorted(CASEBOOK_CLAIM_BOUNDARY_STATUSES))
+            raise ValueError(
+                f"{label}.emit_when_all_statuses contains invalid status "
+                f"{', '.join(invalid_statuses)}; allowed: {allowed}"
+            )
+        boundaries.append(
+            CasebookClaimBoundary(
+                claim_area=claim_area,
+                question_ids=boundary_question_ids,
+                related_question_ids=related_question_ids,
+                emit_when_all_statuses=statuses,
+                final_wording=_required_string(row, "final_wording", label=label),
+                scope_boundary=_required_string(row, "scope_boundary", label=label),
+                recommended_next_artifacts=_optional_string_list(
+                    row,
+                    "recommended_next_artifacts",
+                    label=label,
+                ),
+                initial_investigative_pressure=_optional_string(
+                    row,
+                    "initial_investigative_pressure",
+                    label=label,
+                ),
+            )
+        )
+    return tuple(boundaries)
+
+
 def casebook_from_dict(payload: dict[str, Any], *, path: Path | None = None) -> Casebook:
     _reject_blocked_keys(payload, path="casebook")
+    questions = _questions(payload)
     return Casebook(
         case_id=_required_string(payload, "case_id", label="casebook"),
         display_name=_required_string(payload, "display_name", label="casebook"),
@@ -315,7 +417,11 @@ def casebook_from_dict(payload: dict[str, Any], *, path: Path | None = None) -> 
         case_facts=_case_facts(payload),
         key_dates=_key_dates(payload),
         analysis_windows=_analysis_windows(payload),
-        case_questions=_questions(payload),
+        case_questions=questions,
+        claim_boundaries=_claim_boundaries(
+            payload,
+            question_ids={question.id for question in questions},
+        ),
         path=path,
     )
 

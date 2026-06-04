@@ -125,9 +125,9 @@ The self-correction control is synthetic and sanitized. It introduces an
 unsupported proposed `inferred` claim into an otherwise partial MFT + Amcache
 fixture without Registry persistence support.
 It is an internal verifier regression control, not the final OpenClaw demo
-self-correction story. The final demo self-correction is the real ROCBA
-theft/exfiltration evidence-gap posture revision documented in
-`docs/demo/openclaw-gap-self-correction-runbook.md`.
+self-correction story. The final OpenClaw path uses casebook-defined
+claim-boundary metadata through the bounded MCP/tool adapter documented in
+`docs/openclaw-mcp-workflow.md`.
 
 Command:
 

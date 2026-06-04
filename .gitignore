@@ -1,5 +1,7 @@
 .env
 .local/
+.local/presentation/
+.local/submission/
 .venv/
 __pycache__/
 .pytest_cache/
@@ -31,6 +33,10 @@ reports/generated/
 *.tar
 *.tar.gz
 *.log
+*.transcript
+*.transcript.txt
+transcripts/
+openclaw-transcripts/
 
 .claude/
 claude_desktop_config.json

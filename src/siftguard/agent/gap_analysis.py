@@ -5,43 +5,7 @@ from typing import Any
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.case_questions import QUESTION_STATUSES
 from siftguard.agent.casebook import Casebook
-from siftguard.agent.self_correction_events import (
-    REAL_GAP_QUESTION_IDS,
-    RECOMMENDED_NEXT_ARTIFACTS,
-    THEFT_EXFILTRATION_QUESTION_IDS,
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
-
-
-def _theft_exfiltration_claim_boundaries(
-    questions: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    questions_by_id = {
-        question_id: question
-        for question in questions
-        if isinstance(question_id := question.get("question_id"), str) and question_id
-    }
-    not_assessed_ids = [
-        question_id
-        for question_id in REAL_GAP_QUESTION_IDS
-        if questions_by_id.get(question_id, {}).get("status") == "not_assessed"
-    ]
-    if not all(
-        question_id in not_assessed_ids
-        for question_id in THEFT_EXFILTRATION_QUESTION_IDS
-    ):
-        return []
-    return [
-        {
-            "claim_area": "theft/exfiltration",
-            "status": "not_assessed",
-            "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
-            "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-            "recommended_next_artifacts": list(RECOMMENDED_NEXT_ARTIFACTS),
-            "source_question_ids": not_assessed_ids,
-        }
-    ]
+from siftguard.agent.claim_boundaries import build_claim_boundary_records
 
 
 def build_gap_analysis(
@@ -128,6 +92,26 @@ def build_gap_analysis(
                 parser_coverage_gaps.extend(
                     dict(gap) for gap in gaps if isinstance(gap, dict)
                 )
+    claim_boundaries = build_claim_boundary_records(
+        casebook=casebook,
+        case_questions={"questions": questions},
+    )
+    unsupported_areas: list[dict[str, Any]] = [
+        {
+            "area": "memory forensics",
+            "status": "not_assessed",
+            "reason": "Memory is staged for provenance only.",
+        }
+    ]
+    unsupported_areas.extend(
+        {
+            "area": boundary.get("claim_area"),
+            "status": boundary.get("status", "not_assessed"),
+            "reason": boundary.get("scope_boundary"),
+            "source_question_ids": boundary.get("source_question_ids", []),
+        }
+        for boundary in claim_boundaries
+    )
     return {
         "case_id": adapted.case_id,
         "created_at": created_at,
@@ -146,7 +130,7 @@ def build_gap_analysis(
             "profile_coverage": profile_coverage,
         },
         "parser_coverage_gaps": parser_coverage_gaps,
-        "claim_boundaries": _theft_exfiltration_claim_boundaries(questions),
+        "claim_boundaries": claim_boundaries,
         "memory_sources": [
             {
                 "source_id": source["source_id"],
@@ -157,18 +141,7 @@ def build_gap_analysis(
             }
             for source in adapted.memory_sources
         ],
-        "unsupported_areas": [
-            {
-                "area": "memory forensics",
-                "status": "not_assessed",
-                "reason": "Memory is staged for provenance only.",
-            },
-            {
-                "area": "theft and exfiltration reconstruction",
-                "status": "not_assessed",
-                "reason": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-            },
-        ],
+        "unsupported_areas": unsupported_areas,
         "missing_parser_eligible_artifacts": [
             artifact
             for artifact in adapted.prepared_artifacts

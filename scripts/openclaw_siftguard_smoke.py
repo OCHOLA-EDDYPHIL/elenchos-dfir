@@ -8,16 +8,27 @@ import subprocess
 import sys
 from pathlib import Path
 
-from siftguard.agent.self_correction_events import (
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
 from siftguard.integrations.tool_adapter import (
     dispatch_tool,
     get_tool_definitions,
 )
 
 CASE_ID_DEFAULT = "CASE-OPENCLAW-SIFTGUARD-SMOKE"
+SMOKE_FINAL_WORDING = (
+    "SIFTGuard did not find sufficient support for the configured claim "
+    "conclusion within the submitted artifact scope."
+)
+SMOKE_SCOPE_BOUNDARY = (
+    "The current artifact scope does not support the configured claim "
+    "conclusion; additional directly supporting artifacts would be required."
+)
+SMOKE_RECOMMENDED_NEXT_ARTIFACTS = [
+    "browser history",
+    "cloud sync logs",
+    "network telemetry",
+    "removable-device artifacts",
+    "memory analysis",
+]
 
 
 def _repo_root() -> Path:
@@ -226,10 +237,10 @@ def _fake_run_case(argv: list[str]) -> subprocess.CompletedProcess[str]:
             "status": "not_assessed",
         }
         for question_id, question in (
-            ("q_what_was_stolen", "What was stolen?"),
-            ("q_where_transferred", "Where was it transferred to?"),
-            ("q_how_stolen", "How was it stolen?"),
-            ("q_memory", "What did memory show?"),
+            ("q_claim_subject", "What claim subject was supported?"),
+            ("q_claim_transfer", "What transfer path was supported?"),
+            ("q_claim_method", "What method was supported?"),
+            ("q_out_of_scope_context", "What did out-of-scope context show?"),
         )
     ]
     _write_json(
@@ -250,9 +261,9 @@ def _fake_run_case(argv: list[str]) -> subprocess.CompletedProcess[str]:
             "case_id": case_id,
             "claim_boundaries": [
                 {
-                    "claim_area": "theft/exfiltration",
-                    "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
-                    "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+                    "claim_area": "configured claim",
+                    "final_wording": SMOKE_FINAL_WORDING,
+                    "scope_boundary": SMOKE_SCOPE_BOUNDARY,
                     "status": "not_assessed",
                 }
             ],
@@ -268,45 +279,40 @@ def _fake_run_case(argv: list[str]) -> subprocess.CompletedProcess[str]:
             "event_count": 1,
             "events": [
                 {
-                    "claim_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
                     "correction": (
-                        "The final posture was revised to not_assessed / insufficient "
-                        "support within current artifact scope."
+                        "The final posture follows the configured claim-boundary "
+                        "wording instead of promoting an unsupported conclusion."
                     ),
-                    "event_id": "real-gap-001",
-                    "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
+                    "event_id": "claim-boundary-001",
+                    "final_wording": SMOKE_FINAL_WORDING,
                     "human_intervention": False,
                     "initial_investigative_pressure": (
-                        "The ROCBA case asks what IP was stolen, how it was transferred, "
-                        "and where it went."
+                        "The case asks whether a configured claim can be supported "
+                        "from submitted artifacts."
                     ),
                     "model_output_used_as_evidence": False,
                     "phase": "claim_validation",
                     "problem_detected": (
-                        "The submitted artifact scope does not contain sufficient support "
-                        "for a theft/exfiltration conclusion."
+                        "Configured claim-boundary conditions were met by generated "
+                        "case-question statuses."
                     ),
                     "raw_evidence_sent_to_model": False,
-                    "recommended_next_artifacts": [
-                        "browser history",
-                        "cloud sync logs",
-                        "network telemetry",
-                        "removable-device artifacts",
-                        "memory analysis",
-                    ],
+                    "recommended_next_artifacts": SMOKE_RECOMMENDED_NEXT_ARTIFACTS,
+                    "scope_boundary": SMOKE_SCOPE_BOUNDARY,
                     "source_question_ids": [
-                        "q_what_was_stolen",
-                        "q_where_transferred",
-                        "q_how_stolen",
-                        "q_memory",
+                        "q_claim_subject",
+                        "q_claim_transfer",
+                        "q_claim_method",
+                        "q_out_of_scope_context",
                     ],
                 }
             ],
-            "mode": "real_gap_self_correction",
+            "mode": "claim_boundary_self_correction",
             "notes": [
                 (
                     "Events are generated by deterministic SIFTGuard validation from "
-                    "case-question statuses; OpenClaw may use them to revise narrative posture."
+                    "casebook claim-boundary metadata and case-question statuses; "
+                    "OpenClaw may use them to revise narrative posture."
                 )
             ],
         },
@@ -318,8 +324,8 @@ def _fake_run_case(argv: list[str]) -> subprocess.CompletedProcess[str]:
     (output_dir / "report.md").write_text(
         "# SIFTGuard OpenClaw Smoke Report\n\n"
         "Synthetic generated outputs validate the bounded adapter path.\n"
-        f"{THEFT_EXFILTRATION_STRICT_WORDING}\n"
-        f"{THEFT_EXFILTRATION_SCOPE_BOUNDARY}\n"
+        f"{SMOKE_FINAL_WORDING}\n"
+        f"{SMOKE_SCOPE_BOUNDARY}\n"
         "Unsupported memory questions remain not_assessed.\n",
         encoding="utf-8",
     )

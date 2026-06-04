@@ -182,9 +182,9 @@ selection, parser planning, Registry user-activity handling, validation,
 correction, case-question mapping, status assignment, and report generation.
 `gap_analysis.json` carries case-prep and user-activity parser/key gaps forward
 and links unsupported areas back to the same question IDs.
-`self_correction_events.json` records deterministic real-gap posture revisions,
-including the ROCBA theft/exfiltration gap when the submitted artifact scope is
-insufficient for that conclusion.
+`self_correction_events.json` records deterministic posture revisions from
+casebook-defined claim-boundary metadata when generated case-question statuses
+show that the submitted artifact scope is insufficient for a configured claim.
 
 ## Limitations
 

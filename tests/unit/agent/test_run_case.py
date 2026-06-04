@@ -7,13 +7,10 @@ from typing import Any
 import pytest
 
 from siftguard.agent.audit import append_agent_audit_event
+from siftguard.agent.casebook import load_casebook
 from siftguard.agent.models import AgentRun, AgentRunStatus, AgentState
 from siftguard.agent.planner import build_default_agent_plan
 from siftguard.agent.run_case import CASEBOOK_YAML_REJECTION, run_case_workflow
-from siftguard.agent.self_correction_events import (
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
 from siftguard.audit.execution_ledger import read_events
 from siftguard.cli import main
 from siftguard.evidence.manifest import read_manifest
@@ -21,6 +18,15 @@ from siftguard.parser.result import ParserResult
 
 CASE_ID = "rocba-standard"
 FIXED_TIME = "2026-01-01T00:00:00Z"
+USER_ACTIVITY_FINAL_WORDING = (
+    "SIFTGuard did not find sufficient support for a theft or exfiltration "
+    "conclusion within the submitted artifact scope."
+)
+USER_ACTIVITY_SCOPE_BOUNDARY = (
+    "The current artifact scope does not support a theft/exfiltration conclusion; "
+    "additional artifacts such as browser history, cloud sync logs, network telemetry, "
+    "removable-device artifacts, or memory analysis would be required."
+)
 
 
 def fixed_clock() -> str:
@@ -234,6 +240,31 @@ def write_user_activity_casebook(tmp_path: Path, *, case_id: str = CASE_ID) -> P
                         "expected_status": "not_assessed",
                         "gap_reason": "Memory is out of scope.",
                     },
+                ],
+                "claim_boundaries": [
+                    {
+                        "claim_area": "theft/exfiltration",
+                        "question_ids": [
+                            "q_what_was_stolen",
+                            "q_where_transferred",
+                            "q_how_stolen",
+                        ],
+                        "related_question_ids": ["q_memory"],
+                        "emit_when_all_statuses": ["not_assessed"],
+                        "final_wording": USER_ACTIVITY_FINAL_WORDING,
+                        "scope_boundary": USER_ACTIVITY_SCOPE_BOUNDARY,
+                        "recommended_next_artifacts": [
+                            "browser history",
+                            "cloud sync logs",
+                            "network telemetry",
+                            "removable-device artifacts",
+                            "memory analysis",
+                        ],
+                        "initial_investigative_pressure": (
+                            "The case asks what may have been taken, how transfer "
+                            "occurred, and where it went."
+                        ),
+                    }
                 ],
             },
             sort_keys=True,
@@ -888,6 +919,10 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
         (output_dir / "self_correction_events.json").read_text(encoding="utf-8")
     )
     report = (output_dir / "report.md").read_text(encoding="utf-8")
+    expected_boundary = load_casebook(
+        Path("docs/casebooks/rocba-standard.json"),
+        case_id=CASE_ID,
+    ).claim_boundaries[0]
 
     assert case_questions["casebook_id"] == CASE_ID
     assert {question["question_id"] for question in case_questions["questions"]} >= {
@@ -904,22 +939,22 @@ def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Pat
     assert gap_analysis["case_questions"]
     assert "not_assessed" in gap_analysis["status_counts"]
     assert gap_analysis["claim_boundaries"][0]["final_wording"] == (
-        THEFT_EXFILTRATION_STRICT_WORDING
+        expected_boundary.final_wording
     )
     assert gap_analysis["claim_boundaries"][0]["scope_boundary"] == (
-        THEFT_EXFILTRATION_SCOPE_BOUNDARY
+        expected_boundary.scope_boundary
     )
     assert self_correction_events["event_count"] == 1
-    assert self_correction_events["events"][0]["event_id"] == "real-gap-001"
+    assert self_correction_events["events"][0]["event_id"] == "claim-boundary-001"
     assert self_correction_events["events"][0]["final_wording"] == (
-        THEFT_EXFILTRATION_STRICT_WORDING
+        expected_boundary.final_wording
     )
-    assert self_correction_events["events"][0]["claim_boundary"] == (
-        THEFT_EXFILTRATION_SCOPE_BOUNDARY
+    assert self_correction_events["events"][0]["scope_boundary"] == (
+        expected_boundary.scope_boundary
     )
     assert self_correction_events["events"][0]["human_intervention"] is False
-    assert THEFT_EXFILTRATION_STRICT_WORDING in report
-    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in report
+    assert expected_boundary.final_wording in report
+    assert expected_boundary.scope_boundary in report
     decision_ids = {decision["decision_id"] for decision in decision_trace["decisions"]}
     assert {
         "casebook_intake",
@@ -1010,7 +1045,7 @@ def test_run_case_integrates_registry_user_activity_outputs(tmp_path: Path):
     assert question_by_id["q_how_stolen"]["status"] == "not_assessed"
     assert question_by_id["q_memory"]["status"] == "not_assessed"
     assert self_correction_events["events"][0]["final_wording"] == (
-        THEFT_EXFILTRATION_STRICT_WORDING
+        USER_ACTIVITY_FINAL_WORDING
     )
     assert self_correction_events["events"][0]["source_question_ids"] == [
         "q_what_was_stolen",

@@ -9,10 +9,7 @@ from typing import Any
 
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.casebook import Casebook, CasebookAnalysisWindow, CasebookQuestion
-from siftguard.agent.self_correction_events import (
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
+from siftguard.agent.claim_boundaries import build_claim_boundary_records
 
 QUESTION_STATUSES = {"confirmed", "inferred", "needs_review", "not_assessed", "rejected"}
 UNSUPPORTED_EXPECTED_STATUSES = {"not_assessed"}
@@ -542,13 +539,18 @@ def evaluate_case_questions(
     for record in questions:
         status = record["status"]
         status_counts[status] = status_counts.get(status, 0) + 1
-    return {
+    result = {
         "case_id": casebook.case_id,
         "casebook_id": casebook.case_id,
         "created_at": created_at,
         "questions": questions,
         "status_counts": status_counts,
     }
+    result["claim_boundaries"] = build_claim_boundary_records(
+        casebook=casebook,
+        case_questions=result,
+    )
+    return result
 
 
 def question_mappings_for_findings(
@@ -833,10 +835,7 @@ def _question_answer(question: dict[str, Any]) -> str:
             "execution-relevant artifact presence; this does not label activity as malicious."
         )
     if question_id == "q_project_file_candidates":
-        return (
-            "candidate project/file relevance was identified; this does not support "
-            "a theft conclusion by itself."
-        )
+        return "candidate project/file relevance was identified for analyst review."
     if status == "not_assessed":
         gaps = question.get("gaps", [])
         if isinstance(gaps, list) and gaps:
@@ -896,6 +895,11 @@ def render_case_question_report(
         if isinstance(question, dict)
     ]
     not_assessed = [q for q in questions if q.get("status") == "not_assessed"]
+    claim_boundaries = [
+        boundary
+        for boundary in case_questions.get("claim_boundaries", [])
+        if isinstance(boundary, dict)
+    ]
     supported_findings = _top_findings(findings, statuses={"confirmed", "inferred"})
     needs_review_findings = _top_findings(findings, statuses={"needs_review"})
     user_activity_findings = [
@@ -952,16 +956,18 @@ def render_case_question_report(
         f"- NTUSER profile hives considered: discovered={discovered_profiles}, "
         f"parsed={parsed_profiles}, status=`{profile_status}`."
     )
-    lines.append(
-        f"- {THEFT_EXFILTRATION_STRICT_WORDING}"
-    )
-    lines.append(
-        f"- {THEFT_EXFILTRATION_SCOPE_BOUNDARY}"
-    )
-    lines.append(
-        "- Memory remains `not_assessed`; memory forensics is outside the current "
-        "final scope."
-    )
+    for boundary in claim_boundaries:
+        final_wording = boundary.get("final_wording")
+        scope_boundary = boundary.get("scope_boundary")
+        if isinstance(final_wording, str) and final_wording:
+            lines.append(f"- {final_wording}")
+        if isinstance(scope_boundary, str) and scope_boundary:
+            lines.append(f"- {scope_boundary}")
+    if adapted.memory_sources:
+        lines.append(
+            "- Memory remains `not_assessed`; memory forensics is outside the current "
+            "final scope."
+        )
     lines.append(
         "- Full traceability remains in JSON outputs and `audit.jsonl`; this report "
         "shows curated highlights only."
@@ -994,9 +1000,7 @@ def render_case_question_report(
     lines.append("")
 
     lines.append("## User Activity Highlights")
-    lines.append(
-        "- Candidate evidence is not sufficient support for theft or exfiltration."
-    )
+    lines.append("- Candidate evidence requires direct support before claim conclusions.")
     _append_top_findings(
         lines,
         user_activity_highlights,
@@ -1044,11 +1048,15 @@ def render_case_question_report(
 
     lines.append("## Not Assessed / Scope Gaps")
     lines.append("What SIFTGuard did not assess within the submitted artifact scope:")
-    lines.append(f"- {THEFT_EXFILTRATION_STRICT_WORDING}")
-    lines.append(f"- {THEFT_EXFILTRATION_SCOPE_BOUNDARY}")
-    lines.append("- Transfer destination was not assessed.")
-    lines.append("- Exfiltration method was not reconstructed.")
-    lines.append("- Memory forensics was not performed; memory remains `not_assessed`.")
+    for boundary in claim_boundaries:
+        final_wording = boundary.get("final_wording")
+        scope_boundary = boundary.get("scope_boundary")
+        if isinstance(final_wording, str) and final_wording:
+            lines.append(f"- {final_wording}")
+        if isinstance(scope_boundary, str) and scope_boundary:
+            lines.append(f"- {scope_boundary}")
+    if adapted.memory_sources:
+        lines.append("- Memory forensics was not performed; memory remains `not_assessed`.")
     lines.append("- Candidate evidence requires analyst review before incident conclusions.")
     if not not_assessed:
         lines.append("- No unsupported case questions were marked not_assessed.")
@@ -1080,9 +1088,9 @@ def render_case_question_report(
         "- Inspect complete evidence mappings in `case_questions.json` and `findings.json`."
     )
     lines.append(
-        "- Collect and parse additional artifacts before drawing theft or "
-        "exfiltration conclusions."
+        "- Collect and parse additional artifacts before drawing conclusions for "
+        "claim areas marked not_assessed."
     )
     lines.append("- Preserve generated JSON outputs and `audit.jsonl` with the case record.")
-    lines.append("- Do not treat candidate file activity as proof of exfiltration.")
+    lines.append("- Do not treat candidate file activity as proof of unsupported claims.")
     return "\n".join(lines).rstrip() + "\n"

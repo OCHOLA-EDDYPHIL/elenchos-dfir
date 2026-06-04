@@ -140,12 +140,12 @@ operation:
 .venv/bin/python -m siftguard agent run-case ...
 ```
 
-## ROCBA Demo Workflow
+## Case Triage Workflow
 
 Example analyst request:
 
 ```text
-Prepare and triage the ROCBA case, then summarize supported findings,
+Prepare and triage the case, then summarize supported findings,
 unsupported gaps, and trace paths. Do not inspect raw evidence directly.
 Use only the SIFTGuard tools.
 ```
@@ -169,30 +169,14 @@ Expected generated outputs include:
 - `runs/<CASE_ID>/agent-run/performance_summary.json`
 - `runs/<CASE_ID>/agent-run/openclaw-trace/*.stdout|*.stderr`
 
-Unsupported theft contents, transfer destination, exfiltration method, and
-memory questions remain `not_assessed` unless future supported parsers produce
-direct evidence.
+Casebooks may define claim-boundary metadata. When generated case-question
+statuses satisfy a configured boundary, SIFTGuard records that posture revision
+in `self_correction_events.json`, `gap_analysis.json`, and summary/validation
+tool output. OpenClaw should repeat the generated `final_wording` and
+`scope_boundary` exactly and should not replace them with model wording.
 
-For the final ROCBA demo, use the copy-paste prompt in
-[`docs/demo/openclaw-rocba-gap-demo-prompt.md`](demo/openclaw-rocba-gap-demo-prompt.md)
-and the runbook in
-[`docs/demo/openclaw-gap-self-correction-runbook.md`](demo/openclaw-gap-self-correction-runbook.md).
-The real-gap self-correction story is not an induced parser failure. It is the
-posture revision recorded when generated case-question and gap outputs show
-that the submitted artifact scope does not support a theft/exfiltration
-conclusion.
-
-OpenClaw should use this final wording when presenting that revision:
-
-```text
-SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
-```
-
-OpenClaw should also preserve this claim boundary:
-
-```text
-The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required.
-```
+Use [`examples/openclaw/case-triage.prompt.md`](../examples/openclaw/case-triage.prompt.md)
+as a reusable operator prompt.
 
 ## Model Statement
 

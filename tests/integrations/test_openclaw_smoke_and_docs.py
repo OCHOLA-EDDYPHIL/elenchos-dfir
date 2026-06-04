@@ -3,11 +3,6 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from siftguard.agent.self_correction_events import (
-    THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-    THEFT_EXFILTRATION_STRICT_WORDING,
-)
-
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -124,11 +119,12 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert ".venv/bin/python -m siftguard.integrations.mcp_server" in readme
     assert "scripts/openclaw_siftguard_smoke.py --dry-run" in mcp_docs
     assert "scripts/openclaw_siftguard_smoke.py --dry-run" in readme
-    assert "docs/demo/openclaw-rocba-gap-demo-prompt.md" in readme
-    assert "docs/demo/openclaw-gap-self-correction-runbook.md" in readme
+    assert "examples/openclaw/case-triage.prompt.md" in readme
+    assert "examples/openclaw/case-triage.prompt.md" in mcp_docs
+    assert ("docs/demo/openclaw-rocba-gap-" + "demo-prompt.md") not in readme
+    assert ("docs/demo/openclaw-gap-self-" + "correction-runbook.md") not in readme
     assert "self_correction_events.json" in mcp_docs
-    assert THEFT_EXFILTRATION_STRICT_WORDING in mcp_docs
-    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in mcp_docs
+    assert "casebooks may define claim-boundary metadata" in mcp_docs.casefold()
     assert "Bounded tools" in readme
     assert ".venv/bin/python -m siftguard case prepare ..." in readme
     assert ".venv/bin/python -m siftguard agent run-case ..." in readme
@@ -165,11 +161,12 @@ def test_no_legacy_openclaw_references_remain():
     assert hits == []
 
 
-def test_openclaw_real_gap_demo_prompt_is_bounded_and_claim_safe():
+def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     prompt = (
-        repo_root() / "docs" / "demo" / "openclaw-rocba-gap-demo-prompt.md"
+        repo_root() / "examples" / "openclaw" / "case-triage.prompt.md"
     ).read_text(encoding="utf-8")
     lowered = prompt.casefold()
+    collapsed = " ".join(prompt.split())
 
     for tool_name in (
         "prepare_case",
@@ -183,25 +180,35 @@ def test_openclaw_real_gap_demo_prompt_is_bounded_and_claim_safe():
     assert "do not run destructive commands" in lowered
     assert "do not write to evidence" in lowered
     assert "No OpenClaw or model output is forensic evidence" in prompt
-    assert THEFT_EXFILTRATION_STRICT_WORDING in prompt
-    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in prompt
+    assert "repeat the generated final_wording and scope_boundary exactly" in collapsed
     assert ("SIFTGuard proves " + "theft") not in prompt
     assert ("SIFTGuard proves " + "exfiltration") not in prompt
     assert ("courtroom" + "-ready") not in lowered
 
 
-def test_openclaw_real_gap_runbook_documents_final_demo_path():
-    runbook = (
-        repo_root() / "docs" / "demo" / "openclaw-gap-self-correction-runbook.md"
-    ).read_text(encoding="utf-8")
+def test_openclaw_presentation_specific_demo_docs_are_not_tracked():
+    root = repo_root()
+    assert not (
+        root / "docs" / "demo" / ("openclaw-rocba-gap-" + "demo-prompt.md")
+    ).exists()
+    assert not (
+        root / "docs" / "demo" / ("openclaw-gap-self-" + "correction-runbook.md")
+    ).exists()
 
-    assert "OpenClaw as the analyst-facing orchestration layer" in runbook
-    assert "SIFTGuard as the bounded forensic execution and validation layer" in runbook
-    assert "not a fake induced error" in runbook
-    assert ".venv/bin/python -m siftguard.integrations.mcp_server" in runbook
-    assert (
-        ".venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run "
-        "--output-dir runs/openclaw-smoke"
-    ) in runbook
-    assert THEFT_EXFILTRATION_STRICT_WORDING in runbook
-    assert THEFT_EXFILTRATION_SCOPE_BOUNDARY in runbook
+
+def test_rocba_question_ids_are_not_hardcoded_in_source():
+    root = repo_root()
+    forbidden_terms = (
+        "q_what_was_stolen",
+        "q_where_transferred",
+        "q_how_stolen",
+        "q_memory",
+    )
+    hits: list[str] = []
+    for path in sorted((root / "src").rglob("*.py")):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for term in forbidden_terms:
+            if term in text:
+                hits.append(f"{path.relative_to(root)}: {term}")
+
+    assert hits == []

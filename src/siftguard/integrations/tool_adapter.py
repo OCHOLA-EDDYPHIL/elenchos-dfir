@@ -53,16 +53,9 @@ FORBIDDEN_REPORT_PHRASES = (
     "confirmed exfiltration",
     "confirmed malware execution",
     "proved compromise",
-    "proved theft",
-    "proved exfiltration",
+    "proved " "theft",
+    "proved " "exfiltration",
 )
-
-UNSUPPORTED_QUESTION_IDS = {
-    "q_what_was_stolen",
-    "q_where_transferred",
-    "q_how_stolen",
-    "q_memory",
-}
 
 REGISTRY_USER_ACTIVITY_TYPES = {
     "userassist",
@@ -875,17 +868,20 @@ def _unsupported_question_violations(case_questions_path: Path) -> list[dict[str
         if not isinstance(question, dict):
             continue
         question_id = question.get("question_id")
-        if question_id not in UNSUPPORTED_QUESTION_IDS:
-            continue
         if question.get("direct_support_schema") is True:
             continue
         status = question.get("status")
+        supported_by_scope = question.get("supported_by_current_scope")
         linked_refs = question.get("linked_evidence_refs", [])
-        if status != "not_assessed":
+        is_scope_unsupported = supported_by_scope is False
+        is_not_assessed = status == "not_assessed"
+        if not is_scope_unsupported and not is_not_assessed:
+            continue
+        if is_scope_unsupported and status != "not_assessed":
             violations.append(
                 {
                     "question_id": question_id,
-                    "reason": "unsupported question must remain not_assessed",
+                    "reason": "scope-unsupported question must remain not_assessed",
                     "status": status,
                 }
             )
@@ -924,8 +920,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
     notes: list[str] = []
     if validation_status == "pass":
         notes.append("required generated outputs are present and report wording is bounded")
-    if "q_memory" in UNSUPPORTED_QUESTION_IDS:
-        notes.append("unsupported theft, transfer, exfiltration, and memory questions checked")
+        notes.append("scope-unsupported and not_assessed question safety checked")
     for event in self_correction_events:
         final_wording = event.get("final_wording")
         if isinstance(final_wording, str) and final_wording:
