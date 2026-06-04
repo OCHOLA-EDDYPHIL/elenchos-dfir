@@ -319,24 +319,31 @@ Read an audit ledger summary:
 
 ## Natural-Language/OpenClaw Workflow
 
-SIFTGuard also provides a bounded OpenClaw/MCP-style analyst workflow. OpenClaw
-is the natural-language agent host; SIFTGuard remains the deterministic,
+SIFTGuard provides a bounded OpenClaw/MCP-style analyst workflow. OpenClaw is
+the natural-language agent host; SIFTGuard remains the deterministic,
 model-agnostic forensic core. The model may request typed tools, but SIFTGuard
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
 
 See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md).
 
-Smoke the tool boundary without ROCBA evidence or provider keys:
+Preferred final OpenClaw/MCP path:
 
 ```bash
-.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+.venv/bin/python -m siftguard.integrations.mcp_server
 ```
 
-Canonical ROCBA tool sequence:
+Bounded tools:
 
 ```text
 prepare_case -> run_case -> summarize_run -> validate_run_outputs
+```
+
+Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
+keys:
+
+```bash
+.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
 The direct CLI remains the reproducible fallback:
@@ -405,7 +412,6 @@ events while downgrading the final status to `needs_review`.
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
 | OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
-| OpenClaw setup notes | `docs/openclaw.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |
 
 ## License

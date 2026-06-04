@@ -145,8 +145,8 @@ legal evidence certification, or broad SIFT automation.
 - CLI entrypoints expose inventory, hashing, audit reading, parser wrappers,
   correlation, and the constrained agent workflow.
 - MCP-compatible parser and correlation descriptors define typed schemas for
-  supported workflow boundaries. Full MCP server runtime wiring remains
-  incremental.
+  supported workflow boundaries. The OpenClaw-facing runtime path is the
+  bounded MCP/tool adapter documented in `docs/openclaw-mcp-workflow.md`.
 - Evidence inventory and hashing create deterministic manifest records.
 - Parser wrappers call verified SIFT tools:
   - `MFTECmd` for `$MFT`.

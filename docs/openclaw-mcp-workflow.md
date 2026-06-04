@@ -8,9 +8,10 @@ the analyst asks for work in natural language. SIFTGuard exposes bounded tools
 that OpenClaw can call, while SIFTGuard Python code performs case preparation,
 parser execution, validation, self-correction, reporting, and audit logging.
 
-SIFTGuard remains model-agnostic. It does not require Claude Code, does not
-select an OpenClaw provider or model, and does not treat model output as
-forensic evidence.
+The preferred integration path is the bounded MCP/tool adapter. SIFTGuard
+remains model-agnostic. It does not require Claude Code, does not select an
+OpenClaw provider or model, and does not treat model output as forensic
+evidence.
 
 ## Component Roles
 
@@ -34,10 +35,10 @@ Analyst natural-language prompt
 
 ## Architecture Mapping
 
-| Tactical dossier concept | Current repo implementation |
+| Architecture role | Current repo implementation |
 | --- | --- |
-| Typed MCP server | `src/siftguard/integrations/` stdio server and JSON tool adapter |
-| Orchestrator, planner, verifier, self-correction | `src/siftguard/agent/` deterministic workflow modules |
+| Bounded MCP/tool server | `src/siftguard/integrations/` stdio server and JSON tool adapter |
+| Deterministic forensic orchestrator | `src/siftguard/agent/` workflow modules |
 | Evidence ledger and findings store | `findings.json`, `normalized_events.json`, and evidence refs |
 | Execution logs | `audit.jsonl`, `decision_trace.json`, and adapter/OpenClaw traces |
 | Reports | `report.md` and `docs/accuracy-report.md` |
@@ -83,6 +84,8 @@ The same bounded surface is available as a JSON CLI dispatcher:
   tokens, and OpenClaw provider credentials must not be committed.
 - The model may request bounded tools, but SIFTGuard computes the
   evidence-backed result. Model output is not forensic evidence.
+- Do not paste or transmit raw evidence contents to OpenClaw or any LLM.
+- Do not ask OpenClaw or any LLM to decide compromise from raw parser data.
 
 ## Local Setup
 
@@ -96,10 +99,11 @@ openclaw mcp --help || true
 openclaw agent --help || true
 ```
 
-On this workstation, `openclaw` is installed and exposes `openclaw mcp set`,
-`openclaw mcp list --json`, and `openclaw agent --message ... --json`. `claw`
-is not installed locally. OpenClaw provider/model configuration is local to the
-operator's OpenClaw installation and must not be committed.
+On the validated workstation, `openclaw` is installed and exposes
+`openclaw mcp set`, `openclaw mcp list --json`, and
+`openclaw agent --message ... --json`. `claw` is not installed locally.
+OpenClaw provider/model configuration is local to the operator's OpenClaw
+installation and must not be committed.
 
 Register the SIFTGuard MCP server with OpenClaw locally:
 
@@ -114,6 +118,10 @@ openclaw mcp set siftguard '{
 This writes OpenClaw-owned local configuration. Do not commit OpenClaw config,
 provider credentials, transcripts, gateway logs, or auth state.
 
+The project does not require a committed OpenClaw config file. If a shell needs
+OpenClaw-specific `PATH` setup, keep that in local shell configuration rather
+than repository files.
+
 Run the deterministic smoke harness without OpenClaw credentials or ROCBA
 evidence:
 
@@ -123,6 +131,14 @@ evidence:
 
 The automated smoke test exercises the same bounded tool boundary without
 requiring a live model/provider key.
+
+The deterministic CLI remains the reproducible fallback for every adapter
+operation:
+
+```bash
+.venv/bin/python -m siftguard case prepare ...
+.venv/bin/python -m siftguard agent run-case ...
+```
 
 ## ROCBA Demo Workflow
 
@@ -154,8 +170,7 @@ Expected generated outputs include:
 
 Unsupported theft contents, transfer destination, exfiltration method, and
 memory questions remain `not_assessed` unless future supported parsers produce
-direct evidence. The direct CLI remains the reproducible fallback for every
-adapter operation.
+direct evidence.
 
 ## Model Statement
 

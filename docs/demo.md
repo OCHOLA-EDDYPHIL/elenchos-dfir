@@ -8,7 +8,7 @@ The agent workflow demo should show:
 - Verifier detection of an unsupported claim.
 - Self-correction downgrading an unsupported finding to `needs_review`.
 - Audit visibility for verification and correction events.
-- OpenClaw initiating the constrained SIFTGuard workflow.
+- OpenClaw/MCP invoking the bounded SIFTGuard tool-adapter workflow.
 
 ## From A Clean Repo
 
@@ -26,25 +26,31 @@ services:
 .venv/bin/python -m pytest tests/unit/agent/test_induced_failure_demo.py
 ```
 
-Run the constrained OpenClaw smoke helper. This creates synthetic/local inputs
-and writes generated outputs under ignored `runs/` paths:
+Run the preferred OpenClaw/MCP adapter dry-run harness. This exercises the
+bounded tool interface and writes generated outputs under ignored `runs/`
+paths without provider keys or ROCBA evidence:
 
 ```bash
-./scripts/openclaw-agent-smoke.sh
+.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
-## Expected OpenClaw Smoke Outputs
+## Expected OpenClaw/MCP Smoke Outputs
 
-The smoke helper should create:
+The adapter smoke harness should create:
 
 ```text
-runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
-runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
-runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/findings.json
-runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/report.md
+runs/openclaw-smoke/openclaw-trace/prepare_case.stdout
+runs/openclaw-smoke/openclaw-trace/prepare_case.stderr
+runs/openclaw-smoke/openclaw-trace/run_case.stdout
+runs/openclaw-smoke/openclaw-trace/run_case.stderr
+runs/openclaw-smoke/openclaw-trace/summary.json
+runs/openclaw-smoke/agent-run/agent_run.json
+runs/openclaw-smoke/agent-run/audit.jsonl
+runs/openclaw-smoke/agent-run/findings.json
+runs/openclaw-smoke/agent-run/report.md
 ```
 
-The helper may also write deterministic intermediate outputs such as
+The harness also writes deterministic intermediate outputs such as
 `normalized_events.json` and `subject_timelines.json` under the same generated
 output directory.
 
@@ -59,7 +65,7 @@ For a local run directory, inspect audit and correction records with:
 
 ```bash
 grep -E 'verification_failed|correction_applied' \
-  runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/audit.jsonl
+  runs/case_self-correction-control/agent-run/audit.jsonl
 ```
 
 ```bash
@@ -67,37 +73,44 @@ grep -E 'verification_failed|correction_applied' \
 import json
 from pathlib import Path
 
-path = Path("runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json")
+path = Path("runs/case_self-correction-control/agent-run/agent_run.json")
 data = json.loads(path.read_text())
 print(json.dumps(data.get("corrections", []), indent=2))
 PY
 ```
 
-The successful smoke helper is expected to complete cleanly, so those commands
-may show no correction entries for that specific run. Use the induced-failure
-test above when demonstrating self-correction.
+Use the induced-failure test above when demonstrating self-correction. The
+adapter dry-run smoke is expected to complete cleanly and prove the tool
+boundary, not correction behavior.
 
 ## Optional jq Inspection
 
 If `jq` is installed:
 
 ```bash
-jq '.corrections' runs/CASE-AGENT-OPENCLAW-SMOKE/agent-run/agent_run.json
+jq '.corrections' runs/case_self-correction-control/agent-run/agent_run.json
 ```
 
 ## OpenClaw Runtime Demo
 
-Use the narrow OpenClaw prompt and headless command in
-[OpenClaw Agent Workflow](openclaw-agent-workflow.md) to have OpenClaw initiate
-the smoke helper. Save raw OpenClaw output only under the ignored trace
-directory documented there.
+The preferred final OpenClaw path is the bounded MCP/tool-adapter workflow in
+[OpenClaw MCP Workflow](openclaw-mcp-workflow.md). Use the adapter smoke harness
+to demonstrate the typed tool boundary without provider keys or ROCBA evidence:
+
+```bash
+.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+```
+
+For a live OpenClaw setup, register the MCP server documented in
+[OpenClaw MCP Workflow](openclaw-mcp-workflow.md), then have OpenClaw invoke
+`prepare_case`, `run_case`, `summarize_run`, and `validate_run_outputs`.
 
 ## Cleanup
 
 Remove local generated smoke outputs after the demo:
 
 ```bash
-rm -rf runs/CASE-AGENT-OPENCLAW-SMOKE
+rm -rf runs/openclaw-smoke
 ```
 
 ## Safety Reminder
