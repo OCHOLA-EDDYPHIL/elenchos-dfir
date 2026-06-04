@@ -155,5 +155,6 @@ must not resolve inside `evidence_root`.
 
 MCP parser tool schemas are defined for `parse_mft`, `parse_registry_runkeys`,
 and `parse_amcache`. They describe constrained parser wrappers, not arbitrary
-process execution. Full MCP runtime wiring remains future work, and parser
-interfaces do not generate findings.
+process execution. The OpenClaw-facing runtime path is the bounded
+MCP/tool-adapter workflow documented in `docs/openclaw-mcp-workflow.md`.
+Parser interfaces do not generate findings.
