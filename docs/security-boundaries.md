@@ -15,12 +15,11 @@ declares those current invariants without claiming a comprehensive sandbox.
 
 ## Constrained Execution
 
-OpenClaw is instructed to call constrained SIFTGuard entrypoints. The workflow
-boundary is `siftguard agent run`; raw shell is not the forensic interface.
-SIFTGuard does not expose arbitrary command execution as an agent feature.
-
-The OpenClaw smoke helper is fixed to the synthetic agent workflow. It does not
-accept a free-form command string.
+OpenClaw is instructed to call constrained SIFTGuard entrypoints. The preferred
+final workflow boundary is the bounded MCP/tool adapter, which exposes typed
+operations for case preparation, run execution, summarization, and validation.
+Raw shell is not the forensic interface. SIFTGuard does not expose arbitrary
+command execution as an agent feature.
 
 The planner is deterministic. It constructs the fixed inventory, parse,
 correlate, validate, report, and verify workflow phases rather than accepting

@@ -317,6 +317,42 @@ Read an audit ledger summary:
 .venv/bin/python -m siftguard audit-read "$RUN_DIR/agent-run/audit.jsonl"
 ```
 
+## Natural-Language/OpenClaw Workflow
+
+SIFTGuard provides a bounded OpenClaw/MCP-style analyst workflow. OpenClaw is
+the natural-language agent host; SIFTGuard remains the deterministic,
+model-agnostic forensic core. The model may request typed tools, but SIFTGuard
+computes the evidence-backed result and no model output is treated as forensic
+evidence.
+
+See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md).
+
+Preferred final OpenClaw/MCP path:
+
+```bash
+.venv/bin/python -m siftguard.integrations.mcp_server
+```
+
+Bounded tools:
+
+```text
+prepare_case -> run_case -> summarize_run -> validate_run_outputs
+```
+
+Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
+keys:
+
+```bash
+.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+```
+
+The direct CLI remains the reproducible fallback:
+
+```bash
+.venv/bin/python -m siftguard case prepare ...
+.venv/bin/python -m siftguard agent run-case ...
+```
+
 ## Controlled Validation Fixtures
 
 The repository includes tiny synthetic fixtures that exercise the same
@@ -375,7 +411,7 @@ events while downgrading the final status to `needs_review`.
 | Parser tooling matrix | `docs/parser-tooling-matrix.md` |
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
-| OpenClaw setup notes | `docs/openclaw.md` |
+| OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |
 
 ## License

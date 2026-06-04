@@ -251,41 +251,35 @@ findings.
 | Audit entry count | 27 |
 | Correction audit events | `correction_applied`: 2 |
 
-## Successful Synthetic Agent Path
+## OpenClaw/MCP Adapter Smoke Path
 
-The successful full-path example was generated with the repository's synthetic
-agent smoke helper:
+The preferred OpenClaw/MCP smoke example is generated through the bounded
+adapter harness:
 
 ```bash
-./scripts/openclaw-agent-smoke.sh
+.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
 Sanitized summary:
 
 | Item | Value |
 | --- | --- |
-| Case id | `CASE-AGENT-OPENCLAW-SMOKE` |
-| Agent status | `completed` |
-| Step count | 6 |
-| Correction count | 0 |
-| Error count | 0 |
-| Warning count | 0 |
-| Normalized event count | 4 |
-| Timeline count | 1 |
-| Finding count | 1 |
-| Finding status counts | `inferred`: 1 |
-| Audit entry count | 16 |
+| Case id | `CASE-OPENCLAW-SIFTGUARD-SMOKE` |
+| Prepare status | `completed` |
+| Run status | `completed` |
+| Validation status | `pass` |
+| Finding status counts | `{}` |
+| Case-question status counts | `not_assessed`: 4 |
 
-Audit event counts:
+Adapter trace outputs:
 
-| Event type | Count |
-| --- | ---: |
-| `agent_run_started` | 1 |
-| `agent_step_started` | 6 |
-| `agent_step_completed` | 6 |
-| `verification_started` | 1 |
-| `verification_completed` | 1 |
-| `agent_run_completed` | 1 |
+| Trace file | Purpose |
+| --- | --- |
+| `runs/openclaw-smoke/openclaw-trace/prepare_case.stdout` | Prepared-case adapter stdout |
+| `runs/openclaw-smoke/openclaw-trace/prepare_case.stderr` | Prepared-case adapter stderr |
+| `runs/openclaw-smoke/openclaw-trace/run_case.stdout` | Run-case adapter stdout |
+| `runs/openclaw-smoke/openclaw-trace/run_case.stderr` | Run-case adapter stderr |
+| `runs/openclaw-smoke/openclaw-trace/summary.json` | Combined smoke summary |
 
 ## Synthetic Induced Self-Correction Path
 
