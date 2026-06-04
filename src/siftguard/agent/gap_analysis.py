@@ -6,9 +6,42 @@ from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.case_questions import QUESTION_STATUSES
 from siftguard.agent.casebook import Casebook
 from siftguard.agent.self_correction_events import (
+    REAL_GAP_QUESTION_IDS,
+    RECOMMENDED_NEXT_ARTIFACTS,
+    THEFT_EXFILTRATION_QUESTION_IDS,
     THEFT_EXFILTRATION_SCOPE_BOUNDARY,
     THEFT_EXFILTRATION_STRICT_WORDING,
 )
+
+
+def _theft_exfiltration_claim_boundaries(
+    questions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    questions_by_id = {
+        question_id: question
+        for question in questions
+        if isinstance(question_id := question.get("question_id"), str) and question_id
+    }
+    not_assessed_ids = [
+        question_id
+        for question_id in REAL_GAP_QUESTION_IDS
+        if questions_by_id.get(question_id, {}).get("status") == "not_assessed"
+    ]
+    if not all(
+        question_id in not_assessed_ids
+        for question_id in THEFT_EXFILTRATION_QUESTION_IDS
+    ):
+        return []
+    return [
+        {
+            "claim_area": "theft/exfiltration",
+            "status": "not_assessed",
+            "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
+            "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
+            "recommended_next_artifacts": list(RECOMMENDED_NEXT_ARTIFACTS),
+            "source_question_ids": not_assessed_ids,
+        }
+    ]
 
 
 def build_gap_analysis(
@@ -113,14 +146,7 @@ def build_gap_analysis(
             "profile_coverage": profile_coverage,
         },
         "parser_coverage_gaps": parser_coverage_gaps,
-        "claim_boundaries": [
-            {
-                "claim_area": "theft/exfiltration",
-                "status": "not_assessed",
-                "final_wording": THEFT_EXFILTRATION_STRICT_WORDING,
-                "scope_boundary": THEFT_EXFILTRATION_SCOPE_BOUNDARY,
-            }
-        ],
+        "claim_boundaries": _theft_exfiltration_claim_boundaries(questions),
         "memory_sources": [
             {
                 "source_id": source["source_id"],
