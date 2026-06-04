@@ -404,6 +404,7 @@ events while downgrading the final status to `needs_review`.
 | Parser tooling matrix | `docs/parser-tooling-matrix.md` |
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
+| OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
 | OpenClaw setup notes | `docs/openclaw.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |
 

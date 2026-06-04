@@ -20,6 +20,9 @@ from siftguard.integrations.tool_adapter import (
     summarize_run,
     validate_run_outputs,
 )
+from siftguard.integrations.tool_adapter import (
+    main as tool_adapter_main,
+)
 
 CASE_ID = "case-openclaw-test"
 
@@ -259,6 +262,54 @@ def test_prepare_case_returns_structured_failure_from_mocked_subprocess(tmp_path
     assert str(result["trace_stderr"]).endswith("prepare_case.stderr")
 
 
+def test_prepare_case_sanitizes_private_paths_from_structured_failure(tmp_path: Path):
+    private_path = "/tmp/PRIVATE-RAW-EVIDENCE-PATH-DO-NOT-LEAK/source.E01"
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        return subprocess.CompletedProcess(
+            argv,
+            1,
+            "",
+            f"error=source missing: {private_path}\n",
+        )
+
+    result = prepare_case(
+        {
+            "case_id": CASE_ID,
+            "source_root": str(tmp_path / "evidence"),
+            "output_dir": str(tmp_path / "runs" / CASE_ID / "case-prep"),
+        },
+        command_runner=runner,
+    )
+
+    serialized = json.dumps(result, sort_keys=True)
+    assert result["status"] == "failed"
+    assert result["error"] == "error=source missing: <redacted_path>"
+    assert "PRIVATE-RAW-EVIDENCE-PATH-DO-NOT-LEAK" not in serialized
+
+
+def test_prepare_case_rejects_shell_like_case_id_before_runner():
+    called = False
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    with pytest.raises(ValueError, match="forbidden character"):
+        prepare_case(
+            {
+                "case_id": "case;rm -rf",
+                "source_root": "runs/synthetic-source",
+                "output_dir": "runs/shell-like/case-prep",
+            },
+            command_runner=runner,
+        )
+
+    assert called is False
+
+
 def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Path):
     case_prep = tmp_path / "runs" / CASE_ID / "case-prep" / "case_prep.json"
     output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
@@ -302,6 +353,34 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
     assert result["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert result["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
     assert "parser_status_summary" in result
+
+
+def test_run_case_sanitizes_private_paths_from_structured_failure(tmp_path: Path):
+    case_prep = tmp_path / "runs" / CASE_ID / "case-prep" / "case_prep.json"
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_case_prep(case_prep)
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        return subprocess.CompletedProcess(
+            argv,
+            1,
+            "",
+            "error=casebook missing: /mnt/evidence/private/casebook.json\n",
+        )
+
+    result = run_case(
+        {
+            "artifact_manifest": str(case_prep),
+            "case_id": CASE_ID,
+            "output_dir": str(output_dir),
+        },
+        command_runner=runner,
+    )
+
+    assert result["status"] == "failed"
+    assert result["error"] == "error=casebook missing: <redacted_path>"
+    assert "/mnt/evidence/private" not in json.dumps(result, sort_keys=True)
 
 
 def test_summarize_run_parses_counts_and_traceability(tmp_path: Path):
@@ -437,6 +516,48 @@ def test_mcp_server_exposes_tools_and_calls_summary(tmp_path: Path):
     assert call_response is not None
     structured = call_response["result"]["structuredContent"]
     assert structured["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
+
+
+def test_mcp_server_sanitizes_exception_paths_in_tool_errors():
+    response = mcp_server.handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "prepare_case",
+                "arguments": {
+                    "case_id": CASE_ID,
+                    "source_root": "/tmp/PRIVATE-MCP-PATH",
+                    "source_manifest_out": "/tmp/PRIVATE-MCP-PATH/source.json",
+                    "output_dir": "runs/mcp-error-probe/case-prep",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    assert result["isError"] is True
+    structured = result["structuredContent"]
+    assert (
+        structured["error"]
+        == "source_manifest_out must not be under evidence root '<redacted_path>'"
+    )
+    assert "PRIVATE-MCP-PATH" not in json.dumps(result, sort_keys=True)
+
+
+def test_cli_dispatcher_sanitizes_exception_paths(capsys: pytest.CaptureFixture[str]):
+    return_code = tool_adapter_main(
+        ["summarize-run", "--json-input", "@/tmp/PRIVATE-CLI-PATH/input.json"]
+    )
+
+    output = capsys.readouterr().out
+    payload = json.loads(output)
+    assert return_code == 1
+    assert payload["status"] == "failed"
+    assert "<redacted_path>" in payload["error"]
+    assert "PRIVATE-CLI-PATH" not in output
 
 
 def test_tool_manifest_has_no_arbitrary_execution_fields():

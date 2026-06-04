@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -23,6 +24,7 @@ from siftguard.integrations.safe_paths import (
     validate_source_manifest_out,
 )
 from siftguard.parser.paths import validate_parser_path_identifier
+from siftguard.policy.paths import is_generated_output_path, is_relative_to
 from siftguard.triage import SUPPORTED_EVENT_SELECTION_PROFILES
 
 DEFAULT_PREPARE_TIMEOUT_SECONDS = 900
@@ -69,6 +71,10 @@ REGISTRY_USER_ACTIVITY_TYPES = {
     "typedpaths",
     "registry_user_activity",
 }
+
+REDACTED_PATH = "<redacted_path>"
+POSIX_PATH_PATTERN = re.compile(r"(?<![:/])/[^\s\"'<>|;]+")
+PATH_TRAILING_PUNCTUATION = ".,:)]}"
 
 CommandRunner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
 
@@ -338,11 +344,39 @@ def _write_trace(
     return stdout_path, stderr_path
 
 
+def _model_safe_path_token(path_text: str) -> str:
+    try:
+        resolved = Path(path_text).expanduser().resolve(strict=False)
+    except (OSError, RuntimeError, ValueError):
+        return REDACTED_PATH
+    if is_generated_output_path(resolved) or is_relative_to(resolved, repo_root()):
+        return display_path(resolved) or REDACTED_PATH
+    return REDACTED_PATH
+
+
+def sanitize_model_error(message: object) -> str:
+    text = str(message)
+
+    def replace_path(match: re.Match[str]) -> str:
+        raw_path = match.group(0)
+        path_text = raw_path.rstrip(PATH_TRAILING_PUNCTUATION)
+        trailing = raw_path[len(path_text) :]
+        if not path_text:
+            return raw_path
+        return f"{_model_safe_path_token(path_text)}{trailing}"
+
+    return POSIX_PATH_PATTERN.sub(replace_path, text)
+
+
 def _error_summary(*, returncode: int, stdout: str, stderr: str) -> str:
     text = "\n".join(part for part in (stderr.strip(), stdout.strip()) if part)
     if not text:
         return f"command exited with status {returncode}"
-    return text.splitlines()[0][:500]
+    return sanitize_model_error(text.splitlines()[0][:500])
+
+
+def _error_payload(exc: Exception) -> dict[str, object]:
+    return {"status": "failed", "error": sanitize_model_error(exc)}
 
 
 def _path_from_stdout_or_default(
@@ -969,7 +1003,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.print_help()
         return 1
     except Exception as exc:
-        _emit_json({"status": "failed", "error": str(exc)})
+        _emit_json(_error_payload(exc))
         return 1
 
 

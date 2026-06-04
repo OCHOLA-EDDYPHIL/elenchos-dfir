@@ -6,7 +6,11 @@ from collections.abc import Mapping
 from typing import Any
 
 from siftguard import __version__
-from siftguard.integrations.tool_adapter import dispatch_tool, get_tool_definitions
+from siftguard.integrations.tool_adapter import (
+    dispatch_tool,
+    get_tool_definitions,
+    sanitize_model_error,
+)
 
 JSONRPC_VERSION = "2.0"
 SUPPORTED_PROTOCOL_VERSION = "2025-11-25"
@@ -20,7 +24,7 @@ def _error(request_id: object, code: int, message: str) -> dict[str, object]:
     return {
         "jsonrpc": JSONRPC_VERSION,
         "id": request_id,
-        "error": {"code": code, "message": message},
+        "error": {"code": code, "message": sanitize_model_error(message)},
     }
 
 
@@ -88,7 +92,10 @@ def handle_message(message: Mapping[str, object]) -> dict[str, object] | None:
         except Exception as exc:
             return _response(
                 request_id,
-                _tool_result({"status": "failed", "error": str(exc)}, is_error=True),
+                _tool_result(
+                    {"status": "failed", "error": sanitize_model_error(exc)},
+                    is_error=True,
+                ),
             )
         is_error = result.get("status") == "failed" or result.get("validation_status") == "fail"
         return _response(request_id, _tool_result(result, is_error=is_error))

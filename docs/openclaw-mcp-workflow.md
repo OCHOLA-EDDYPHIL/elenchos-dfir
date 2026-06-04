@@ -32,6 +32,16 @@ Analyst natural-language prompt
   -> OpenClaw-visible summary and trace paths
 ```
 
+## Architecture Mapping
+
+| Tactical dossier concept | Current repo implementation |
+| --- | --- |
+| Typed MCP server | `src/siftguard/integrations/` stdio server and JSON tool adapter |
+| Orchestrator, planner, verifier, self-correction | `src/siftguard/agent/` deterministic workflow modules |
+| Evidence ledger and findings store | `findings.json`, `normalized_events.json`, and evidence refs |
+| Execution logs | `audit.jsonl`, `decision_trace.json`, and adapter/OpenClaw traces |
+| Reports | `report.md` and `docs/accuracy-report.md` |
+
 ## Tool Boundary
 
 The adapter exposes four operations only:
