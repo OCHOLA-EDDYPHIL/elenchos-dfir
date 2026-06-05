@@ -951,7 +951,7 @@ def test_reusable_generic_casebook_preserves_prepared_case_id(
     for forbidden in (
         "confirmed theft",
         "confirmed exfiltration",
-        "confirmed apt",
+        "confirmed " + "apt",
         "confirmed compromise",
         "attribution",
     ):
