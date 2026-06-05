@@ -360,6 +360,9 @@ The direct CLI remains the reproducible fallback:
 Case-specific claim boundaries belong in JSON casebook metadata. When
 SIFTGuard emits claim-boundary events, OpenClaw should repeat the generated
 `final_wording` and `scope_boundary` rather than inventing model wording.
+For storyless Windows disk images, use
+`docs/casebooks/generic-windows-disk-triage.json` for conservative
+evidence-led triage without default incident conclusions.
 
 ## Controlled Validation Fixtures
 

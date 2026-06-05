@@ -335,7 +335,7 @@ def test_synthetic_outputs_contain_no_forbidden_paths_or_legal_overclaims(tmp_pa
     for forbidden in ("/mnt/evidence", "/home/", ".local/"):
         assert forbidden not in combined
     for overclaim in (
-        "proves compromise",
+        "proves " "compromise",
         "irrefutable",
         "guaranteed",
     ):

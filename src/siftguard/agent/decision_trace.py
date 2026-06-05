@@ -117,6 +117,9 @@ def build_decision_trace(
             available_inputs={
                 "casebook_present": casebook is not None,
                 "casebook_id": casebook.case_id if casebook is not None else None,
+                "casebook_reusable_template": (
+                    casebook.reusable_template if casebook is not None else None
+                ),
             },
             selected_action=(
                 "Use JSON casebook questions."
@@ -524,5 +527,9 @@ def build_decision_trace(
         "mode": "case_question_quality",
         "decisions": decisions,
         "casebook_present": casebook is not None,
+        "casebook_id": casebook.case_id if casebook is not None else None,
+        "casebook_reusable_template": (
+            casebook.reusable_template if casebook is not None else None
+        ),
         "warnings": list(warnings),
     }

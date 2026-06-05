@@ -74,6 +74,7 @@ class Casebook:
     case_id: str
     display_name: str
     time_zone: str | None
+    reusable_template: bool
     triage_profile: CasebookTriageProfile
     case_facts: tuple[CasebookFact, ...]
     key_dates: tuple[CasebookKeyDate, ...]
@@ -87,6 +88,7 @@ class Casebook:
             "case_id": self.case_id,
             "display_name": self.display_name,
             "time_zone": self.time_zone,
+            "reusable_template": self.reusable_template,
             "triage_profile": {
                 "keywords": list(self.triage_profile.keywords),
                 "sensitive_paths": list(self.triage_profile.sensitive_paths),
@@ -157,6 +159,19 @@ def _optional_string(data: dict[str, Any], name: str, *, label: str) -> str | No
         return None
     if not isinstance(value, str) or not value:
         raise ValueError(f"{label}.{name} must be a non-empty string when provided")
+    return value
+
+
+def _optional_bool(
+    data: dict[str, Any],
+    name: str,
+    *,
+    label: str,
+    default: bool = False,
+) -> bool:
+    value = data.get(name, default)
+    if not isinstance(value, bool):
+        raise ValueError(f"{label}.{name} must be a boolean when provided")
     return value
 
 
@@ -413,6 +428,11 @@ def casebook_from_dict(payload: dict[str, Any], *, path: Path | None = None) -> 
         case_id=_required_string(payload, "case_id", label="casebook"),
         display_name=_required_string(payload, "display_name", label="casebook"),
         time_zone=_optional_string(payload, "time_zone", label="casebook"),
+        reusable_template=_optional_bool(
+            payload,
+            "reusable_template",
+            label="casebook",
+        ),
         triage_profile=_triage_profile(payload),
         case_facts=_case_facts(payload),
         key_dates=_key_dates(payload),
@@ -437,7 +457,7 @@ def load_casebook(casebook_path: Path, *, case_id: str) -> Casebook:
     if resolved.is_dir():
         raise ValueError(f"casebook path is a directory: {casebook_path}")
     casebook = casebook_from_dict(_load_json_object(resolved, "casebook"), path=resolved)
-    if casebook.case_id != case_id:
+    if casebook.case_id != case_id and not casebook.reusable_template:
         raise ValueError(
             f"casebook case_id '{casebook.case_id}' does not match case_id '{case_id}'"
         )
