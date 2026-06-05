@@ -1,0 +1,121 @@
+{
+  "analysis_windows": [],
+  "case_facts": [
+    {
+      "fact": "This reusable template assumes no case-specific incident story.",
+      "id": "storyless_image"
+    },
+    {
+      "fact": "Questions are limited to supported Windows disk triage artifacts and generated SIFTGuard outputs.",
+      "id": "supported_disk_triage_scope"
+    }
+  ],
+  "case_id": "generic-windows-disk-triage",
+  "case_questions": [
+    {
+      "evidence_classes": [
+        "mft",
+        "amcache",
+        "registry_run_keys",
+        "registry_user_activity"
+      ],
+      "id": "q_supported_artifact_families",
+      "question": "What supported artifact families were found and parsed?",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "mft"
+      ],
+      "id": "q_mft_timeline_activity",
+      "question": "What MFT timeline activity was normalized for analyst review?",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "registry_run_keys"
+      ],
+      "id": "q_registry_runonce_entries",
+      "question": "What Registry Run or RunOnce persistence-relevant entries were found?",
+      "status_policy": "registry_persistence",
+      "supported_by_scope": true
+    },
+    {
+      "evidence_classes": [
+        "amcache"
+      ],
+      "id": "q_amcache_program_presence",
+      "question": "What Amcache program-presence or execution-relevant indicators were normalized?",
+      "status_policy": "multi_artifact_execution_presence",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "registry_user_activity",
+        "userassist",
+        "recentdocs",
+        "opensavepidlmru",
+        "lastvisitedpidlmru",
+        "typedpaths"
+      ],
+      "id": "q_ntuser_user_activity",
+      "question": "What NTUSER user-activity artifacts were found?",
+      "status_policy": "case_window_activity",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [
+        "mft",
+        "amcache",
+        "registry_run_keys",
+        "registry_user_activity"
+      ],
+      "id": "q_findings_requiring_review",
+      "question": "What findings or candidates require analyst review?",
+      "supported_by_scope": "partial"
+    },
+    {
+      "evidence_classes": [],
+      "expected_status": "not_assessed",
+      "gap_reason": "Additional artifact families such as browser history, cloud sync logs, network telemetry, removable-device artifacts, EVTX, Prefetch, SRUM, ShellBags, Jump Lists, and memory images are outside current supported scope unless separately collected and parsed by supported workflows.",
+      "id": "q_outside_current_scope",
+      "question": "What important artifact families are outside current scope?",
+      "supported_by_scope": false
+    }
+  ],
+  "claim_boundaries": [],
+  "display_name": "Generic Windows Disk Triage",
+  "key_dates": [],
+  "reusable_template": true,
+  "time_zone": null,
+  "triage_profile": {
+    "file_extensions": [
+      ".doc",
+      ".docx",
+      ".xls",
+      ".xlsx",
+      ".ppt",
+      ".pptx",
+      ".pdf",
+      ".txt",
+      ".zip",
+      ".7z",
+      ".rar",
+      ".exe",
+      ".dll",
+      ".ps1",
+      ".bat",
+      ".cmd"
+    ],
+    "keywords": [],
+    "sensitive_paths": [
+      "Users",
+      "Desktop",
+      "Documents",
+      "Downloads",
+      "AppData",
+      "ProgramData",
+      "Temp"
+    ]
+  }
+}
