@@ -128,6 +128,10 @@ def build_self_correction_events(
 
     return {
         "case_id": case_id,
+        "casebook_id": casebook.case_id if casebook is not None else None,
+        "casebook_reusable_template": (
+            casebook.reusable_template if casebook is not None else None
+        ),
         "created_at": created_at,
         "mode": "claim_boundary_self_correction",
         "event_count": len(events),

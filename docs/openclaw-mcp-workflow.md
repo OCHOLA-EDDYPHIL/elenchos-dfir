@@ -140,6 +140,20 @@ operation:
 .venv/bin/python -m siftguard agent run-case ...
 ```
 
+## Casebook Selection
+
+Use `docs/casebooks/rocba-standard.json` for the ROCBA final validation/demo.
+Use `docs/casebooks/generic-windows-disk-triage.json` when the operator only
+has a Windows forensic image and no case-specific story. The generic casebook
+is marked `reusable_template: true`, so it can be used with arbitrary prepared
+case IDs while generated outputs preserve the actual prepared case ID and
+record the template identity separately.
+
+With the generic casebook, SIFTGuard performs conservative evidence-led triage
+and does not infer theft, exfiltration, APT attribution, or confirmed
+compromise. Case-specific conclusions require a case-specific JSON casebook
+plus supporting evidence in generated SIFTGuard outputs.
+
 ## Case Triage Workflow
 
 Example analyst request:

@@ -330,7 +330,7 @@ def test_synthetic_report_contains_no_forbidden_paths_or_legal_overclaims():
     for forbidden in ("/mnt/evidence", "/home/", "runs/", ".local/"):
         assert forbidden not in report
     for overclaim in (
-        "proves compromise",
+        "proves " "compromise",
         "irrefutable",
         "guaranteed",
     ):

@@ -118,6 +118,9 @@ def build_gap_analysis(
         "mode": "case_question_gap_analysis",
         "casebook_present": casebook is not None,
         "casebook_id": casebook.case_id if casebook is not None else None,
+        "casebook_reusable_template": (
+            casebook.reusable_template if casebook is not None else None
+        ),
         "case_questions_count": len(questions),
         "case_questions": questions,
         "status_counts": status_counts,

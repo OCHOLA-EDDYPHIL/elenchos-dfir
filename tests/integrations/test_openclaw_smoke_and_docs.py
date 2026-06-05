@@ -121,6 +121,10 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert "scripts/openclaw_siftguard_smoke.py --dry-run" in readme
     assert "examples/openclaw/case-triage.prompt.md" in readme
     assert "examples/openclaw/case-triage.prompt.md" in mcp_docs
+    assert "Casebook Selection" in mcp_docs
+    assert "docs/casebooks/generic-windows-disk-triage.json" in mcp_docs
+    assert "reusable_template: true" in mcp_docs
+    assert "docs/casebooks/generic-windows-disk-triage.json" in readme
     assert ("docs/demo/openclaw-rocba-gap-" + "demo-prompt.md") not in readme
     assert ("docs/demo/openclaw-gap-self-" + "correction-runbook.md") not in readme
     assert "self_correction_events.json" in mcp_docs
@@ -180,6 +184,8 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     assert "do not run destructive commands" in lowered
     assert "do not write to evidence" in lowered
     assert "No OpenClaw or model output is forensic evidence" in prompt
+    assert "docs/casebooks/generic-windows-disk-triage.json" in prompt
+    assert "Do not invent case allegations" in collapsed
     assert "repeat the generated final_wording and scope_boundary exactly" in collapsed
     assert ("SIFTGuard proves " + "theft") not in prompt
     assert ("SIFTGuard proves " + "exfiltration") not in prompt

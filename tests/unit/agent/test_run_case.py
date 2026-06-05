@@ -17,6 +17,8 @@ from siftguard.evidence.manifest import read_manifest
 from siftguard.parser.result import ParserResult
 
 CASE_ID = "rocba-standard"
+GENERIC_CASEBOOK_ID = "generic-windows-disk-triage"
+GENERIC_CASEBOOK_PATH = Path("docs/casebooks/generic-windows-disk-triage.json")
 FIXED_TIME = "2026-01-01T00:00:00Z"
 USER_ACTIVITY_FINAL_WORDING = (
     "SIFTGuard did not find sufficient support for a theft or exfiltration "
@@ -895,6 +897,65 @@ def test_json_casebook_input_is_accepted(tmp_path: Path):
     assert gap_analysis["casebook_present"] is True
     assert gap_analysis["case_questions_count"] == 1
     assert (output_dir / "case_questions.json").is_file()
+
+
+def test_reusable_generic_casebook_preserves_prepared_case_id(
+    tmp_path: Path,
+) -> None:
+    case_id = "storyless-image-001"
+    case_prep_path, _case_prep_dir, _source_root = write_case_prep(
+        tmp_path,
+        case_id=case_id,
+    )
+    output_dir = tmp_path / "runs" / case_id / "agent-run"
+
+    result = run_case_workflow(
+        artifact_manifest_path=case_prep_path,
+        casebook_path=GENERIC_CASEBOOK_PATH,
+        output_dir=output_dir,
+        max_iterations=10,
+        workflow_runner=fake_workflow_runner,
+        clock=fixed_clock,
+    )
+
+    case_questions = json.loads(
+        (output_dir / "case_questions.json").read_text(encoding="utf-8")
+    )
+    gap_analysis = json.loads((output_dir / "gap_analysis.json").read_text(encoding="utf-8"))
+    decision_trace = json.loads((output_dir / "decision_trace.json").read_text(encoding="utf-8"))
+    self_correction_events = json.loads(
+        (output_dir / "self_correction_events.json").read_text(encoding="utf-8")
+    )
+    report = (output_dir / "report.md").read_text(encoding="utf-8").casefold()
+
+    assert result.case_id == case_id
+    assert case_questions["case_id"] == case_id
+    assert case_questions["casebook_id"] == GENERIC_CASEBOOK_ID
+    assert case_questions["casebook_reusable_template"] is True
+    assert gap_analysis["case_id"] == case_id
+    assert gap_analysis["casebook_id"] == GENERIC_CASEBOOK_ID
+    assert gap_analysis["casebook_reusable_template"] is True
+    assert decision_trace["case_id"] == case_id
+    assert decision_trace["casebook_id"] == GENERIC_CASEBOOK_ID
+    assert decision_trace["casebook_reusable_template"] is True
+    assert self_correction_events["case_id"] == case_id
+    assert self_correction_events["casebook_id"] == GENERIC_CASEBOOK_ID
+    assert self_correction_events["casebook_reusable_template"] is True
+    assert self_correction_events["event_count"] == 0
+    assert case_questions["claim_boundaries"] == []
+    assert case_questions["status_counts"]["needs_review"] >= 1
+    assert case_questions["status_counts"]["not_assessed"] == 1
+    assert "q_what_was_stolen" not in {
+        question["question_id"] for question in case_questions["questions"]
+    }
+    for forbidden in (
+        "confirmed theft",
+        "confirmed exfiltration",
+        "confirmed apt",
+        "confirmed compromise",
+        "attribution",
+    ):
+        assert forbidden not in report
 
 
 def test_run_case_writes_case_question_outputs_and_report_sections(tmp_path: Path):
