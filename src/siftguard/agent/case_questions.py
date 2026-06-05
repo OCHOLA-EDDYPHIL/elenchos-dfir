@@ -540,8 +540,9 @@ def evaluate_case_questions(
         status = record["status"]
         status_counts[status] = status_counts.get(status, 0) + 1
     result = {
-        "case_id": casebook.case_id,
+        "case_id": adapted.case_id,
         "casebook_id": casebook.case_id,
+        "casebook_reusable_template": casebook.reusable_template,
         "created_at": created_at,
         "questions": questions,
         "status_counts": status_counts,

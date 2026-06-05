@@ -167,6 +167,10 @@ def _lifecycle_prelude_events(
             "status": "started",
             "extra": {
                 "casebook_present": casebook is not None,
+                "casebook_id": casebook.case_id if casebook is not None else None,
+                "casebook_reusable_template": (
+                    casebook.reusable_template if casebook is not None else None
+                ),
             },
         },
     ]
