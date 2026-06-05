@@ -233,12 +233,13 @@ emits a supportable finding when a coherent chain is present.
 | Evidence categories | `$MFT`, Registry, Amcache |
 | Audit entry count | 17 |
 
-## Self-Correction Fixture Run
+## Internal Verifier Fixture Run
 
-The self-correction fixture is synthetic and introduces an unsupported proposed
-`inferred` claim. The verifier detects missing evidence support, the correction
-path downgrades the finding, and the final report is regenerated from corrected
-findings.
+The verifier fixture is synthetic and introduces an unsupported proposed
+`inferred` claim. It remains useful for regression testing verifier downgrade
+behavior, but it is not the final OpenClaw self-correction path. The bounded
+OpenClaw workflow uses casebook-defined claim-boundary posture revisions
+recorded by SIFTGuard outputs.
 
 | Item | Value |
 | --- | --- |
@@ -270,6 +271,7 @@ Sanitized summary:
 | Validation status | `pass` |
 | Finding status counts | `{}` |
 | Case-question status counts | `not_assessed`: 4 |
+| Claim-boundary self-correction events | `claim-boundary-001`: 1 |
 
 Adapter trace outputs:
 
@@ -280,41 +282,27 @@ Adapter trace outputs:
 | `runs/openclaw-smoke/openclaw-trace/run_case.stdout` | Run-case adapter stdout |
 | `runs/openclaw-smoke/openclaw-trace/run_case.stderr` | Run-case adapter stderr |
 | `runs/openclaw-smoke/openclaw-trace/summary.json` | Combined smoke summary |
+| `runs/openclaw-smoke/agent-run/self_correction_events.json` | Casebook-defined claim-boundary posture event |
 
-## Synthetic Induced Self-Correction Path
+## Real-Gap OpenClaw Self-Correction Path
 
-The primary staged-evidence run did not reach a natural self-correction episode.
-Self-correction evidence was therefore generated separately from the repository's
-existing synthetic unsupported-finding fixture. This is not primary evidence
-accuracy data; it is controlled execution-log evidence for verifier and
-correction behavior.
+The final OpenClaw demo self-correction is not an induced error. OpenClaw calls
+the bounded SIFTGuard tools, reads generated outputs only, and discovers that
+the configured claim-boundary questions remain unsupported by the submitted
+artifact scope. SIFTGuard records this as `self_correction_events.json` from
+casebook metadata so OpenClaw can revise its final investigative posture without
+treating model output as evidence.
 
 Sanitized summary:
 
 | Item | Value |
 | --- | --- |
-| Case id | `CASE-SYN-INDUCED-CORRECTION` |
-| Initial verification status | `failed` |
-| Follow-up verification status | `passed` |
-| Agent status | `completed` |
-| Correction count | 2 |
-| Finding count | 1 |
-| Final finding status counts | `needs_review`: 1 |
-| Audit entry count | 10 |
-
-Audit event counts:
-
-| Event type | Count |
-| --- | ---: |
-| `verification_started` | 2 |
-| `verification_failed` | 2 |
-| `verification_completed` | 2 |
-| `correction_started` | 1 |
-| `correction_applied` | 2 |
-| `correction_completed` | 1 |
-
-The induced correction recorded an inventory re-check followed by a downgrade
-from unsupported `confirmed` to `needs_review`.
+| Event id | `claim-boundary-001` |
+| Phase | `claim_validation` |
+| Human intervention | `false` |
+| Source questions | Casebook-defined primary and related claim-boundary question IDs |
+| Final wording | SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope. |
+| Scope boundary | The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required. |
 
 ## Sanitized Examples
 
@@ -372,7 +360,7 @@ Issue #90 can be closed when this document is committed with validation output:
 
 - It documents generated execution-log fields and regeneration commands.
 - It records a full successful synthetic investigation path.
-- It records a synthetic induced self-correction path.
+- It records the bounded OpenClaw/MCP adapter path and real-gap posture sidecar.
 - It records the incomplete primary staged-evidence attempt honestly.
 
 Issue #89 should remain open until false positives, missed artifacts,

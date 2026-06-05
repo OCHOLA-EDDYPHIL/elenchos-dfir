@@ -5,6 +5,7 @@ from typing import Any
 from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
 from siftguard.agent.case_questions import QUESTION_STATUSES
 from siftguard.agent.casebook import Casebook
+from siftguard.agent.claim_boundaries import build_claim_boundary_records
 
 
 def build_gap_analysis(
@@ -91,6 +92,26 @@ def build_gap_analysis(
                 parser_coverage_gaps.extend(
                     dict(gap) for gap in gaps if isinstance(gap, dict)
                 )
+    claim_boundaries = build_claim_boundary_records(
+        casebook=casebook,
+        case_questions={"questions": questions},
+    )
+    unsupported_areas: list[dict[str, Any]] = [
+        {
+            "area": "memory forensics",
+            "status": "not_assessed",
+            "reason": "Memory is staged for provenance only.",
+        }
+    ]
+    unsupported_areas.extend(
+        {
+            "area": boundary.get("claim_area"),
+            "status": boundary.get("status", "not_assessed"),
+            "reason": boundary.get("scope_boundary"),
+            "source_question_ids": boundary.get("source_question_ids", []),
+        }
+        for boundary in claim_boundaries
+    )
     return {
         "case_id": adapted.case_id,
         "created_at": created_at,
@@ -109,6 +130,7 @@ def build_gap_analysis(
             "profile_coverage": profile_coverage,
         },
         "parser_coverage_gaps": parser_coverage_gaps,
+        "claim_boundaries": claim_boundaries,
         "memory_sources": [
             {
                 "source_id": source["source_id"],
@@ -119,21 +141,7 @@ def build_gap_analysis(
             }
             for source in adapted.memory_sources
         ],
-        "unsupported_areas": [
-            {
-                "area": "memory forensics",
-                "status": "not_assessed",
-                "reason": "Memory is staged for provenance only.",
-            },
-            {
-                "area": "theft and exfiltration reconstruction",
-                "status": "not_assessed",
-                "reason": (
-                    "Current final scope excludes browser, cloud, USB, network, "
-                    "file-open, and memory artifacts."
-                ),
-            },
-        ],
+        "unsupported_areas": unsupported_areas,
         "missing_parser_eligible_artifacts": [
             artifact
             for artifact in adapted.prepared_artifacts

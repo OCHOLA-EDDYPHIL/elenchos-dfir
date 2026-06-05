@@ -523,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"case_questions={summary['case_questions']}")
             print(f"decision_trace={summary['decision_trace']}")
             print(f"gap_analysis={summary['gap_analysis']}")
+            print(f"self_correction_events={summary['self_correction_events']}")
             print(f"performance_summary={summary['performance_summary']}")
         else:
             print(f"agent_run={args.output_dir.resolve() / 'agent_run.json'}")
