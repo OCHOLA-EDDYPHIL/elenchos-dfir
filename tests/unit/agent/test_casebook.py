@@ -31,6 +31,13 @@ def test_committed_rocba_casebook_loads_successfully():
         "q_memory",
     }
     assert casebook.analysis_windows[0].id == "absence_window"
+    assert casebook.claim_boundaries[0].claim_area == "theft/exfiltration"
+    assert casebook.claim_boundaries[0].question_ids == (
+        "q_what_was_stolen",
+        "q_where_transferred",
+        "q_how_stolen",
+    )
+    assert casebook.claim_boundaries[0].related_question_ids == ("q_memory",)
 
 
 def test_yaml_casebook_is_rejected(tmp_path: Path):
@@ -48,4 +55,14 @@ def test_casebook_case_id_mismatch_fails_clearly(tmp_path: Path):
     path.write_text(json.dumps(source), encoding="utf-8")
 
     with pytest.raises(ValueError, match="does not match case_id"):
+        load_casebook(path, case_id=CASE_ID)
+
+
+def test_casebook_claim_boundary_rejects_unknown_question_id(tmp_path: Path):
+    source = json.loads(Path("docs/casebooks/rocba-standard.json").read_text(encoding="utf-8"))
+    source["claim_boundaries"][0]["question_ids"] = ["q_missing"]
+    path = tmp_path / "casebook.json"
+    path.write_text(json.dumps(source), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="references unknown case question"):
         load_casebook(path, case_id=CASE_ID)

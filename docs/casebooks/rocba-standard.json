@@ -105,6 +105,32 @@
       "supported_by_scope": false
     }
   ],
+  "claim_boundaries": [
+    {
+      "claim_area": "theft/exfiltration",
+      "emit_when_all_statuses": [
+        "not_assessed"
+      ],
+      "final_wording": "SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.",
+      "initial_investigative_pressure": "The case asks what may have been taken, how transfer occurred, and where it went.",
+      "question_ids": [
+        "q_what_was_stolen",
+        "q_where_transferred",
+        "q_how_stolen"
+      ],
+      "recommended_next_artifacts": [
+        "browser history",
+        "cloud sync logs",
+        "network telemetry",
+        "removable-device artifacts",
+        "memory analysis"
+      ],
+      "related_question_ids": [
+        "q_memory"
+      ],
+      "scope_boundary": "The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required."
+    }
+  ],
   "display_name": "ROCBA Standard Forensic Case",
   "key_dates": [
     {

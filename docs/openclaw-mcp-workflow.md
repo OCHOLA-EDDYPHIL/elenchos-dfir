@@ -140,12 +140,12 @@ operation:
 .venv/bin/python -m siftguard agent run-case ...
 ```
 
-## ROCBA Demo Workflow
+## Case Triage Workflow
 
 Example analyst request:
 
 ```text
-Prepare and triage the ROCBA case, then summarize supported findings,
+Prepare and triage the case, then summarize supported findings,
 unsupported gaps, and trace paths. Do not inspect raw evidence directly.
 Use only the SIFTGuard tools.
 ```
@@ -165,12 +165,18 @@ Expected generated outputs include:
 - `runs/<CASE_ID>/agent-run/audit.jsonl`
 - `runs/<CASE_ID>/agent-run/decision_trace.json`
 - `runs/<CASE_ID>/agent-run/gap_analysis.json`
+- `runs/<CASE_ID>/agent-run/self_correction_events.json`
 - `runs/<CASE_ID>/agent-run/performance_summary.json`
 - `runs/<CASE_ID>/agent-run/openclaw-trace/*.stdout|*.stderr`
 
-Unsupported theft contents, transfer destination, exfiltration method, and
-memory questions remain `not_assessed` unless future supported parsers produce
-direct evidence.
+Casebooks may define claim-boundary metadata. When generated case-question
+statuses satisfy a configured boundary, SIFTGuard records that posture revision
+in `self_correction_events.json`, `gap_analysis.json`, and summary/validation
+tool output. OpenClaw should repeat the generated `final_wording` and
+`scope_boundary` exactly and should not replace them with model wording.
+
+Use [`examples/openclaw/case-triage.prompt.md`](../examples/openclaw/case-triage.prompt.md)
+as a reusable operator prompt.
 
 ## Model Statement
 

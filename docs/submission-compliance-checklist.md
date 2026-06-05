@@ -30,7 +30,7 @@ into proof of compromise by itself.
 | SIFT/Linux terminal compatibility | Submission path runs from a Linux/SIFT-compatible terminal and uses documented SIFT parser tooling. | `README.md`, `docs/parser-tooling-matrix.md`, `docs/parser-validation.md`. | `[ ]` |
 | Agentic runtime explanation | Agent runtime is documented as plan, execute, verify, correct, report, with OpenClaw as constrained orchestration over SIFTGuard typed adapter operations. | `docs/agent-workflow.md`, `docs/openclaw-mcp-workflow.md`. | `[ ]` |
 | Protocol SIFT / MCP integration explanation | Typed MCP/schema boundaries and SIFT tool integration are described without exposing arbitrary shell execution. | `docs/architecture.md`, `docs/parser-contracts.md`, `docs/security-boundaries.md`, `docs/openclaw-mcp-workflow.md`. | `[ ]` |
-| Self-correction demonstration | Demo and logs show at least one detected failure, downgrade, retry, or correction with the result recorded. | `docs/demo.md`, `docs/demo-script.md`, `docs/agent-workflow.md`, generated local run logs. | `[ ]` |
+| Self-correction demonstration | Demo and logs show OpenClaw discovering a casebook-defined claim-boundary gap and revising posture without treating model output as evidence. | `docs/demo.md`, `docs/openclaw-mcp-workflow.md`, generated `self_correction_events.json`. | `[ ]` |
 | Accuracy validation | Accuracy report records confirmed, inferred, rejected, and needs-review findings, plus false positives, misses, and unsupported claims. | `docs/accuracy-report.md`, `docs/parser-validation.md`. | `[ ]` |
 | Secondary dataset validation | If suitable secondary evidence is available, repeat validation and record false positives, missed artifacts, and unsupported claims; lack of suitable secondary evidence is noted but not a blocker. | `docs/accuracy-report.md`, final checklist notes. | `[ ]` |
 | Structured investigative narrative | Final report distinguishes observations, validated findings, inferences, rejected claims, and analyst-review items. | Generated `report.md` under local `runs/`, `docs/agent-workflow.md`, `docs/limitations.md`. | `[ ]` |
@@ -51,12 +51,12 @@ into proof of compromise by itself.
 
 | Evaluation criterion | Evaluation target | Where this repo demonstrates it | Remaining final check |
 | --- | --- | --- | --- |
-| Autonomous execution quality | The agent plans, executes constrained steps, verifies outputs, handles failures, and records self-correction without broad shell authority. | `docs/agent-workflow.md`, `docs/openclaw-mcp-workflow.md`, generated `agent_run.json`, generated `audit.jsonl`. | Demo video and packaged logs show one successful path and one self-correction path. |
+| Autonomous execution quality | OpenClaw plans over bounded SIFTGuard tools, SIFTGuard executes constrained steps, validates outputs, and records casebook-defined self-correction without broad shell authority. | `docs/agent-workflow.md`, `docs/openclaw-mcp-workflow.md`, generated `agent_run.json`, generated `audit.jsonl`, generated `self_correction_events.json`. | Demo video and packaged logs show the bounded OpenClaw path and posture revision. |
 | IR accuracy | Findings are evidence-backed, unsupported claims are rejected or downgraded, and false positives / missed artifacts are recorded honestly. | `docs/accuracy-report.md`, `docs/parser-validation.md`, generated `findings.json`, generated `report.md`. | Complete final accuracy report for the demo case; add secondary dataset notes if suitable evidence is available. |
 | Breadth/depth of analysis | Depth stays focused on Windows disk artifacts instead of shallow expansion into unsupported domains. | `docs/dataset.md`, `docs/parser-tooling-matrix.md`, `docs/limitations.md`. | Confirm final docs keep scope to MFT, Registry Run Keys, and Amcache. |
 | Constraint implementation | Guardrails are architectural: typed schemas, constrained argv execution, evidence-root boundaries, and local-only generated outputs. | `docs/architecture.md`, `docs/security-boundaries.md`, `docs/parser-contracts.md`. | Confirm README and demo avoid broad shell or unsupported tool claims. |
 | Audit trail quality | Each finding can be traced from report to finding object, evidence reference, tool execution, and audit log entry. | Generated `audit.jsonl`, `findings.json`, `report.md`, `docs/agent-workflow.md`. | Package sanitized logs or regeneration instructions and verify each final finding maps to a log entry. |
-| Usability/documentation | A practitioner can install, stage evidence, run the workflow, understand outputs, and see limitations without guessing. | `README.md`, `docs/dataset.md`, `docs/demo-script.md`, `docs/limitations.md`. | Review README links, final checklist, and demo script before release. |
+| Usability/documentation | A practitioner can install, stage evidence, run the workflow, understand outputs, and see limitations without guessing. | `README.md`, `docs/dataset.md`, `docs/demo.md`, `docs/limitations.md`. | Review README links and final checklist before release. |
 
 ## Final Go/No-Go Checklist
 
@@ -65,7 +65,7 @@ into proof of compromise by itself.
 - [ ] Dataset documentation complete.
 - [ ] Accuracy report complete.
 - [ ] Execution logs packaged and sanitized.
-- [ ] Demo script complete.
+- [ ] Demo workflow reviewed.
 - [ ] Demo video recorded and public.
 - [ ] Repo hygiene gate passed.
 - [ ] Release tag created.

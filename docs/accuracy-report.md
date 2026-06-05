@@ -124,6 +124,10 @@ rejected, and 0 MFT-only findings. It does not claim confirmed compromise.
 The self-correction control is synthetic and sanitized. It introduces an
 unsupported proposed `inferred` claim into an otherwise partial MFT + Amcache
 fixture without Registry persistence support.
+It is an internal verifier regression control, not the final OpenClaw demo
+self-correction story. The final OpenClaw path uses casebook-defined
+claim-boundary metadata through the bounded MCP/tool adapter documented in
+`docs/openclaw-mcp-workflow.md`.
 
 Command:
 

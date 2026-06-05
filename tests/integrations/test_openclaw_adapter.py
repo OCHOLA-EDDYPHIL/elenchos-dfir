@@ -25,6 +25,8 @@ from siftguard.integrations.tool_adapter import (
 )
 
 CASE_ID = "case-openclaw-test"
+FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -82,6 +84,30 @@ def write_good_run(output_dir: Path) -> None:
     )
     _write_json(output_dir / "gap_analysis.json", {"case_id": CASE_ID})
     _write_json(
+        output_dir / "self_correction_events.json",
+        {
+            "case_id": CASE_ID,
+            "created_at": "2026-01-01T00:00:00Z",
+            "event_count": 1,
+            "events": [
+                {
+                    "event_id": "claim-boundary-001",
+                    "final_wording": FINAL_WORDING,
+                    "human_intervention": False,
+                    "phase": "claim_validation",
+                    "scope_boundary": SCOPE_BOUNDARY,
+                    "source_question_ids": [
+                        "q_claim_subject",
+                        "q_claim_transfer",
+                        "q_claim_method",
+                        "q_claim_context",
+                    ],
+                }
+            ],
+            "mode": "claim_boundary_self_correction",
+        },
+    )
+    _write_json(
         output_dir / "performance_summary.json",
         {"case_id": CASE_ID, "run_status": "completed"},
     )
@@ -100,30 +126,34 @@ def write_good_run(output_dir: Path) -> None:
     questions = [
         {
             "linked_evidence_refs": [],
-            "question": "What was stolen?",
-            "question_id": "q_what_was_stolen",
+            "question": "What claim subject is supported?",
+            "question_id": "q_claim_subject",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "Where was it transferred?",
-            "question_id": "q_where_transferred",
+            "question": "What transfer path is supported?",
+            "question_id": "q_claim_transfer",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "How was it stolen?",
-            "question_id": "q_how_stolen",
+            "question": "What method is supported?",
+            "question_id": "q_claim_method",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
             "linked_evidence_refs": [],
-            "question": "What did memory show?",
-            "question_id": "q_memory",
+            "question": "What additional context is supported?",
+            "question_id": "q_claim_context",
             "reason": "unsupported",
+            "supported_by_current_scope": False,
             "status": "not_assessed",
         },
         {
@@ -332,6 +362,7 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
                     f"case_questions={output_dir / 'case_questions.json'}",
                     f"decision_trace={output_dir / 'decision_trace.json'}",
                     f"gap_analysis={output_dir / 'gap_analysis.json'}",
+                    f"self_correction_events={output_dir / 'self_correction_events.json'}",
                     f"performance_summary={output_dir / 'performance_summary.json'}",
                 ]
             ),
@@ -352,6 +383,7 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
     assert result["command_name"] == "siftguard agent run-case"
     assert result["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert result["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
+    assert str(result["self_correction_events"]).endswith("self_correction_events.json")
     assert "parser_status_summary" in result
 
 
@@ -395,12 +427,14 @@ def test_summarize_run_parses_counts_and_traceability(tmp_path: Path):
 
     assert summary["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert summary["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
+    assert summary["real_gap_self_correction_events"][0]["final_wording"] == FINAL_WORDING
     assert summary["amcache_event_count"] == 1
     assert summary["registry_user_activity_family_counts"] == {"recentdocs": 1}
     trace_files = summary["required_trace_files"]
     assert isinstance(trace_files, dict)
     assert trace_files["audit"].endswith("audit.jsonl")
     assert trace_files["decision_trace"].endswith("decision_trace.json")
+    assert trace_files["self_correction_events"].endswith("self_correction_events.json")
     assert trace_files["trace_run_case_stdout"].endswith("run_case.stdout")
     assert trace_files["trace_run_case_stderr"].endswith("run_case.stderr")
 
@@ -415,6 +449,8 @@ def test_validate_run_outputs_passes_for_safe_generated_outputs(tmp_path: Path):
     assert validation["missing_files"] == []
     assert validation["forbidden_wording_hits"] == []
     assert validation["unsupported_question_violations"] == []
+    assert validation["self_correction_event_count"] == 1
+    assert FINAL_WORDING in validation["notes"]
 
 
 def test_validate_run_outputs_fails_on_forbidden_wording(tmp_path: Path):
@@ -432,11 +468,15 @@ def test_validate_run_outputs_detects_missing_required_files(tmp_path: Path):
     output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
     write_good_run(output_dir)
     (output_dir / "decision_trace.json").unlink()
+    (output_dir / "self_correction_events.json").unlink()
 
     validation = validate_run_outputs({"output_dir": str(output_dir)})
 
     assert validation["validation_status"] == "fail"
-    assert validation["missing_files"] == ["decision_trace.json"]
+    assert validation["missing_files"] == [
+        "decision_trace.json",
+        "self_correction_events.json",
+    ]
 
 
 def test_validate_run_outputs_detects_unsupported_question_evidence_refs(
@@ -453,7 +493,7 @@ def test_validate_run_outputs_detects_unsupported_question_evidence_refs(
     assert validation["validation_status"] == "fail"
     violations = validation["unsupported_question_violations"]
     assert isinstance(violations, list)
-    assert violations[0]["question_id"] == "q_what_was_stolen"
+    assert violations[0]["question_id"] == "q_claim_subject"
 
 
 def test_summarize_and_validate_do_not_read_raw_evidence_paths(

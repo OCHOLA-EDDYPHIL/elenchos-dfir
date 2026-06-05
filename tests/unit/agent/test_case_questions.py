@@ -444,6 +444,7 @@ def test_rejected_finding_maps_question_to_rejected(tmp_path: Path):
 
 def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
     casebook, adapted = case_context(tmp_path)
+    expected_boundary = casebook.claim_boundaries[0]
     rows = [
         event(
             event_id="evt_mft",
@@ -563,7 +564,9 @@ def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
     assert first == second
     assert len(first.splitlines()) < 160
     assert "## Traceability" in first
-    assert "What SIFTGuard did not prove:" in first
+    assert "What SIFTGuard did not assess within the submitted artifact scope:" in first
+    assert expected_boundary.final_wording in first
+    assert expected_boundary.scope_boundary in first
     assert "F-LINK-024" not in first
     assert "F-LINK-024" in question_by_id(case_questions, "q_when_activity")[
         "linked_finding_ids"
