@@ -1,7 +1,9 @@
 .env
 .local/
-.local/presentation/
+
+# Local-only submission and presentation artifacts
 .local/submission/
+.local/presentation/
 .venv/
 __pycache__/
 .pytest_cache/
@@ -16,6 +18,14 @@ runs/
 outputs/
 analysis/
 reports/generated/
+
+# Devpost/private final-submission artifacts must not be tracked
+docs/accuracy-report.md
+docs/demo-script.md
+docs/demo.md
+docs/demo/
+docs/submission-checklist.md
+docs/submission-compliance-checklist.md
 
 *.E01
 *.Ex01
