@@ -327,6 +327,13 @@ model-agnostic forensic core. The model may request typed tools, but SIFTGuard
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
 
+### Agent orchestration guidance
+
+This repository includes [`AGENTS.md`](AGENTS.md) for OpenClaw, Claude Code,
+and other agentic CLI hosts. It instructs agents to use SIFTGuard as a bounded
+forensic orchestration layer, preserve read-only evidence handling, summarize
+progress telemetry, validate outputs, and avoid unsupported claims.
+
 See [docs/openclaw-mcp-workflow.md](docs/openclaw-mcp-workflow.md). A reusable
 operator prompt is available at
 [examples/openclaw/case-triage.prompt.md](examples/openclaw/case-triage.prompt.md).
@@ -407,16 +414,13 @@ events while downgrading the final status to `needs_review`.
   traces, private paths, hostnames, usernames, tokens, VM files, or disk images.
 - Commit only intentionally sanitized documentation or examples.
 
-## Submission Readiness Map
+## Documentation Map
 
 | Item | Repo-relative location |
 | --- | --- |
-| Final submission compliance checklist | `docs/submission-compliance-checklist.md` |
 | Architecture and data flow | `docs/architecture.md` |
 | Evidence dataset handling | `docs/dataset.md` |
-| Accuracy report template | `docs/accuracy-report.md` |
 | Execution-log traceability | `docs/execution-log-traceability.md` |
-| Demo workflow | `docs/demo.md` |
 | Limitations | `docs/limitations.md` |
 | Security boundaries | `docs/security-boundaries.md` |
 | Parser tooling matrix | `docs/parser-tooling-matrix.md` |
