@@ -430,11 +430,14 @@ def test_summarize_run_parses_counts_and_traceability(tmp_path: Path):
     assert summary["real_gap_self_correction_events"][0]["final_wording"] == FINAL_WORDING
     assert summary["amcache_event_count"] == 1
     assert summary["registry_user_activity_family_counts"] == {"recentdocs": 1}
+    assert summary["progress_trace"].endswith("progress.jsonl")
+    assert summary["progress_event_count"] == 1
     trace_files = summary["required_trace_files"]
     assert isinstance(trace_files, dict)
     assert trace_files["audit"].endswith("audit.jsonl")
     assert trace_files["decision_trace"].endswith("decision_trace.json")
     assert trace_files["self_correction_events"].endswith("self_correction_events.json")
+    assert trace_files["progress"].endswith("progress.jsonl")
     assert trace_files["trace_run_case_stdout"].endswith("run_case.stdout")
     assert trace_files["trace_run_case_stderr"].endswith("run_case.stderr")
 
@@ -447,10 +450,36 @@ def test_validate_run_outputs_passes_for_safe_generated_outputs(tmp_path: Path):
 
     assert validation["validation_status"] == "pass"
     assert validation["missing_files"] == []
+    assert "progress.jsonl" not in validation["missing_files"]
     assert validation["forbidden_wording_hits"] == []
     assert validation["unsupported_question_violations"] == []
     assert validation["self_correction_event_count"] == 1
     assert FINAL_WORDING in validation["notes"]
+
+
+def test_validate_run_outputs_accepts_optional_progress_trace(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+    (output_dir / "progress.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "case_id": CASE_ID,
+                "phase": "run_case",
+                "status": "completed",
+                "message": "run_case completed",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_run_outputs({"output_dir": str(output_dir)})
+
+    assert validation["validation_status"] == "pass"
+    assert validation["progress_trace"].endswith("progress.jsonl")
+    assert validation["progress_event_count"] == 2
 
 
 def test_validate_run_outputs_fails_on_forbidden_wording(tmp_path: Path):

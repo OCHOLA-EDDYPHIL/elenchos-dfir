@@ -48,6 +48,12 @@ from siftguard.parser.registry_user_activity import (
 )
 from siftguard.parser.result import ParserResult
 from siftguard.policy.paths import is_relative_to
+from siftguard.progress import (
+    ProgressEvent,
+    append_progress_event,
+    progress_display_rows,
+    read_progress_events,
+)
 from siftguard.reporting.markdown_report import render_markdown_report
 from siftguard.triage import (
     CASE_WINDOW,
@@ -137,6 +143,7 @@ class AgentWorkflowPaths:
     report_path: Path
     audit_path: Path
     agent_run_path: Path
+    progress_path: Path
 
 
 @dataclass(slots=True)
@@ -233,6 +240,7 @@ def _workflow_paths(output_dir: Path) -> AgentWorkflowPaths:
         report_path=_resolve_output_path(output_dir, "report.md"),
         audit_path=_resolve_output_path(output_dir, "audit.jsonl"),
         agent_run_path=_resolve_output_path(output_dir, "agent_run.json"),
+        progress_path=_resolve_output_path(output_dir, "progress.jsonl"),
     )
 
 
@@ -245,6 +253,7 @@ def _clear_previous_agent_outputs(paths: AgentWorkflowPaths) -> None:
         paths.report_path,
         paths.audit_path,
         paths.agent_run_path,
+        paths.progress_path,
     ):
         if path.exists():
             if path.is_dir():
@@ -557,6 +566,31 @@ def _append_agent_audit_prelude(
             extra=extra,
             clock=context.clock,
         )
+
+
+def _progress_phase_for_agent_phase(phase: AgentPhase) -> str | None:
+    if phase is AgentPhase.PARSE:
+        return "normalize/select"
+    if phase is AgentPhase.REPORT:
+        return "report"
+    return None
+
+
+def _append_progress(
+    context: AgentWorkflowContext,
+    *,
+    phase: str,
+    status: str,
+    message: str,
+) -> ProgressEvent:
+    return append_progress_event(
+        context.paths.progress_path,
+        case_id=context.case_id,
+        phase=phase,
+        status=status,
+        message=message,
+        timestamp=context.clock(),
+    )
 
 
 def _artifact_type_counts(artifacts: list[EvidenceArtifact]) -> dict[str, int]:
@@ -1503,6 +1537,7 @@ def _run_report_phase(context: AgentWorkflowContext) -> dict[str, Any]:
         findings=context.findings,
         limitations=limitations,
         coverage_summary=context.coverage_summary,
+        progress_events=progress_display_rows(read_progress_events(context.paths.progress_path)),
     )
     context.paths.report_path.write_text(report, encoding="utf-8")
     return {
@@ -1685,6 +1720,7 @@ def _run_output_refs(paths: AgentWorkflowPaths) -> dict[str, str]:
         "subject_timelines": paths.timelines_path,
         "findings": paths.findings_path,
         "report": paths.report_path,
+        "progress": paths.progress_path,
     }
     refs = {"agent_run": _output_ref(paths.agent_run_path, paths.output_dir)}
     refs.update(
@@ -1818,6 +1854,12 @@ def run_agent_workflow(
         run_id=run.run_id,
         status=run.status.value,
     )
+    _append_progress(
+        context,
+        phase="run_case",
+        status="started",
+        message="run_case started",
+    )
     if input_source is not None:
         append_agent_audit_event(
             context.paths.audit_path,
@@ -1872,6 +1914,14 @@ def run_agent_workflow(
             step=running_step,
             status=running_step.status.value,
         )
+        progress_phase = _progress_phase_for_agent_phase(phase)
+        if progress_phase is not None:
+            _append_progress(
+                context,
+                phase=progress_phase,
+                status="started",
+                message=f"{progress_phase} started",
+            )
 
         try:
             outputs = _run_phase(context, phase, run)
@@ -1995,6 +2045,20 @@ def run_agent_workflow(
             run.steps.append(completed_step)
             if status is AgentStepStatus.COMPLETED:
                 state.completed_steps.append(completed_step.step_id)
+            if progress_phase is not None:
+                if progress_phase == "normalize/select":
+                    message = (
+                        "normalize/select completed with "
+                        f"{outputs.get('event_count', 0)} selected event(s)"
+                    )
+                else:
+                    message = f"{progress_phase} completed"
+                _append_progress(
+                    context,
+                    phase=progress_phase,
+                    status="completed",
+                    message=message,
+                )
             _append_agent_audit(
                 context,
                 action="agent_step_completed",
@@ -2017,6 +2081,13 @@ def run_agent_workflow(
             )
         except Exception as exc:
             error = str(exc)
+            if progress_phase is not None:
+                _append_progress(
+                    context,
+                    phase=progress_phase,
+                    status="failed",
+                    message=f"{progress_phase} failed",
+                )
             failed_step = _make_step(
                 phase=phase,
                 status=AgentStepStatus.FAILED,
@@ -2042,6 +2113,12 @@ def run_agent_workflow(
                 status=AgentRunStatus.FAILED.value,
                 error=error,
             )
+            _append_progress(
+                context,
+                phase="run_case",
+                status="failed",
+                message="run_case failed",
+            )
             return _finalize_run(
                 context=context,
                 run=run,
@@ -2050,6 +2127,12 @@ def run_agent_workflow(
             )
 
     final_status = AgentRunStatus.NEEDS_REVIEW if run.errors else AgentRunStatus.COMPLETED
+    _append_progress(
+        context,
+        phase="run_case",
+        status=final_status.value,
+        message=f"run_case {final_status.value}",
+    )
     _append_agent_audit(
         context,
         action="agent_run_completed",

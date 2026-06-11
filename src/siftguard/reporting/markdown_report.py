@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 from siftguard.correlation.models import SubjectTimeline
+from siftguard.progress import (
+    ALLOWED_PROGRESS_PHASES,
+    ALLOWED_PROGRESS_STATUSES,
+    validate_progress_message,
+)
 from siftguard.validation.models import ClaimStatus, EvidenceRef, Finding
 
 
@@ -16,6 +21,7 @@ class ReportInput:
     findings: Sequence[Finding] = ()
     limitations: Sequence[str] = ()
     coverage_summary: Mapping[str, Any] | None = None
+    progress_events: Sequence[Mapping[str, Any]] = ()
 
     def __post_init__(self) -> None:
         self.case_id = _validate_required_string("case_id", self.case_id)
@@ -27,6 +33,7 @@ class ReportInput:
             Mapping,
         ):
             raise TypeError("coverage_summary must be a mapping when provided")
+        self.progress_events = _validate_progress_events(self.progress_events)
 
 
 @dataclass(slots=True)
@@ -62,6 +69,30 @@ def _validate_findings(values: Sequence[Finding]) -> tuple[Finding, ...]:
     if not all(isinstance(value, Finding) for value in value_tuple):
         raise TypeError("findings must contain only validated Finding instances")
     return value_tuple
+
+
+def _validate_progress_events(values: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, str], ...]:
+    value_tuple = tuple(values)
+    sanitized: list[Mapping[str, str]] = []
+    required = {"timestamp", "case_id", "phase", "status", "message"}
+    for value in value_tuple:
+        if not isinstance(value, Mapping):
+            raise TypeError("progress_events must contain only mappings")
+        if set(value) != required:
+            raise ValueError("progress events must contain exactly required fields")
+        row: dict[str, str] = {}
+        for key in sorted(required):
+            item = value[key]
+            if not isinstance(item, str) or not item:
+                raise ValueError("progress event fields must be non-empty strings")
+            row[key] = item
+        if row["phase"] not in ALLOWED_PROGRESS_PHASES:
+            raise ValueError("progress event phase is not allowed")
+        if row["status"] not in ALLOWED_PROGRESS_STATUSES:
+            raise ValueError("progress event status is not allowed")
+        row["message"] = validate_progress_message(row["message"])
+        sanitized.append(row)
+    return tuple(sanitized)
 
 
 def _finding_sort_key(finding: Finding) -> tuple[str, str]:
@@ -269,6 +300,21 @@ def _render_coverage_summary(lines: list[str], coverage: Mapping[str, Any] | Non
     lines.append("")
 
 
+def _render_execution_progress(
+    lines: list[str],
+    progress_events: Sequence[Mapping[str, str]],
+) -> None:
+    if not progress_events:
+        return
+    lines.append("## Execution Progress")
+    for event in progress_events:
+        lines.append(
+            f"- Phase: `{event['phase']}`; status=`{event['status']}`; "
+            f"timestamp=`{event['timestamp']}`; {event['message']}"
+        )
+    lines.append("")
+
+
 def _render_subject_timelines(lines: list[str], timelines: Sequence[SubjectTimeline]) -> None:
     lines.append("## Subject Timeline")
     if not timelines:
@@ -382,6 +428,7 @@ def _render_report(report: ReportInput) -> str:
     lines = ["# Case Report", ""]
     _render_case_summary(lines, report, sections)
     _render_coverage_summary(lines, report.coverage_summary)
+    _render_execution_progress(lines, report.progress_events)
     _render_subject_timelines(lines, timelines)
     _render_finding_list(
         lines,
@@ -414,6 +461,7 @@ def render_markdown_report(
     findings: Sequence[Finding],
     limitations: Sequence[str] = (),
     coverage_summary: Mapping[str, Any] | None = None,
+    progress_events: Sequence[Mapping[str, Any]] = (),
 ) -> str:
     report = ReportInput(
         case_id=case_id,
@@ -421,6 +469,7 @@ def render_markdown_report(
         findings=findings,
         limitations=limitations,
         coverage_summary=coverage_summary,
+        progress_events=progress_events,
     )
     return _render_report(report)
 

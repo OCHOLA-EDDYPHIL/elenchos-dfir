@@ -290,6 +290,33 @@ def test_report_renders_coverage_summary_when_provided():
     assert "deterministic_fill_selected=10" in coverage
 
 
+def test_report_renders_execution_progress_when_provided():
+    report = render_markdown_report(
+        case_id=CASE_ID,
+        timelines=[],
+        findings=[],
+        progress_events=[
+            {
+                "timestamp": "2026-01-01T00:00:00Z",
+                "case_id": CASE_ID,
+                "phase": "normalize/select",
+                "status": "completed",
+                "message": "normalize/select completed with 3 selected event(s)",
+            }
+        ],
+    )
+    progress = section(report, "## Execution Progress")
+
+    assert "Phase: `normalize/select`; status=`completed`" in progress
+    assert "3 selected event(s)" in progress
+
+
+def test_report_omits_execution_progress_without_events():
+    report = render_markdown_report(case_id=CASE_ID, timelines=[], findings=[])
+
+    assert "## Execution Progress" not in report
+
+
 def test_report_output_is_deterministic_even_with_reversed_inputs():
     timelines = [subject_timeline(), SubjectTimeline(subject="example-a.exe", events=[])]
     findings = [

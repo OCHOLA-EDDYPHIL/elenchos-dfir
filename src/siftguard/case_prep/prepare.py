@@ -39,6 +39,7 @@ from siftguard.policy.paths import (
     is_relative_to,
     validate_generated_output_dir,
 )
+from siftguard.progress import append_progress_event, progress_path_for_output_dir
 
 
 @dataclass(slots=True)
@@ -420,6 +421,15 @@ def prepare_case(
         forbidden_roots=tuple(_source_roots_for_safety(manifest)),
     )
     resolved_output_dir.mkdir(parents=True, exist_ok=True)
+    progress_path = progress_path_for_output_dir(resolved_output_dir)
+    append_progress_event(
+        progress_path,
+        case_id=case_id,
+        phase="prepare_case",
+        status="started",
+        message=f"prepare_case started for {len(manifest.sources)} source(s)",
+        timestamp=clock(),
+    )
     if local_manifest_path is not None:
         write_source_manifest(manifest, local_manifest_path, include_local_paths=True)
 
@@ -546,6 +556,18 @@ def prepare_case(
             "coverage_gap_count": len(coverage_gaps),
             "prepared_artifact_count": len(prepared_artifacts),
         },
+    )
+    progress_status = "completed" if status == "completed" else "partial_success"
+    append_progress_event(
+        progress_path,
+        case_id=case_id,
+        phase="prepare_case",
+        status=progress_status,
+        message=(
+            f"prepare_case {progress_status} with {len(prepared_artifacts)} "
+            f"prepared artifact(s) and {len(coverage_gaps)} coverage gap(s)"
+        ),
+        timestamp=clock(),
     )
 
     return CasePrepareResult(

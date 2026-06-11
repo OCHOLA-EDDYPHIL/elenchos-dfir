@@ -664,6 +664,9 @@ def run_case_output_summary(result: RunCaseResult) -> dict[str, str | int | None
         "gap_analysis": str(result.gap_analysis_path),
         "self_correction_events": str(result.self_correction_events_path),
         "performance_summary": str(result.performance_summary_path),
+        "progress": str(result.output_dir / "progress.jsonl")
+        if (result.output_dir / "progress.jsonl").exists()
+        else None,
         "casebook": str(result.casebook_path) if result.casebook_path is not None else None,
         "output_dir_display": generated_output_display_path(result.output_dir),
     }

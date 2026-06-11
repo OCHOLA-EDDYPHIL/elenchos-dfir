@@ -25,6 +25,11 @@ from siftguard.integrations.safe_paths import (
 )
 from siftguard.parser.paths import validate_parser_path_identifier
 from siftguard.policy.paths import is_generated_output_path, is_relative_to
+from siftguard.progress import (
+    append_progress_event,
+    progress_path_for_output_dir,
+    read_progress_events,
+)
 from siftguard.triage import SUPPORTED_EVENT_SELECTION_PROFILES
 
 DEFAULT_PREPARE_TIMEOUT_SECONDS = 900
@@ -530,6 +535,7 @@ def _traceability_files(output_dir: Path) -> dict[str, str | None]:
         "findings": output_dir / "findings.json",
         "case_questions": output_dir / "case_questions.json",
         "normalized_events": output_dir / "normalized_events.json",
+        "progress": output_dir / "progress.jsonl",
     }
     trace_dir = output_dir / "openclaw-trace"
     if trace_dir.exists():
@@ -821,6 +827,15 @@ def run_case(
 def summarize_run(request: Mapping[str, object]) -> dict[str, object]:
     output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
     status = "completed" if output_dir.exists() else "failed"
+    progress_path = progress_path_for_output_dir(output_dir)
+    if output_dir.exists():
+        append_progress_event(
+            progress_path,
+            case_id=_summary_case_id(output_dir),
+            phase="summarize_run",
+            status=status,
+            message="summarize_run completed",
+        )
     coverage = _read_json_object(output_dir / "coverage_summary.json", "coverage_summary")
     limitations = coverage.get("limitations", [])
     if not isinstance(limitations, list):
@@ -839,9 +854,24 @@ def summarize_run(request: Mapping[str, object]) -> dict[str, object]:
         "registry_user_activity_family_counts": _registry_user_activity_family_counts(output_dir),
         "unsupported_not_assessed_areas": _not_assessed_questions(output_dir),
         "real_gap_self_correction_events": _self_correction_events(output_dir),
+        "progress_trace": display_path(progress_path) if progress_path.exists() else None,
+        "progress_event_count": len(read_progress_events(progress_path)),
         "required_trace_files": _traceability_files(output_dir),
         "limitations": limitations,
     }
+
+
+def _summary_case_id(output_dir: Path) -> str:
+    for filename, label in (
+        ("agent_run.json", "agent_run"),
+        ("coverage_summary.json", "coverage_summary"),
+        ("findings.json", "findings"),
+    ):
+        payload = _read_json_object(output_dir / filename, label)
+        case_id = payload.get("case_id")
+        if isinstance(case_id, str) and case_id:
+            return case_id
+    return output_dir.parent.name or "unknown"
 
 
 def _forbidden_wording_hits(report_path: Path) -> list[dict[str, object]]:
@@ -917,6 +947,15 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         if not missing_files and not forbidden_hits and not unsupported_violations
         else "fail"
     )
+    progress_path = progress_path_for_output_dir(output_dir)
+    if output_dir.exists():
+        append_progress_event(
+            progress_path,
+            case_id=_summary_case_id(output_dir),
+            phase="validate_run_outputs",
+            status="completed" if validation_status == "pass" else "failed",
+            message=f"validate_run_outputs {validation_status}",
+        )
     notes: list[str] = []
     if validation_status == "pass":
         notes.append("required generated outputs are present and report wording is bounded")
@@ -933,6 +972,8 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         "unsupported_question_violations": unsupported_violations,
         "self_correction_event_count": len(self_correction_events),
         "report_line_count": report_line_count,
+        "progress_trace": display_path(progress_path) if progress_path.exists() else None,
+        "progress_event_count": len(read_progress_events(progress_path)),
         "traceability_files": _traceability_files(output_dir),
         "notes": notes,
     }
