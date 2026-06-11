@@ -13,6 +13,13 @@ remains model-agnostic. It does not require Claude Code, does not select an
 OpenClaw provider or model, and does not treat model output as forensic
 evidence.
 
+### Agent orchestration guidance
+
+This repository includes [`AGENTS.md`](../AGENTS.md) for OpenClaw, Claude Code,
+and other agentic CLI hosts. It instructs agents to use SIFTGuard as a bounded
+forensic orchestration layer, preserve read-only evidence handling, summarize
+progress telemetry, validate outputs, and avoid unsupported claims.
+
 ## Component Roles
 
 - OpenClaw: analyst-facing agent host and natural-language front end.
@@ -41,7 +48,7 @@ Analyst natural-language prompt
 | Deterministic forensic orchestrator | `src/siftguard/agent/` workflow modules |
 | Evidence ledger and findings store | `findings.json`, `normalized_events.json`, and evidence refs |
 | Execution logs | `audit.jsonl`, `decision_trace.json`, and adapter/OpenClaw traces |
-| Reports | `report.md` and `docs/accuracy-report.md` |
+| Reports | Generated `report.md` and validation summaries |
 
 ## Tool Boundary
 

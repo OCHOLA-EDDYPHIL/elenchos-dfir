@@ -42,6 +42,9 @@ docs/submission-compliance-checklist.md
 *.7z
 *.tar
 *.tar.gz
+*.cast
+*.webm
+*.mp4
 *.log
 *.transcript
 *.transcript.txt
