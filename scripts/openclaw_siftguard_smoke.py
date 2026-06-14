@@ -12,6 +12,7 @@ from siftguard.integrations.tool_adapter import (
     dispatch_tool,
     get_tool_definitions,
 )
+from siftguard.validation.integrity import write_integrity_manifest
 
 CASE_ID_DEFAULT = "CASE-OPENCLAW-SIFTGUARD-SMOKE"
 SMOKE_FINAL_WORDING = (
@@ -329,6 +330,7 @@ def _fake_run_case(argv: list[str]) -> subprocess.CompletedProcess[str]:
         "Unsupported memory questions remain not_assessed.\n",
         encoding="utf-8",
     )
+    write_integrity_manifest(output_dir)
     stdout = "\n".join(
         [
             f"case_id={case_id}",

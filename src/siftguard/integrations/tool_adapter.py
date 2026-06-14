@@ -13,10 +13,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from siftguard.integrations.integrity import (
+from siftguard.validation.integrity import (
     INTEGRITY_MANIFEST_NAME,
     validate_integrity_manifest,
-    write_integrity_manifest,
 )
 from siftguard.integrations.safe_paths import (
     display_path,
@@ -867,9 +866,9 @@ def run_case(
         "performance_summary",
         output_dir / "performance_summary.json",
     )
-    integrity_manifest_path: Path | None = None
-    if completed.returncode == 0 and output_dir.exists():
-        integrity_manifest_path = write_integrity_manifest(output_dir)
+    integrity_manifest_path = output_dir / INTEGRITY_MANIFEST_NAME
+    if not integrity_manifest_path.is_file():
+        integrity_manifest_path = None
     result: dict[str, object] = {
         "status": status,
         "command_name": "siftguard agent run-case",

@@ -7,7 +7,6 @@ from typing import Any
 
 import pytest
 
-from siftguard.integrations.integrity import write_integrity_manifest
 from siftguard.integrations import mcp_server
 from siftguard.integrations.safe_paths import (
     resolve_user_path,
@@ -24,6 +23,7 @@ from siftguard.integrations.tool_adapter import (
 from siftguard.integrations.tool_adapter import (
     main as tool_adapter_main,
 )
+from siftguard.validation.integrity import write_integrity_manifest
 
 CASE_ID = "case-openclaw-test"
 FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
