@@ -13,6 +13,20 @@ ACTIVE_JOB_STATUSES = {"starting", "running"}
 TERMINAL_JOB_STATUSES = {"completed", "failed", "completed_unknown_exit"}
 
 
+def _linux_process_state(pid: int, proc_root: Path = Path("/proc")) -> str | None:
+    stat_path = proc_root / str(pid) / "stat"
+    try:
+        stat_text = stat_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    marker = ") "
+    if marker not in stat_text:
+        return None
+    tail = stat_text.split(marker, 1)[1]
+    state = tail.split(" ", 1)[0]
+    return state or None
+
+
 def process_exists(pid: int) -> bool:
     if pid <= 0:
         return False
@@ -22,6 +36,8 @@ def process_exists(pid: int) -> bool:
         return False
     except PermissionError:
         return True
+    if _linux_process_state(pid) == "Z":
+        return False
     return True
 
 

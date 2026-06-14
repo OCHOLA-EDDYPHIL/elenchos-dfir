@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import IO
 
 from elenchos.integrations import job_runner
+from elenchos.integrations.job_state import _linux_process_state
 
 
 class FakePopen:
@@ -66,6 +67,14 @@ def _write_case_prep(path: Path) -> None:
         "warnings": [],
     }
     path.write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_linux_process_state_reads_proc_stat(tmp_path: Path):
+    proc_stat = tmp_path / "123" / "stat"
+    proc_stat.parent.mkdir()
+    proc_stat.write_text("123 (python worker) Z 1 2 3\n", encoding="utf-8")
+
+    assert _linux_process_state(123, tmp_path) == "Z"
 
 
 def test_start_case_run_writes_job_and_rejects_duplicate(tmp_path: Path):
