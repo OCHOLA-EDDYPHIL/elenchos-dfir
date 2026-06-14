@@ -138,3 +138,21 @@ def test_read_console_state_reports_invalid_json_without_crashing(tmp_path: Path
 
     assert state.finding_counts == {}
     assert state.errors
+
+
+def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
+    (tmp_path / "openclaw-console.log").write_text(
+        "\n".join(
+            [
+                "line 1",
+                'Missing required option "-m, --message <text>".',
+                "Try: openclaw agent main --help",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    state = read_console_state(tmp_path)
+
+    assert 'Missing required option "-m, --message <text>".' in state.openclaw_log_tail

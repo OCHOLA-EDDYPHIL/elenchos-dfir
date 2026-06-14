@@ -44,6 +44,7 @@ class ConsoleState:
     progress_events: list[ConsoleEvent]
     final_summary: str | None
     claim_boundary: str | None
+    openclaw_log_tail: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     required_outputs_present: dict[str, bool] = field(default_factory=dict)
 
@@ -95,6 +96,7 @@ def read_console_state(
     gap_analysis = _first_json(candidates, "gap_analysis.json", errors)
     self_correction = _first_json(candidates, "self_correction_events.json", errors)
     report = _first_text(candidates, "report.md", errors)
+    openclaw_log_tail = _first_text_tail(candidates, "openclaw-console.log", errors)
 
     job_status, returncode = _job_status(job)
     validation_status = _string_value(validation, ("validation_status", "status"))
@@ -129,6 +131,7 @@ def read_console_state(
         progress_events=progress_events,
         final_summary=final_summary,
         claim_boundary=claim_boundary or SAFE_FALLBACK_CLAIM_BOUNDARY,
+        openclaw_log_tail=openclaw_log_tail,
         errors=errors,
         required_outputs_present={
             name: any((candidate / name).is_file() for candidate in candidates)
@@ -208,6 +211,26 @@ def _first_text(candidates: Iterable[Path], filename: str, errors: list[str]) ->
         except OSError as exc:
             errors.append(f"{path.name}: {exc}")
     return None
+
+
+def _first_text_tail(
+    candidates: Iterable[Path],
+    filename: str,
+    errors: list[str],
+    *,
+    limit: int = 12,
+) -> list[str]:
+    for candidate in candidates:
+        path = candidate / filename
+        if not path.is_file():
+            continue
+        try:
+            rows = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+        except OSError as exc:
+            errors.append(f"{path.name}: {exc}")
+            return []
+        return [row for row in rows[-limit:] if row.strip()]
+    return []
 
 
 def _jsonl_rows(path: Path, errors: list[str]) -> list[dict[str, Any]]:
@@ -472,4 +495,8 @@ def render_text_snapshot(state: ConsoleState) -> str:
         lines.append("")
         lines.append("Parser warnings")
         lines.extend(f"- {error}" for error in state.errors[-5:])
+    if state.openclaw_log_tail:
+        lines.append("")
+        lines.append("OpenClaw log tail")
+        lines.extend(f"- {line}" for line in state.openclaw_log_tail)
     return "\n".join(lines) + "\n"

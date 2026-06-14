@@ -337,13 +337,16 @@ hashes prove an investigative conclusion.
 
 ### Elenchos Case Console
 
-`elenchos tui` provides the analyst-facing terminal console for a case run. It
-accepts a high-level case prompt, launches OpenClaw, and renders live rationale,
-policy-gate decisions, run status, validation status, and final claim-boundary
-summary from generated Elenchos artifacts.
+`elenchos tui` provides the analyst-facing terminal console for a case run. The
+normal workflow is to start the console with no flags, type a natural-language
+case request, and let Elenchos create the generated run directory under `runs/`.
+The TUI wraps the analyst prompt with runtime safety/output constraints,
+launches OpenClaw, and renders live rationale, policy-gate decisions, run
+status, validation status, and final claim-boundary summary from generated
+Elenchos artifacts.
 
 ```bash
-elenchos tui --source-root /mnt/evidence/rocba --case-id rocba-demo
+elenchos tui
 ```
 
 See [docs/tui.md](docs/tui.md).

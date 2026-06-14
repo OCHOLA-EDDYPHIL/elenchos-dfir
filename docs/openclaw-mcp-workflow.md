@@ -241,14 +241,16 @@ or any file found by wildcard manifest search.
 
 ### Using the Elenchos Case Console
 
-`elenchos tui` is the analyst-facing terminal console for this workflow. It
-launches OpenClaw with a bounded high-level prompt, watches the exact generated
-output directory, and displays live rationale, policy gate decisions, run
-status, validation, and claim-boundary summary from generated Elenchos
-artifacts.
+`elenchos tui` is the analyst-facing terminal console for this workflow. The
+normal analyst workflow is to launch it with no flags, type a natural-language
+case request in the console, and let Elenchos create the generated run directory
+under `runs/`. The TUI wraps the analyst prompt with safety/output constraints,
+launches OpenClaw, watches the exact generated output directory, and displays
+live rationale, policy gate decisions, run status, validation, and
+claim-boundary summary from generated Elenchos artifacts.
 
 ```bash
-elenchos tui --source-root /mnt/evidence/rocba --case-id rocba-demo
+elenchos tui
 ```
 
 For post-run review or split-pane demos:

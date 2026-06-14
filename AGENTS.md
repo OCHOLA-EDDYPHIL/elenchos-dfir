@@ -80,7 +80,7 @@ If policy returns `rejected`, do not execute the rejected action. Inspect run st
 
 The adapter also self-gates supported bounded tool calls through the deterministic policy layer and records `policy_decisions.jsonl`, but the visible agent protocol must still call `evaluate_action_policy` and print the returned `[policy]` line before execution so the analyst can audit each proposed step.
 
-`elenchos tui` reads generated Elenchos artifacts for analyst display; TUI text is not evidence and must not be used to change findings or statuses.
+`elenchos tui` is the analyst-facing console. It reads generated Elenchos artifacts for display, wraps analyst prompts with runtime safety/output constraints, and writes generated run metadata under `runs/`; TUI text is not evidence and must not be used to change findings or statuses. Do not move this behavior into `.skills`; keep repo guidance in `AGENTS.md` and enforce hard boundaries through code, MCP/tool policy, and generated audit artifacts.
 
 Use `inspect_run_state` between actions. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live progress is desired. Use `run_case` only when blocking execution is acceptable.
 

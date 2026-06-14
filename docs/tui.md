@@ -1,8 +1,23 @@
 # Elenchos Case Console
 
 `elenchos tui` provides the analyst-facing terminal console for a case run. The
-console accepts a high-level case prompt, launches OpenClaw, and watches
-generated Elenchos artifacts under a run directory.
+normal analyst workflow is to start the console with no flags, type a natural
+language case request, and let Elenchos create the generated run context.
+
+```bash
+elenchos tui
+```
+
+Inside the console:
+
+```text
+Elenchos> Triage the ROCBA case and tell me what happened.
+```
+
+After the analyst submits a prompt, the console creates a generated run
+directory under `runs/`, wraps the analyst request with Elenchos safety and
+output constraints, launches OpenClaw, and watches generated Elenchos artifacts
+under that run directory.
 
 The console displays:
 
@@ -16,7 +31,8 @@ The console displays:
 The TUI does not inspect raw evidence. Model rationale and TUI text are not
 forensic evidence. Deterministic Elenchos outputs remain the evidence authority.
 
-Start a new case console run:
+CLI flags are advanced/debug options. For example, an operator can provide a
+source root or case identifier explicitly:
 
 ```bash
 elenchos tui --source-root /mnt/evidence/rocba --case-id rocba-demo
@@ -34,10 +50,12 @@ Use one-shot text mode for non-interactive checks:
 elenchos tui --watch-only --output-dir runs/<case> --once
 ```
 
-The default prompt tells OpenClaw to use only bounded Elenchos tools, keep raw
-evidence read-only, use the `prepared_manifest_path` produced by `prepare_case`,
-and finish with supported findings, unsupported gaps, claim boundary, and trace
-paths.
+Elenchos wraps the analyst prompt with runtime constraints: use only bounded
+Elenchos tools, keep raw evidence read-only, use the exact generated output
+directory, write generated outputs only under that directory, use the
+`prepared_manifest_path` produced by `prepare_case`, show live rationale and
+policy gate progress through generated artifacts, and finish with supported
+findings, unsupported gaps, claim boundary, and trace paths.
 
 Generated files read by the console include:
 
@@ -50,7 +68,13 @@ Generated files read by the console include:
 - `case_questions.json`
 - `gap_analysis.json`
 - `validation_summary.json`
+- `run_context.json`
 
 When the selected output directory is under an ignored generated-output root,
 the console may write `case_console_transcript.md`. That transcript mirrors the
 TUI-visible rationale and policy stream and is not forensic evidence.
+
+This behavior belongs in the repository runtime and guidance, not in `.skills`:
+`AGENTS.md` carries repo-level agent/developer guidance, the TUI runtime wraps
+analyst prompts with safety/output constraints, the MCP/tool policy enforces
+hard boundaries, and generated JSONL artifacts provide auditability.
