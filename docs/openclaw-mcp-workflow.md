@@ -87,6 +87,10 @@ The same bounded surface is available as a JSON CLI dispatcher:
   such as `runs/`.
 - `summarize_run` and `validate_run_outputs` read generated SIFTGuard outputs
   only, not raw evidence.
+- `run_case` writes `run_integrity_manifest.json` with SHA-256 hashes for
+  generated run outputs. `validate_run_outputs` verifies that manifest and
+  reports tamper-evident mismatches. This supports integrity checking; it is not
+  a cryptographic guarantee that a forensic conclusion is true.
 - Raw evidence contents, parser CSVs, hives, memory images, private paths,
   tokens, and OpenClaw provider credentials must not be committed.
 - The model may request bounded tools, but SIFTGuard computes the
@@ -115,11 +119,12 @@ installation and must not be committed.
 Register the SIFTGuard MCP server with OpenClaw locally:
 
 ```bash
-openclaw mcp set siftguard '{
-  "command": "/absolute/path/to/siftguard-mcp/.venv/bin/python",
-  "args": ["-m", "siftguard.integrations.mcp_server"],
-  "cwd": "/absolute/path/to/siftguard-mcp"
-}'
+REPO_ROOT="$(pwd)"
+openclaw mcp set siftguard "{
+  \"command\": \"$REPO_ROOT/.venv/bin/python\",
+  \"args\": [\"-m\", \"siftguard.integrations.mcp_server\"],
+  \"cwd\": \"$REPO_ROOT\"
+}"
 ```
 
 This writes OpenClaw-owned local configuration. Do not commit OpenClaw config,
@@ -128,6 +133,20 @@ provider credentials, transcripts, gateway logs, or auth state.
 The project does not require a committed OpenClaw config file. If a shell needs
 OpenClaw-specific `PATH` setup, keep that in local shell configuration rather
 than repository files.
+
+Before recording a demo, run the preflight from the current checkout:
+
+```bash
+.venv/bin/python scripts/demo_siftguard_preflight.py
+```
+
+The preflight confirms that OpenClaw points at the current repository, that the
+MCP server exposes exactly the four SIFTGuard tools, and that the local SIFT /
+Zimmerman commands needed by the deterministic workflow are available. If it
+reports a stale path, re-run the `openclaw mcp set siftguard ...` command above.
+`AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
+boundary is the typed MCP adapter plus SIFTGuard's path validation, deterministic
+CLI calls, generated-output validation, and claim-boundary files.
 
 Run the deterministic smoke harness without OpenClaw credentials or ROCBA
 evidence:

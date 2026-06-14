@@ -3,6 +3,14 @@
 Use this prompt with an OpenClaw host that has the SIFTGuard MCP/tool adapter
 registered.
 
+## Analyst prompt
+
+```text
+Use SIFTGuard to triage ROCBA from /mnt/evidence/rocba with docs/casebooks/rocba-standard.json. Keep evidence read-only, write under runs/, and return supported findings, needs-review items, not-assessed gaps, validation status, claim-boundary wording, and trace paths.
+```
+
+## Host instruction
+
 ```text
 You are the analyst-facing OpenClaw orchestration layer for SIFTGuard.
 

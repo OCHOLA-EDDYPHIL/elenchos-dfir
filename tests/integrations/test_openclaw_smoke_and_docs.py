@@ -119,6 +119,7 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert ".venv/bin/python -m siftguard.integrations.mcp_server" in readme
     assert "scripts/openclaw_siftguard_smoke.py --dry-run" in mcp_docs
     assert "scripts/openclaw_siftguard_smoke.py --dry-run" in readme
+    assert "scripts/demo_siftguard_preflight.py" in mcp_docs
     assert "examples/openclaw/case-triage.prompt.md" in readme
     assert "examples/openclaw/case-triage.prompt.md" in mcp_docs
     assert "Casebook Selection" in mcp_docs
@@ -171,6 +172,7 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     ).read_text(encoding="utf-8")
     lowered = prompt.casefold()
     collapsed = " ".join(prompt.split())
+    analyst_prompt = prompt.split("## Host instruction", maxsplit=1)[0]
 
     for tool_name in (
         "prepare_case",
@@ -187,6 +189,7 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     assert "docs/casebooks/generic-windows-disk-triage.json" in prompt
     assert "Do not invent case allegations" in collapsed
     assert "repeat the generated final_wording and scope_boundary exactly" in collapsed
+    assert len(analyst_prompt.split()) < 80
     assert ("SIFTGuard proves " + "theft") not in prompt
     assert ("SIFTGuard proves " + "exfiltration") not in prompt
     assert ("courtroom" + "-ready") not in lowered
@@ -218,3 +221,34 @@ def test_rocba_question_ids_are_not_hardcoded_in_source():
                 hits.append(f"{path.relative_to(root)}: {term}")
 
     assert hits == []
+
+
+def test_public_docs_do_not_hardcode_local_home_paths():
+    root = repo_root()
+    public_forbidden_terms = ("/home/sansforensics", "/home/")
+    paths = _text_files_under(
+        root,
+        (
+            "README.md",
+            "docs",
+            "examples",
+            "src",
+            "scripts",
+        ),
+    )
+    hits: list[str] = []
+    for path in paths:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for term in public_forbidden_terms:
+            if term in text:
+                hits.append(f"{path.relative_to(root)}: {term}")
+
+    assert hits == []
+
+    stale_user_hits: list[str] = []
+    stale_user = "nyama" + "bites"
+    for path in _text_files_under(root, ("README.md", "docs", "examples", "src", "scripts", "tests")):
+        if stale_user in path.read_text(encoding="utf-8", errors="ignore"):
+            stale_user_hits.append(str(path.relative_to(root)))
+
+    assert stale_user_hits == []

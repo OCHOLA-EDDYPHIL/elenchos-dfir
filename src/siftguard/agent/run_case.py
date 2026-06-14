@@ -36,6 +36,7 @@ from siftguard.policy.paths import (
     is_relative_to,
     validate_generated_output_dir,
 )
+from siftguard.validation.integrity import write_integrity_manifest
 from siftguard.triage import EVENT_SELECTION_FIRST_N, validate_event_selection_profile
 
 RUN_CASE_OUTPUTS = (
@@ -77,6 +78,7 @@ class RunCaseResult:
     gap_analysis_path: Path
     self_correction_events_path: Path
     performance_summary_path: Path
+    integrity_manifest_path: Path
     casebook_path: Path | None
 
 
@@ -635,6 +637,7 @@ def run_case_workflow(
         status=run.status.value,
         clock=clock,
     )
+    integrity_manifest_path = write_integrity_manifest(resolved_output_dir)
 
     return RunCaseResult(
         case_id=adapted.case_id,
@@ -647,6 +650,7 @@ def run_case_workflow(
         gap_analysis_path=gap_analysis_path,
         self_correction_events_path=self_correction_events_path,
         performance_summary_path=performance_summary_path,
+        integrity_manifest_path=integrity_manifest_path,
         casebook_path=casebook_path.resolve() if casebook_path is not None else None,
     )
 
@@ -664,6 +668,7 @@ def run_case_output_summary(result: RunCaseResult) -> dict[str, str | int | None
         "gap_analysis": str(result.gap_analysis_path),
         "self_correction_events": str(result.self_correction_events_path),
         "performance_summary": str(result.performance_summary_path),
+        "integrity_manifest": str(result.integrity_manifest_path),
         "progress": str(result.output_dir / "progress.jsonl")
         if (result.output_dir / "progress.jsonl").exists()
         else None,

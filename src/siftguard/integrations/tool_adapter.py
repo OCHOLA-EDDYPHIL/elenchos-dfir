@@ -9,9 +9,14 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Mapping
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from siftguard.validation.integrity import (
+    INTEGRITY_MANIFEST_NAME,
+    validate_integrity_manifest,
+)
 from siftguard.integrations.safe_paths import (
     display_path,
     evidence_roots_from_case_prep,
@@ -50,6 +55,7 @@ REQUIRED_RUN_OUTPUTS = (
     "case_questions.json",
     "normalized_events.json",
     "report.md",
+    INTEGRITY_MANIFEST_NAME,
 )
 
 FORBIDDEN_REPORT_PHRASES = (
@@ -112,7 +118,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "case_id": _string_schema("Case identifier."),
+                "case_id": _optional_string_schema(
+                    "Optional case identifier. Defaults to a generated human-readable ID."
+                ),
                 "source_root": _optional_string_schema(
                     "Source root to discover; mutually exclusive with source_manifest."
                 ),
@@ -128,7 +136,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     DEFAULT_PREPARE_TIMEOUT_SECONDS,
                 ),
             },
-            "required": ["case_id", "output_dir"],
+            "required": ["output_dir"],
         },
         "outputSchema": {
             "type": "object",
@@ -162,7 +170,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "case_id": _string_schema("Case identifier."),
+                "case_id": _optional_string_schema(
+                    "Optional case identifier. Defaults to case_id in case_prep.json."
+                ),
                 "artifact_manifest": _string_schema("Path to case_prep.json."),
                 "output_dir": _string_schema("Generated agent output directory."),
                 "casebook": _optional_string_schema("Optional JSON casebook path."),
@@ -185,7 +195,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     DEFAULT_RUN_CASE_TIMEOUT_SECONDS,
                 ),
             },
-            "required": ["case_id", "artifact_manifest", "output_dir"],
+            "required": ["artifact_manifest", "output_dir"],
         },
         "outputSchema": {
             "type": "object",
@@ -203,6 +213,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "gap_analysis": _path_output_schema(),
                 "self_correction_events": _path_output_schema(),
                 "performance_summary": _path_output_schema(),
+                "integrity_manifest": _path_output_schema(),
                 "duration_ms": {"type": "integer"},
                 "trace_stdout": {"type": "string"},
                 "trace_stderr": {"type": "string"},
@@ -278,6 +289,61 @@ def _optional_string(request: Mapping[str, object], name: str) -> str | None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{name} must be a non-empty string when provided")
     return value
+
+
+def _utc_case_timestamp() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _slugify_case_label(value: str | None) -> str:
+    text = (value or "case").strip().casefold()
+    slug = re.sub(r"[^a-z0-9]+", "-", text).strip("-")
+    return slug or "case"
+
+
+def _case_id_from_json_path(path: Path) -> str | None:
+    if not path.exists():
+        return None
+    payload = _read_json_object(path, "case manifest")
+    case_id = payload.get("case_id")
+    return case_id if isinstance(case_id, str) and case_id else None
+
+
+def _generated_case_id(*, source_root: Path | None, source_manifest: Path | None) -> str:
+    base = None
+    if source_manifest is not None:
+        base = _case_id_from_json_path(source_manifest)
+    if base is None and source_root is not None:
+        base = source_root.name
+    return validate_parser_path_identifier(
+        f"{_slugify_case_label(base)}-{_utc_case_timestamp()}",
+        "case_id",
+    )
+
+
+def _case_id_from_request_or_generated(
+    request: Mapping[str, object],
+    *,
+    source_root: Path | None,
+    source_manifest: Path | None,
+) -> str:
+    case_id = _optional_string(request, "case_id")
+    if case_id is None:
+        return _generated_case_id(source_root=source_root, source_manifest=source_manifest)
+    return validate_parser_path_identifier(case_id, "case_id")
+
+
+def _case_id_from_request_or_manifest(
+    request: Mapping[str, object],
+    artifact_manifest: Path,
+) -> str:
+    case_id = _optional_string(request, "case_id")
+    if case_id is None:
+        manifest_case_id = _case_id_from_json_path(artifact_manifest)
+        if manifest_case_id is None:
+            raise ValueError("case_id is required when artifact_manifest has no case_id")
+        case_id = manifest_case_id
+    return validate_parser_path_identifier(case_id, "case_id")
 
 
 def _positive_int(request: Mapping[str, object], name: str, default: int) -> int:
@@ -535,6 +601,7 @@ def _traceability_files(output_dir: Path) -> dict[str, str | None]:
         "findings": output_dir / "findings.json",
         "case_questions": output_dir / "case_questions.json",
         "normalized_events": output_dir / "normalized_events.json",
+        "integrity_manifest": output_dir / INTEGRITY_MANIFEST_NAME,
         "progress": output_dir / "progress.jsonl",
     }
     trace_dir = output_dir / "openclaw-trace"
@@ -554,7 +621,6 @@ def prepare_case(
     *,
     command_runner: CommandRunner = _default_command_runner,
 ) -> dict[str, object]:
-    case_id = validate_parser_path_identifier(_required_string(request, "case_id"), "case_id")
     source_root_text = _optional_string(request, "source_root")
     source_manifest_text = _optional_string(request, "source_manifest")
     if bool(source_root_text) == bool(source_manifest_text):
@@ -571,6 +637,11 @@ def prepare_case(
         require_json_path(source_manifest, "source_manifest")
         if source_manifest.exists():
             forbidden_roots.extend(evidence_roots_from_source_manifest(source_manifest))
+    case_id = _case_id_from_request_or_generated(
+        request,
+        source_root=source_root,
+        source_manifest=source_manifest,
+    )
 
     source_manifest_out_text = _optional_string(request, "source_manifest_out")
     source_manifest_out: Path | None = None
@@ -680,12 +751,12 @@ def run_case(
     *,
     command_runner: CommandRunner = _default_command_runner,
 ) -> dict[str, object]:
-    case_id = validate_parser_path_identifier(_required_string(request, "case_id"), "case_id")
     artifact_manifest = resolve_user_path(
         _required_string(request, "artifact_manifest"),
         "artifact_manifest",
     )
     require_json_path(artifact_manifest, "artifact_manifest")
+    case_id = _case_id_from_request_or_manifest(request, artifact_manifest)
     forbidden_roots: list[Path] = []
     if artifact_manifest.exists():
         forbidden_roots.extend(evidence_roots_from_case_prep(artifact_manifest))
@@ -795,6 +866,9 @@ def run_case(
         "performance_summary",
         output_dir / "performance_summary.json",
     )
+    integrity_manifest_path = output_dir / INTEGRITY_MANIFEST_NAME
+    if not integrity_manifest_path.is_file():
+        integrity_manifest_path = None
     result: dict[str, object] = {
         "status": status,
         "command_name": "siftguard agent run-case",
@@ -808,6 +882,7 @@ def run_case(
         "gap_analysis": display_path(gap_analysis_path),
         "self_correction_events": display_path(self_correction_events_path),
         "performance_summary": display_path(performance_summary_path),
+        "integrity_manifest": display_path(integrity_manifest_path),
         "finding_status_counts": _findings_status_counts(output_dir),
         "case_question_status_counts": _case_question_status_counts(output_dir),
         "parser_status_summary": _parser_status_summary(output_dir),
@@ -933,6 +1008,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         for filename in REQUIRED_RUN_OUTPUTS
         if not (output_dir / filename).is_file()
     ]
+    integrity_violations = validate_integrity_manifest(output_dir)
     report_path = output_dir / "report.md"
     forbidden_hits = _forbidden_wording_hits(report_path)
     unsupported_violations = _unsupported_question_violations(output_dir / "case_questions.json")
@@ -944,7 +1020,12 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
     )
     validation_status = (
         "pass"
-        if not missing_files and not forbidden_hits and not unsupported_violations
+        if (
+            not missing_files
+            and not forbidden_hits
+            and not unsupported_violations
+            and not integrity_violations
+        )
         else "fail"
     )
     progress_path = progress_path_for_output_dir(output_dir)
@@ -959,6 +1040,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
     notes: list[str] = []
     if validation_status == "pass":
         notes.append("required generated outputs are present and report wording is bounded")
+        notes.append("run integrity manifest hashes verified")
         notes.append("scope-unsupported and not_assessed question safety checked")
     for event in self_correction_events:
         final_wording = event.get("final_wording")
@@ -968,6 +1050,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         "validation_status": validation_status,
         "output_dir": display_path(output_dir),
         "missing_files": missing_files,
+        "integrity_violations": integrity_violations,
         "forbidden_wording_hits": forbidden_hits,
         "unsupported_question_violations": unsupported_violations,
         "self_correction_event_count": len(self_correction_events),

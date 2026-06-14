@@ -525,6 +525,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"gap_analysis={summary['gap_analysis']}")
             print(f"self_correction_events={summary['self_correction_events']}")
             print(f"performance_summary={summary['performance_summary']}")
+            print(f"integrity_manifest={summary['integrity_manifest']}")
         else:
             print(f"agent_run={args.output_dir.resolve() / 'agent_run.json'}")
             print(f"audit={args.output_dir.resolve() / 'audit.jsonl'}")

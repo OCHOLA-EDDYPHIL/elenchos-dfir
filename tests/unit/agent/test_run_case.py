@@ -10,11 +10,16 @@ from siftguard.agent.audit import append_agent_audit_event
 from siftguard.agent.casebook import load_casebook
 from siftguard.agent.models import AgentRun, AgentRunStatus, AgentState
 from siftguard.agent.planner import build_default_agent_plan
-from siftguard.agent.run_case import CASEBOOK_YAML_REJECTION, run_case_workflow
+from siftguard.agent.run_case import (
+    CASEBOOK_YAML_REJECTION,
+    run_case_output_summary,
+    run_case_workflow,
+)
 from siftguard.audit.execution_ledger import read_events
 from siftguard.cli import main
 from siftguard.evidence.manifest import read_manifest
 from siftguard.parser.result import ParserResult
+from siftguard.validation.integrity import read_integrity_manifest
 
 CASE_ID = "rocba-standard"
 GENERIC_CASEBOOK_ID = "generic-windows-disk-triage"
@@ -626,8 +631,32 @@ def test_run_case_loads_synthetic_case_prep_and_writes_outputs(tmp_path: Path):
         "gap_analysis.json",
         "self_correction_events.json",
         "performance_summary.json",
+        "run_integrity_manifest.json",
     ):
         assert (output_dir / filename).is_file()
+
+
+def test_run_case_core_workflow_writes_integrity_manifest_and_summary(tmp_path: Path):
+    case_prep_path, _case_prep_dir, _source_root = write_case_prep(tmp_path)
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+
+    result = run_case_workflow(
+        artifact_manifest_path=case_prep_path,
+        output_dir=output_dir,
+        max_iterations=10,
+        workflow_runner=fake_workflow_runner,
+        clock=fixed_clock,
+    )
+
+    manifest_path = output_dir / "run_integrity_manifest.json"
+    summary = run_case_output_summary(result)
+    manifest = read_integrity_manifest(manifest_path)
+
+    assert result.integrity_manifest_path == manifest_path
+    assert manifest_path.is_file()
+    assert manifest["hash_algorithm"] == "sha256"
+    assert manifest["file_count"] >= 1
+    assert summary["integrity_manifest"] == str(manifest_path)
 
 
 def test_run_case_rejects_missing_artifact_manifest(tmp_path: Path):
