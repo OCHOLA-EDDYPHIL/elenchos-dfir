@@ -10,7 +10,19 @@ Act as a DFIR orchestration layer over Elenchos.
 
 Use the bounded Elenchos MCP/tool-adapter workflow whenever the user asks to triage a forensic case.
 
-Preferred tool sequence:
+Preferred live autonomy loop:
+
+1. `inspect_run_state`
+2. Print exactly one visible line beginning with `[model-rationale]`
+3. `record_model_rationale`
+4. `evaluate_action_policy`
+5. Print the returned `[policy]` visible message
+6. Execute the proposed bounded action only when policy returns `allowed`
+7. Re-inspect state between actions
+8. Poll progress when a live run is active
+9. Finalize with validation and claim boundaries
+
+Blocking fallback sequence when live progress is not needed:
 
 1. `prepare_case`
 2. `run_case`
@@ -49,9 +61,33 @@ prepare_case
 run_case
 summarize_run
 validate_run_outputs
+inspect_run_state
+record_model_rationale
+evaluate_action_policy
+start_case_run
+poll_case_run
+finish_case_run
+emit_claim_boundary
 ```
 
 These tools invoke deterministic Elenchos workflows and return structured outputs. The agent should coordinate the workflow; Elenchos should produce the forensic evidence records, findings, reports, audit logs, progress telemetry, and validation outputs.
+
+## Live Policy-Gated Autonomy
+
+Before each non-trivial bounded action, print exactly one visible line beginning with `[model-rationale]`. The line must explain the operational reason for the next bounded action. Then call `record_model_rationale` with the same rationale summary, call `evaluate_action_policy`, print the returned `[policy]` visible message, and execute the proposed action only if policy returns `allowed`.
+
+If policy returns `rejected`, do not execute the rejected action. Inspect run state again and choose another action from `allowed_actions` or stop with a bounded explanation.
+
+Use `inspect_run_state` between actions. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live progress is desired. Use `run_case` only when blocking execution is acceptable.
+
+Example visible lines:
+
+```text
+[model-rationale] The prepared manifest exists and no run output is present. The next safe bounded action is start_case_run.
+[policy] proposed start_case_run -> allowed: bounded action, generated output directory, read-only evidence.
+```
+
+Model rationale is operational explanation only. Never treat model rationale as evidence. Never use model rationale to upgrade finding status. Never claim confirmed compromise, theft, exfiltration, memory findings, malware, attribution, or a final incident conclusion unless deterministic Elenchos outputs support the claim and validation passes.
 
 ## Case Triage Behavior
 

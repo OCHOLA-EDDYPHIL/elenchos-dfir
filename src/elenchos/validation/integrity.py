@@ -9,7 +9,15 @@ from elenchos.evidence.hashing import sha256_file
 from elenchos.policy.paths import is_relative_to
 
 INTEGRITY_MANIFEST_NAME = "run_integrity_manifest.json"
-VOLATILE_RUN_FILES = {"progress.jsonl", INTEGRITY_MANIFEST_NAME}
+VOLATILE_RUN_FILES = {
+    "model_rationale.jsonl",
+    "orchestration_trace.json",
+    "policy_decisions.jsonl",
+    "progress.jsonl",
+    "run_job.json",
+    "validation_summary.json",
+    INTEGRITY_MANIFEST_NAME,
+}
 VOLATILE_RUN_DIR_NAMES = {"openclaw-trace"}
 
 

@@ -9,9 +9,16 @@ from pathlib import Path
 from typing import Any
 
 EXPECTED_TOOLS = {
+    "emit_claim_boundary",
+    "evaluate_action_policy",
+    "finish_case_run",
+    "inspect_run_state",
+    "poll_case_run",
     "prepare_case",
+    "record_model_rationale",
     "run_case",
     "summarize_run",
+    "start_case_run",
     "validate_run_outputs",
 }
 EXPECTED_LOCAL_TOOLS = (

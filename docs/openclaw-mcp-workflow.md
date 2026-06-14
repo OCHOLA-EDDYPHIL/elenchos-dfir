@@ -52,7 +52,7 @@ Analyst natural-language prompt
 
 ## Tool Boundary
 
-The adapter exposes four operations only:
+The adapter exposes deterministic workflow tools plus a live autonomy layer:
 
 - `prepare_case`: validates paths, rejects unsafe output locations, and runs
   `.venv/bin/python -m elenchos case prepare ...` through argv subprocesses.
@@ -63,6 +63,16 @@ The adapter exposes four operations only:
   unsupported areas, limitations, and traceability paths.
 - `validate_run_outputs`: checks required generated outputs, forbidden overclaim
   wording, and unsupported theft/exfiltration/memory question safety.
+- `inspect_run_state`: reads generated outputs only and recommends next bounded
+  actions.
+- `record_model_rationale`: records model-generated operational rationale in
+  `model_rationale.jsonl`; model rationale is not forensic evidence.
+- `evaluate_action_policy`: records deterministic allow/reject decisions in
+  `policy_decisions.jsonl`.
+- `start_case_run`, `poll_case_run`, `finish_case_run`: support live
+  deterministic run progress without arbitrary shell access.
+- `emit_claim_boundary`: returns deterministic generated claim-boundary wording
+  or conservative fallback wording without changing findings.
 
 Run the stdio MCP server:
 
@@ -141,7 +151,7 @@ Before recording a demo, run the preflight from the current checkout:
 ```
 
 The preflight confirms that OpenClaw points at the current repository, that the
-MCP server exposes exactly the four Elenchos tools, and that the local SIFT /
+MCP server exposes the bounded Elenchos tools, and that the local SIFT /
 Zimmerman commands needed by the deterministic workflow are available. If it
 reports a stale path, re-run the `openclaw mcp set elenchos ...` command above.
 `AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
@@ -190,12 +200,68 @@ unsupported gaps, and trace paths. Do not inspect raw evidence directly.
 Use only the Elenchos tools.
 ```
 
-Canonical tool sequence:
+Blocking fallback tool sequence:
 
 1. `prepare_case`
 2. `run_case`
 3. `summarize_run`
 4. `validate_run_outputs`
+
+### Live policy-gated autonomy
+
+For live OpenClaw agent runs, use an observe/rationale/policy/execute loop:
+
+1. `inspect_run_state`
+2. Print one `[model-rationale]` line explaining the next bounded action.
+3. `record_model_rationale`
+4. `evaluate_action_policy`
+5. Print the returned `[policy]` line.
+6. Execute only if policy returns `allowed`.
+7. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live run
+   progress is desired.
+8. End with `summarize_run`, `validate_run_outputs`, and
+   `emit_claim_boundary` when unsupported claim boundaries remain.
+
+Example visible UI lines:
+
+```text
+[model-rationale] The case is prepared and supported disk artifacts were found. The next safe bounded action is to start the forensic-triage run.
+[policy] proposed start_case_run -> allowed: bounded action, generated output directory, read-only evidence.
+
+[model-rationale] The run is still active. I will poll progress instead of starting a duplicate run.
+[policy] proposed poll_case_run -> allowed: action is allowlisted and reads generated outputs only.
+
+[model-rationale] All findings are needs_review and theft/exfiltration questions remain not_assessed. The next safe step is output validation and claim-boundary finalization.
+[policy] proposed validate_run_outputs -> allowed: action is allowlisted and reads generated outputs only.
+```
+
+Generated live-autonomy files:
+
+- `model_rationale.jsonl`: model-generated operational rationale, not evidence.
+- `policy_decisions.jsonl`: deterministic allow/reject decisions for proposed
+  model actions.
+- `orchestration_trace.json`: non-evidence adapter trace for rationale, policy,
+  and job lifecycle events.
+- `run_job.json`: bounded async job metadata for live start/poll/finish.
+- `progress.jsonl`: runtime telemetry emitted by deterministic workflow phases.
+
+Trace distinction:
+
+- `decision_trace.json`: deterministic pipeline decisions.
+- `model_rationale.jsonl`: model-generated operational rationale, not forensic
+  evidence.
+- `policy_decisions.jsonl`: deterministic allow/reject decisions for proposed
+  model actions.
+- `progress.jsonl`: runtime telemetry.
+- `trace_map.json` or existing evidence refs: finding-to-evidence traceability
+  when emitted by deterministic Elenchos outputs.
+
+Post-PR SIFT/OpenClaw validation should register the MCP server from this
+branch, run `scripts/demo_elenchos_preflight.py`, then run a live OpenClaw
+agent prompt against the SIFT Workstation evidence environment. That validation
+must confirm visible `[model-rationale]` and `[policy]` lines, live polling,
+generated rationale/policy JSONL files, and unchanged deterministic claim
+boundaries before merge.
 
 Expected generated outputs include:
 

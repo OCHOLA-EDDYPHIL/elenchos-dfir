@@ -352,11 +352,23 @@ Preferred final OpenClaw/MCP path:
 .venv/bin/python -m elenchos.integrations.mcp_server
 ```
 
-Bounded tools:
+Blocking fallback tools:
 
 ```text
 prepare_case -> run_case -> summarize_run -> validate_run_outputs
 ```
+
+Live OpenClaw autonomy adds:
+
+```text
+inspect_run_state -> [model-rationale] -> record_model_rationale
+  -> evaluate_action_policy -> [policy] -> execute allowed bounded action
+  -> poll progress -> validate outputs -> emit_claim_boundary
+```
+
+`model_rationale.jsonl` records model-generated operational rationale, not
+forensic evidence. `policy_decisions.jsonl` records deterministic allow/reject
+decisions for proposed model actions.
 
 Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
 keys:
@@ -436,6 +448,8 @@ events while downgrading the final status to `needs_review`.
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
 | OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
+| Model rationale boundary | `docs/model-rationale-boundary.md` |
+| Autonomous execution | `docs/autonomous-execution.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |
 
 ## License

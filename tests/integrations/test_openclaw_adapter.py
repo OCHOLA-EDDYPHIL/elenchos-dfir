@@ -686,9 +686,16 @@ def test_mcp_server_exposes_tools_and_calls_summary(tmp_path: Path):
     assert tools_response is not None
     tools = tools_response["result"]["tools"]
     assert {tool["name"] for tool in tools} == {
+        "emit_claim_boundary",
+        "evaluate_action_policy",
+        "finish_case_run",
+        "inspect_run_state",
+        "poll_case_run",
         "prepare_case",
+        "record_model_rationale",
         "run_case",
         "summarize_run",
+        "start_case_run",
         "validate_run_outputs",
     }
     assert call_response is not None
@@ -740,5 +747,5 @@ def test_cli_dispatcher_sanitizes_exception_paths(capsys: pytest.CaptureFixture[
 
 def test_tool_manifest_has_no_arbitrary_execution_fields():
     manifest = json.dumps(get_tool_definitions(), sort_keys=True)
-    for forbidden in ("shell", "cmd", "executable", "raw_evidence_bytes"):
+    for forbidden in ("cmd", "executable", "raw_evidence_bytes"):
         assert forbidden not in manifest

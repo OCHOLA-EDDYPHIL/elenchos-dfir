@@ -13,6 +13,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from elenchos.audit.execution_ledger import utc_now
+from elenchos.integrations.job_runner import (
+    finish_case_run as finish_case_run_job,
+)
+from elenchos.integrations.job_runner import (
+    poll_case_run as poll_case_run_job,
+)
+from elenchos.integrations.job_runner import (
+    start_case_run as start_case_run_job,
+)
+from elenchos.integrations.rationale_policy import evaluate_action_policy as evaluate_policy
+from elenchos.integrations.rationale_schema import ModelRationaleRecord
+from elenchos.integrations.rationale_trace import (
+    agent_run_dir_from_output_dir,
+    append_jsonl,
+    append_orchestration_event,
+    model_rationale_path,
+    next_sequence_id,
+)
+from elenchos.integrations.run_state import inspect_run_state as inspect_generated_run_state
 from elenchos.integrations.safe_paths import (
     display_path,
     evidence_roots_from_case_prep,
@@ -254,6 +274,182 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "outputSchema": {"type": "object", "additionalProperties": True},
         "annotations": {"readOnlyHint": True},
     },
+    "inspect_run_state": {
+        "name": "inspect_run_state",
+        "title": "Inspect Generated Run State",
+        "description": (
+            "Read generated Elenchos outputs only and summarize current run state, "
+            "recommended bounded actions, and claim-boundary needs. This tool never "
+            "reads raw evidence."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"output_dir": _string_schema("Generated run output directory.")},
+            "required": ["output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": True},
+    },
+    "record_model_rationale": {
+        "name": "record_model_rationale",
+        "title": "Record Model Rationale",
+        "description": (
+            "Append model-generated operational rationale to model_rationale.jsonl. "
+            "Model rationale is not forensic evidence and cannot change findings."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "output_dir": _string_schema("Generated run output directory."),
+                "phase": _string_schema("Orchestration phase."),
+                "visible_message": _string_schema("Visible [model-rationale] message."),
+                "proposed_action": _string_schema("Bounded action proposed by the model."),
+                "rationale_summary": _string_schema("Operational rationale summary."),
+                "basis_files": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "default": [],
+                },
+                "observed_state": {
+                    "anyOf": [{"type": "object"}, {"type": "null"}],
+                    "default": None,
+                },
+                "forbidden_claims_avoided": {
+                    "anyOf": [
+                        {"type": "array", "items": {"type": "string"}},
+                        {"type": "null"},
+                    ],
+                    "default": None,
+                },
+                "confidence": _string_schema("Operational confidence label."),
+            },
+            "required": [
+                "output_dir",
+                "phase",
+                "visible_message",
+                "proposed_action",
+                "rationale_summary",
+                "basis_files",
+                "confidence",
+            ],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": False},
+    },
+    "evaluate_action_policy": {
+        "name": "evaluate_action_policy",
+        "title": "Evaluate Action Policy",
+        "description": (
+            "Evaluate a proposed model action against the deterministic Elenchos "
+            "allow/reject policy and append policy_decisions.jsonl. No arbitrary "
+            "shell or raw evidence inspection is permitted."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "output_dir": _string_schema("Generated run output directory."),
+                "proposed_action": _string_schema("Proposed bounded action."),
+                "action_args": {
+                    "anyOf": [{"type": "object"}, {"type": "null"}],
+                    "default": None,
+                },
+                "rationale_id": _optional_string_schema("Optional rationale_id."),
+            },
+            "required": ["output_dir", "proposed_action"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": False},
+    },
+    "start_case_run": {
+        "name": "start_case_run",
+        "title": "Start Case Run",
+        "description": (
+            "Start the deterministic Elenchos run-case workflow asynchronously with "
+            "a fixed argv builder, shell=False, generated output logs, and duplicate "
+            "active-job rejection."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "case_id": _optional_string_schema(
+                    "Optional case identifier. Defaults to case_id in case_prep.json."
+                ),
+                "artifact_manifest": _string_schema("Path to case_prep.json."),
+                "output_dir": _string_schema("Generated agent output directory."),
+                "casebook": _optional_string_schema("Optional JSON casebook path."),
+                "max_iterations": _integer_schema(
+                    "Hard cap on deterministic agent attempts.",
+                    DEFAULT_MAX_ITERATIONS,
+                ),
+                "max_normalized_events": _integer_schema(
+                    "Bounded normalized event cap.",
+                    DEFAULT_MAX_NORMALIZED_EVENTS,
+                ),
+                "event_selection_profile": {
+                    "type": "string",
+                    "enum": sorted(SUPPORTED_EVENT_SELECTION_PROFILES),
+                    "default": DEFAULT_EVENT_SELECTION_PROFILE,
+                    "description": "Bounded event selection policy.",
+                },
+            },
+            "required": ["artifact_manifest", "output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": False},
+    },
+    "poll_case_run": {
+        "name": "poll_case_run",
+        "title": "Poll Case Run",
+        "description": (
+            "Read run_job.json, progress.jsonl, and generated outputs only to report "
+            "live deterministic run status."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"output_dir": _string_schema("Generated run output directory.")},
+            "required": ["output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": True},
+    },
+    "finish_case_run": {
+        "name": "finish_case_run",
+        "title": "Finish Case Run",
+        "description": (
+            "Confirm asynchronous deterministic run completion and return generated "
+            "output state without killing processes or reading raw evidence."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"output_dir": _string_schema("Generated run output directory.")},
+            "required": ["output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": False},
+    },
+    "emit_claim_boundary": {
+        "name": "emit_claim_boundary",
+        "title": "Emit Claim Boundary",
+        "description": (
+            "Return safe claim-boundary wording from generated Elenchos outputs when "
+            "present, otherwise return conservative fallback wording. This does not "
+            "modify findings or upgrade statuses."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"output_dir": _string_schema("Generated run output directory.")},
+            "required": ["output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": True},
+    },
 }
 
 
@@ -443,6 +639,35 @@ def _error_summary(*, returncode: int, stdout: str, stderr: str) -> str:
 
 def _error_payload(exc: Exception) -> dict[str, object]:
     return {"status": "failed", "error": sanitize_model_error(exc)}
+
+
+def _string_list_request(request: Mapping[str, object], name: str) -> list[str]:
+    value = request.get(name, [])
+    if not isinstance(value, list):
+        raise ValueError(f"{name} must be a list of strings")
+    if not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"{name} must contain only non-empty strings")
+    return list(value)
+
+
+def _optional_string_list_request(request: Mapping[str, object], name: str) -> list[str]:
+    value = request.get(name)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise ValueError(f"{name} must be a list of strings when provided")
+    if not all(isinstance(item, str) and item for item in value):
+        raise ValueError(f"{name} must contain only non-empty strings")
+    return list(value)
+
+
+def _optional_object_request(request: Mapping[str, object], name: str) -> dict[str, Any]:
+    value = request.get(name)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{name} must be an object when provided")
+    return dict(value)
 
 
 def _path_from_stdout_or_default(
@@ -1047,7 +1272,7 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         final_wording = event.get("final_wording")
         if isinstance(final_wording, str) and final_wording:
             notes.append(final_wording)
-    return {
+    result: dict[str, object] = {
         "validation_status": validation_status,
         "output_dir": display_path(output_dir),
         "missing_files": missing_files,
@@ -1061,6 +1286,181 @@ def validate_run_outputs(request: Mapping[str, object]) -> dict[str, object]:
         "traceability_files": _traceability_files(output_dir),
         "notes": notes,
     }
+    result["claim_boundary_required"] = bool(self_correction_events)
+    if output_dir.exists():
+        (output_dir / "validation_summary.json").write_text(
+            json.dumps(result, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+    return result
+
+
+RationaleClaimPhrase = tuple[str, ...]
+
+
+UNSUPPORTED_FINAL_CLAIM_PHRASES: RationaleClaimPhrase = (
+    "confirmed compromise",
+    "confirmed theft",
+    "confirmed exfiltration",
+    "confirmed malware",
+    "confirmed memory finding",
+    "confirmed attribution",
+    "proved compromise",
+    "proved theft",
+    "proved exfiltration",
+)
+
+
+def _reject_unsafe_rationale_text(*parts: str) -> None:
+    text = " ".join(parts).casefold()
+    for phrase in UNSUPPORTED_FINAL_CLAIM_PHRASES:
+        if phrase in text:
+            raise ValueError(
+                "model rationale must not include unsupported final forensic claims"
+            )
+
+
+def inspect_run_state(request: Mapping[str, object]) -> dict[str, object]:
+    output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
+    summary = inspect_generated_run_state(output_dir)
+    payload = summary.to_dict()
+    payload["status"] = "completed"
+    return payload
+
+
+def record_model_rationale(request: Mapping[str, object]) -> dict[str, object]:
+    output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
+    agent_run_dir = agent_run_dir_from_output_dir(output_dir)
+    path = model_rationale_path(agent_run_dir)
+    visible_message = _required_string(request, "visible_message")
+    rationale_summary = _required_string(request, "rationale_summary")
+    proposed_action = _required_string(request, "proposed_action")
+    _reject_unsafe_rationale_text(visible_message, rationale_summary)
+    record = ModelRationaleRecord(
+        rationale_id=next_sequence_id("rationale", path),
+        timestamp_utc=utc_now(),
+        phase=_required_string(request, "phase"),
+        visible_message=visible_message,
+        proposed_action=proposed_action,
+        rationale_summary=rationale_summary,
+        basis_files=_string_list_request(request, "basis_files"),
+        observed_state=_optional_object_request(request, "observed_state"),
+        forbidden_claims_avoided=_optional_string_list_request(
+            request,
+            "forbidden_claims_avoided",
+        ),
+        confidence=_required_string(request, "confidence"),
+    )
+    append_jsonl(path, record.to_dict())
+    append_orchestration_event(
+        agent_run_dir,
+        event_type="model_rationale",
+        payload={
+            "rationale_id": record.rationale_id,
+            "proposed_action": record.proposed_action,
+            "phase": record.phase,
+        },
+    )
+    return {
+        "status": "completed",
+        "record": record.to_dict(),
+        "rationale_id": record.rationale_id,
+        "model_rationale_path": display_path(path),
+        "output_dir": display_path(agent_run_dir),
+    }
+
+
+def evaluate_action_policy(request: Mapping[str, object]) -> dict[str, object]:
+    output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
+    return evaluate_policy(
+        output_dir=output_dir,
+        proposed_action=_required_string(request, "proposed_action"),
+        action_args=_optional_object_request(request, "action_args"),
+        rationale_id=_optional_string(request, "rationale_id"),
+    )
+
+
+def start_case_run(request: Mapping[str, object]) -> dict[str, object]:
+    return start_case_run_job(request)
+
+
+def poll_case_run(request: Mapping[str, object]) -> dict[str, object]:
+    return poll_case_run_job(request)
+
+
+def finish_case_run(request: Mapping[str, object]) -> dict[str, object]:
+    return finish_case_run_job(request)
+
+
+def emit_claim_boundary(request: Mapping[str, object]) -> dict[str, object]:
+    output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
+    agent_run_dir = agent_run_dir_from_output_dir(output_dir)
+    records = _claim_boundary_records(agent_run_dir)
+    if records:
+        wording = [
+            {
+                "final_wording": row.get("final_wording"),
+                "scope_boundary": row.get("scope_boundary"),
+                "recommended_next_artifacts": row.get("recommended_next_artifacts", []),
+                "source": row.get("source"),
+            }
+            for row in records
+        ]
+    else:
+        wording = [
+            {
+                "final_wording": (
+                    "Elenchos did not find sufficient support for a confirmed theft, "
+                    "exfiltration, memory, malware, attribution, or final compromise "
+                    "conclusion within the submitted artifact scope. Analyst review "
+                    "and additional artifacts remain required."
+                ),
+                "scope_boundary": (
+                    "Current generated outputs do not provide deterministic support "
+                    "for those final conclusions."
+                ),
+                "recommended_next_artifacts": [],
+                "source": "conservative_fallback",
+            }
+        ]
+    return {
+        "status": "completed",
+        "output_dir": display_path(agent_run_dir),
+        "claim_boundaries": wording,
+        "status_upgrade_performed": False,
+    }
+
+
+def _claim_boundary_records(agent_run_dir: Path) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for filename, source_key in (
+        ("self_correction_events.json", "self_correction_events"),
+        ("gap_analysis.json", "gap_analysis"),
+        ("case_questions.json", "case_questions"),
+    ):
+        payload = _read_json_object(agent_run_dir / filename, filename)
+        candidates: list[object] = []
+        if filename == "self_correction_events.json":
+            raw = payload.get("events", [])
+            candidates = raw if isinstance(raw, list) else []
+        elif filename == "gap_analysis.json":
+            raw = payload.get("claim_boundaries", [])
+            candidates = raw if isinstance(raw, list) else []
+        else:
+            raw = payload.get("claim_boundaries", [])
+            candidates = raw if isinstance(raw, list) else []
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            final_wording = candidate.get("final_wording")
+            scope_boundary = candidate.get("scope_boundary")
+            if isinstance(final_wording, str) and final_wording:
+                record = dict(candidate)
+                record["source"] = source_key
+                if not isinstance(scope_boundary, str):
+                    record["scope_boundary"] = None
+                rows.append(record)
+    return rows
 
 
 def dispatch_tool(
@@ -1077,6 +1477,20 @@ def dispatch_tool(
         return summarize_run(request)
     if name == "validate_run_outputs":
         return validate_run_outputs(request)
+    if name == "inspect_run_state":
+        return inspect_run_state(request)
+    if name == "record_model_rationale":
+        return record_model_rationale(request)
+    if name == "evaluate_action_policy":
+        return evaluate_action_policy(request)
+    if name == "start_case_run":
+        return start_case_run(request)
+    if name == "poll_case_run":
+        return poll_case_run(request)
+    if name == "finish_case_run":
+        return finish_case_run(request)
+    if name == "emit_claim_boundary":
+        return emit_claim_boundary(request)
     raise ValueError(f"unknown Elenchos integration operation: {name}")
 
 
@@ -1121,6 +1535,13 @@ def build_parser() -> argparse.ArgumentParser:
         "run-case",
         "summarize-run",
         "validate-run-outputs",
+        "inspect-run-state",
+        "record-model-rationale",
+        "evaluate-action-policy",
+        "start-case-run",
+        "poll-case-run",
+        "finish-case-run",
+        "emit-claim-boundary",
     ):
         command_parser = subparsers.add_parser(command)
         command_parser.add_argument(
@@ -1142,6 +1563,13 @@ def main(argv: list[str] | None = None) -> int:
             "run-case": "run_case",
             "summarize-run": "summarize_run",
             "validate-run-outputs": "validate_run_outputs",
+            "inspect-run-state": "inspect_run_state",
+            "record-model-rationale": "record_model_rationale",
+            "evaluate-action-policy": "evaluate_action_policy",
+            "start-case-run": "start_case_run",
+            "poll-case-run": "poll_case_run",
+            "finish-case-run": "finish_case_run",
+            "emit-claim-boundary": "emit_claim_boundary",
         }
         if args.command in command_to_tool:
             request = _load_json_input(args.json_input)
