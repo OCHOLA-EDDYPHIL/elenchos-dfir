@@ -239,6 +239,27 @@ field to `start_case_run` or the blocking `run_case` fallback. Do not pass
 `orchestration_trace.json`, `model_rationale.jsonl`, `policy_decisions.jsonl`,
 or any file found by wildcard manifest search.
 
+### Using the Elenchos Case Console
+
+`elenchos tui` is the analyst-facing terminal console for this workflow. It
+launches OpenClaw with a bounded high-level prompt, watches the exact generated
+output directory, and displays live rationale, policy gate decisions, run
+status, validation, and claim-boundary summary from generated Elenchos
+artifacts.
+
+```bash
+elenchos tui --source-root /mnt/evidence/rocba --case-id rocba-demo
+```
+
+For post-run review or split-pane demos:
+
+```bash
+elenchos tui --watch-only --output-dir runs/<case>
+```
+
+The console does not inspect raw evidence. Its transcript is a generated
+display mirror only and is not forensic evidence.
+
 Example visible UI lines:
 
 ```text

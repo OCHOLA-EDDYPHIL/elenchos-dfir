@@ -80,6 +80,8 @@ If policy returns `rejected`, do not execute the rejected action. Inspect run st
 
 The adapter also self-gates supported bounded tool calls through the deterministic policy layer and records `policy_decisions.jsonl`, but the visible agent protocol must still call `evaluate_action_policy` and print the returned `[policy]` line before execution so the analyst can audit each proposed step.
 
+`elenchos tui` reads generated Elenchos artifacts for analyst display; TUI text is not evidence and must not be used to change findings or statuses.
+
 Use `inspect_run_state` between actions. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live progress is desired. Use `run_case` only when blocking execution is acceptable.
 
 `prepare_case` produces a prepared manifest at `prepared_manifest_path`. Pass that exact field, or the `prepared_manifest_path` surfaced by `inspect_run_state`, into `start_case_run`. Do not pass `run_integrity_manifest.json`, `validation_summary.json`, model rationale files, policy decision files, or arbitrary manifest-looking files as the prepared manifest.

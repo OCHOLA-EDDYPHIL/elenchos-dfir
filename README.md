@@ -335,6 +335,19 @@ Generated run outputs include a SHA-256 `run_integrity_manifest.json` so
 validation can detect tampering in the run directory without claiming that
 hashes prove an investigative conclusion.
 
+### Elenchos Case Console
+
+`elenchos tui` provides the analyst-facing terminal console for a case run. It
+accepts a high-level case prompt, launches OpenClaw, and renders live rationale,
+policy-gate decisions, run status, validation status, and final claim-boundary
+summary from generated Elenchos artifacts.
+
+```bash
+elenchos tui --source-root /mnt/evidence/rocba --case-id rocba-demo
+```
+
+See [docs/tui.md](docs/tui.md).
+
 ### Agent orchestration guidance
 
 This repository includes [`AGENTS.md`](AGENTS.md) for OpenClaw, Claude Code,
@@ -448,6 +461,7 @@ events while downgrading the final status to `needs_review`.
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
 | OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
+| Elenchos Case Console | `docs/tui.md` |
 | Model rationale boundary | `docs/model-rationale-boundary.md` |
 | Autonomous execution | `docs/autonomous-execution.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |

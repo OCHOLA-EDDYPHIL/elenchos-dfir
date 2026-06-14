@@ -1,0 +1,407 @@
+from __future__ import annotations
+
+import shutil
+import subprocess
+import textwrap
+import time
+from pathlib import Path
+from typing import Any
+
+from elenchos.policy.paths import MOUNTED_EVIDENCE_ROOT, is_generated_output_path, is_relative_to
+from elenchos.tui.runner import (
+    DEFAULT_AGENT,
+    build_default_prompt,
+    launch_openclaw,
+    make_output_dir,
+)
+from elenchos.tui.state import ConsoleEvent, ConsoleState, read_console_state, render_text_snapshot
+
+TERMINAL_JOB_STATUSES = {
+    "completed",
+    "completed_unknown_exit",
+    "failed",
+    "rejected",
+    "not_found",
+}
+TRANSCRIPT_FILENAME = "case_console_transcript.md"
+
+
+def run_tui(
+    *,
+    source_root: str | None,
+    case_id: str | None,
+    output_dir: Path | None,
+    runs_root: Path = Path("runs"),
+    agent: str = DEFAULT_AGENT,
+    prompt: str | None = None,
+    prompt_file: Path | None = None,
+    watch_only: bool = False,
+    refresh_seconds: float = 1.0,
+    once: bool = False,
+) -> int:
+    try:
+        resolved_output_dir = _resolve_output_dir(
+            output_dir=output_dir,
+            case_id=case_id,
+            runs_root=runs_root,
+            watch_only=watch_only,
+        )
+        prompt_text = _resolve_prompt(
+            source_root=source_root,
+            output_dir=resolved_output_dir,
+            prompt=prompt,
+            prompt_file=prompt_file,
+            watch_only=watch_only,
+        )
+    except ValueError as exc:
+        print(f"error={exc}")
+        return 2
+
+    if once:
+        state = read_console_state(resolved_output_dir, prompt=prompt_text)
+        _mirror_visible_transcript(resolved_output_dir, state)
+        print(render_text_snapshot(state), end="")
+        return 0
+
+    try:
+        import curses
+    except ImportError as exc:
+        print(f"error=curses is unavailable: {exc}")
+        return 2
+
+    def _wrapped(stdscr: Any) -> int:
+        return _run_curses(
+            stdscr=stdscr,
+            output_dir=resolved_output_dir,
+            agent=agent,
+            prompt=prompt_text,
+            watch_only=watch_only,
+            refresh_seconds=refresh_seconds,
+        )
+
+    try:
+        result = curses.wrapper(_wrapped)
+    except KeyboardInterrupt:
+        result = 130
+    print(f"output_dir={resolved_output_dir}")
+    return int(result)
+
+
+def _resolve_output_dir(
+    *,
+    output_dir: Path | None,
+    case_id: str | None,
+    runs_root: Path,
+    watch_only: bool,
+) -> Path:
+    if watch_only:
+        if output_dir is None:
+            raise ValueError("output_dir is required with --watch-only")
+        resolved = output_dir.expanduser().resolve()
+        if is_relative_to(resolved, MOUNTED_EVIDENCE_ROOT):
+            raise ValueError("output_dir must not be under /mnt/evidence")
+        return resolved
+    if output_dir is None:
+        resolved = make_output_dir(case_id, runs_root=runs_root)
+        _require_generated_output_dir(resolved)
+        return resolved
+    resolved = output_dir.expanduser().resolve()
+    if is_relative_to(resolved, MOUNTED_EVIDENCE_ROOT):
+        raise ValueError("output_dir must not be under /mnt/evidence")
+    _require_generated_output_dir(resolved)
+    resolved.mkdir(parents=True, exist_ok=True)
+    return resolved
+
+
+def _require_generated_output_dir(path: Path) -> None:
+    if not is_generated_output_path(path):
+        raise ValueError("output_dir must be under a generated output root such as runs/")
+
+
+def _resolve_prompt(
+    *,
+    source_root: str | None,
+    output_dir: Path,
+    prompt: str | None,
+    prompt_file: Path | None,
+    watch_only: bool,
+) -> str | None:
+    if prompt_file is not None and prompt is not None:
+        raise ValueError("use either --prompt or --prompt-file, not both")
+    if prompt_file is not None:
+        return prompt_file.expanduser().read_text(encoding="utf-8").strip()
+    if prompt is not None:
+        return prompt.strip()
+    if watch_only:
+        return None
+    if source_root is None:
+        raise ValueError(
+            "source_root is required unless --prompt, --prompt-file, "
+            "or --watch-only is used"
+        )
+    return build_default_prompt(source_root, output_dir)
+
+
+def _run_curses(
+    *,
+    stdscr: Any,
+    output_dir: Path,
+    agent: str,
+    prompt: str | None,
+    watch_only: bool,
+    refresh_seconds: float,
+) -> int:
+    import curses
+
+    screen = stdscr
+    screen.nodelay(True)
+    curses.curs_set(0)
+    if curses.has_colors():
+        curses.start_color()
+        curses.use_default_colors()
+        curses.init_pair(1, curses.COLOR_GREEN, -1)
+        curses.init_pair(2, curses.COLOR_YELLOW, -1)
+        curses.init_pair(3, curses.COLOR_RED, -1)
+
+    process: subprocess.Popen[str] | None = None
+    openclaw_status = "watch-only" if watch_only else "ready"
+    launch_error: str | None = None
+    final_refreshes = 0
+
+    while True:
+        state = read_console_state(output_dir, prompt=prompt)
+        _mirror_visible_transcript(output_dir, state)
+        if launch_error:
+            state = _state_with_error(state, launch_error)
+        _draw(screen, state, openclaw_status=openclaw_status, watch_only=watch_only)
+
+        key = screen.getch()
+        if key in (ord("q"), ord("Q")):
+            if process is not None and process.poll() is None:
+                if _confirm_quit(screen):
+                    process.terminate()
+                    return 0
+            else:
+                return 0
+        if key in (ord("\n"), 10, 13) and process is None and not watch_only:
+            try:
+                process = launch_openclaw(
+                    agent,
+                    prompt or "",
+                    output_dir / "openclaw-console.log",
+                )
+                openclaw_status = f"running pid={process.pid}"
+            except FileNotFoundError:
+                launch_error = "OpenClaw executable not found in PATH."
+                openclaw_status = "failed"
+            except OSError as exc:
+                launch_error = f"OpenClaw launch failed: {exc}"
+                openclaw_status = "failed"
+
+        if process is not None:
+            returncode = process.poll()
+            if returncode is not None:
+                openclaw_status = f"exited rc={returncode}"
+                if state.job_status in TERMINAL_JOB_STATUSES or state.job_status is None:
+                    final_refreshes += 1
+                    if final_refreshes >= 3:
+                        return 0
+        time.sleep(max(refresh_seconds, 0.1))
+
+
+def _state_with_error(state: ConsoleState, error: str) -> ConsoleState:
+    return ConsoleState(
+        output_dir=state.output_dir,
+        run_dir=state.run_dir,
+        prompt=state.prompt,
+        job_status=state.job_status,
+        returncode=state.returncode,
+        validation_status=state.validation_status,
+        finding_counts=state.finding_counts,
+        case_question_counts=state.case_question_counts,
+        normalized_events=state.normalized_events,
+        rationale_events=state.rationale_events,
+        policy_events=state.policy_events,
+        progress_events=state.progress_events,
+        final_summary=state.final_summary,
+        claim_boundary=state.claim_boundary,
+        errors=[*state.errors, error],
+        required_outputs_present=state.required_outputs_present,
+    )
+
+
+def _draw(
+    screen: Any,
+    state: ConsoleState,
+    *,
+    openclaw_status: str,
+    watch_only: bool,
+) -> None:
+    import curses
+
+    screen.erase()
+    height, width = screen.getmaxyx()
+    width = max(width, 20)
+    header = (
+        "Elenchos Case Console | "
+        f"OpenClaw: {openclaw_status} | "
+        f"job: {state.job_status or 'pending'} | "
+        f"validation: {state.validation_status or 'pending'}"
+    )
+    _add_line(screen, 0, 0, header, width, curses.A_BOLD)
+    _add_line(screen, 1, 0, f"path: {state.output_dir}", width)
+
+    y = 3
+    panel_height = max(4, (height - 6) // 5)
+    y = _panel(
+        screen,
+        y,
+        0,
+        panel_height,
+        width,
+        "Prompt",
+        _wrapped_lines(
+            state.prompt or "Watch-only mode. No prompt will be launched.",
+            width - 4,
+        )[:2],
+    )
+    y = _panel(
+        screen,
+        y,
+        0,
+        panel_height,
+        width,
+        "Live rationale",
+        _event_lines(state.rationale_events, limit=max(1, panel_height - 3)),
+    )
+    y = _panel(
+        screen,
+        y,
+        0,
+        panel_height,
+        width,
+        "Policy gate",
+        _event_lines(state.policy_events, limit=max(1, panel_height - 3)),
+    )
+    status_lines = [
+        f"findings: {_format_counts(state.finding_counts) or 'none'}",
+        f"case questions: {_format_counts(state.case_question_counts) or 'none'}",
+        "normalized events: "
+        f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
+        "required outputs: "
+        + ", ".join(
+            f"{name}={'yes' if present else 'no'}"
+            for name, present in sorted(state.required_outputs_present.items())
+        ),
+    ]
+    y = _panel(screen, y, 0, panel_height, width, "Run status", status_lines)
+    summary_lines = _wrapped_lines(
+        state.final_summary or "Pending generated Elenchos summary.",
+        width - 4,
+    )
+    summary_lines.extend(_wrapped_lines(f"Claim boundary: {state.claim_boundary}", width - 4))
+    if state.errors:
+        summary_lines.append(f"warnings: {len(state.errors)}")
+    _panel(screen, y, 0, max(4, height - y - 2), width, "Final summary", summary_lines)
+
+    footer = "q quit | r refresh"
+    if not watch_only and openclaw_status == "ready":
+        footer = "Enter start | " + footer
+    _add_line(screen, height - 1, 0, footer, width, curses.A_DIM)
+    screen.refresh()
+
+
+def _confirm_quit(screen: Any) -> bool:
+    height, width = screen.getmaxyx()
+    _add_line(
+        screen,
+        height - 1,
+        0,
+        "OpenClaw is still running. Press y to terminate OpenClaw, any other key to continue.",
+        width,
+    )
+    screen.nodelay(False)
+    key = screen.getch()
+    screen.nodelay(True)
+    return key in (ord("y"), ord("Y"))
+
+
+def _panel(
+    screen: Any,
+    y: int,
+    x: int,
+    height: int,
+    width: int,
+    title: str,
+    lines: list[str],
+) -> int:
+    if y >= screen.getmaxyx()[0] - 2:
+        return y
+    actual_height = max(3, min(height, screen.getmaxyx()[0] - y - 1))
+    right = x + width - 1
+    bottom = y + actual_height - 1
+    if width >= 4 and actual_height >= 3:
+        _add_line(screen, y, x, "+" + "-" * (width - 2) + "+", width)
+        _add_line(screen, y, x + 2, f" {title} ", max(1, width - 4))
+        for row in range(y + 1, bottom):
+            _add_line(screen, row, x, "|", width)
+            if right < screen.getmaxyx()[1]:
+                _add_line(screen, row, right, "|", 1)
+        _add_line(screen, bottom, x, "+" + "-" * (width - 2) + "+", width)
+    for index, line in enumerate(lines[: max(0, actual_height - 2)], start=1):
+        _add_line(screen, y + index, x + 2, line, max(1, width - 4))
+    return y + actual_height
+
+
+def _add_line(screen: Any, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
+    try:
+        screen.addnstr(y, x, text, max(0, width - 1), attr)
+    except Exception:
+        return
+
+
+def _event_lines(events: list[ConsoleEvent], *, limit: int) -> list[str]:
+    if not events:
+        return ["pending"]
+    return [event.message for event in events[-limit:]]
+
+
+def _wrapped_lines(text: str, width: int) -> list[str]:
+    return textwrap.wrap(text, width=max(width, 20)) or [""]
+
+
+def _format_counts(counts: dict[str, int]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in sorted(counts.items()))
+
+
+def _mirror_visible_transcript(output_dir: Path, state: ConsoleState) -> None:
+    resolved = output_dir.resolve()
+    if is_relative_to(resolved, MOUNTED_EVIDENCE_ROOT) or not is_generated_output_path(resolved):
+        return
+    path = resolved / TRANSCRIPT_FILENAME
+    lines = ["# Elenchos Case Console Transcript", ""]
+    for event in [*state.rationale_events, *state.policy_events]:
+        timestamp = f"{event.timestamp_utc} " if event.timestamp_utc else ""
+        lines.append(f"- {timestamp}{event.message}")
+    if len(lines) <= 2:
+        return
+    content = "\n".join(_dedupe_lines(lines)) + "\n"
+    if path.exists() and path.read_text(encoding="utf-8", errors="ignore") == content:
+        return
+    path.write_text(content, encoding="utf-8")
+
+
+def _dedupe_lines(lines: list[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for line in lines:
+        if line.startswith("- ") and line in seen:
+            continue
+        if line.startswith("- "):
+            seen.add(line)
+        output.append(line)
+    return output
+
+
+def terminal_columns() -> int:
+    return shutil.get_terminal_size((100, 24)).columns
