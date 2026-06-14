@@ -75,7 +75,7 @@ def build_openclaw_command(agent: str, prompt: str) -> list[str]:
         raise ValueError("agent must be a non-empty string")
     if not prompt:
         raise ValueError("prompt must be a non-empty string")
-    return ["openclaw", "agent", agent, "--message", prompt]
+    return ["openclaw", "agent", "--agent", agent, "--message", prompt]
 
 
 def launch_openclaw(agent: str, prompt: str, log_path: Path) -> subprocess.Popen[str]:
@@ -129,7 +129,14 @@ def write_run_context(
             "TUI text and model rationale are operational display only, not forensic "
             "evidence. Deterministic Elenchos outputs remain the forensic authority."
         ),
-        "openclaw_command_shape": ["openclaw", "agent", agent, "--message", "<prompt>"],
+        "openclaw_command_shape": [
+            "openclaw",
+            "agent",
+            "--agent",
+            agent,
+            "--message",
+            "<prompt>",
+        ],
     }
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "run_context.json").write_text(

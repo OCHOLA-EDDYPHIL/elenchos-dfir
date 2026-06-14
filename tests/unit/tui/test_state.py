@@ -146,7 +146,7 @@ def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
             [
                 "line 1",
                 'Missing required option "-m, --message <text>".',
-                "Try: openclaw agent main --help",
+                "Try: openclaw agent --help",
             ]
         )
         + "\n",

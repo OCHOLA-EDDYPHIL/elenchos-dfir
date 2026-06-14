@@ -49,9 +49,8 @@ def test_build_wrapped_prompt_includes_safety_handoff_and_analyst_prompt(tmp_pat
 def test_build_openclaw_command_returns_argv_list_without_shell():
     command = build_openclaw_command("main", "Triage the case.")
 
-    assert command == ["openclaw", "agent", "main", "--message", "Triage the case."]
-    assert "--agent" not in command
-    assert command[2] == "main"
+    assert command == ["openclaw", "agent", "--agent", "main", "--message", "Triage the case."]
+    assert command[2:4] == ["--agent", "main"]
     assert command[-2:] == ["--message", "Triage the case."]
 
 
@@ -90,6 +89,7 @@ def test_write_run_context_records_prompt_and_command_shape(tmp_path: Path):
     assert stored["openclaw_command_shape"] == [
         "openclaw",
         "agent",
+        "--agent",
         "main",
         "--message",
         "<prompt>",
