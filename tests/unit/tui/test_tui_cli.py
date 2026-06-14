@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import curses
 import json
 from pathlib import Path
 
@@ -7,6 +8,33 @@ import pytest
 
 from elenchos.cli import main
 from elenchos.tui import console
+
+
+class FakeScreen:
+    def __init__(self, keys: list[int]) -> None:
+        self.keys = list(keys)
+        self.timeouts: list[int] = []
+        self.drawn: list[str] = []
+
+    def timeout(self, value: int) -> None:
+        self.timeouts.append(value)
+
+    def getch(self) -> int:
+        if self.keys:
+            return self.keys.pop(0)
+        return -1
+
+    def erase(self) -> None:
+        return None
+
+    def getmaxyx(self) -> tuple[int, int]:
+        return (30, 120)
+
+    def addnstr(self, _y: int, _x: int, text: str, _width: int, _attr: int = 0) -> None:
+        self.drawn.append(text)
+
+    def refresh(self) -> None:
+        return None
 
 
 def test_cli_help_includes_tui(capsys):
@@ -169,3 +197,99 @@ def test_transcript_mirror_is_constrained_to_generated_roots(tmp_path: Path):
 
     assert not (non_generated / "case_console_transcript.md").exists()
     assert (generated / "case_console_transcript.md").is_file()
+
+
+def test_prompt_input_buffer_handles_keys_without_refresh_side_effects():
+    buffer = console.PromptInputBuffer()
+
+    assert buffer.handle_key(ord("r"), backspace_keys=(127,)).changed is True
+    assert buffer.text == "r"
+    assert buffer.handle_key(ord("a"), backspace_keys=(127,)).changed is True
+    assert buffer.text == "ra"
+    assert buffer.handle_key(127, backspace_keys=(127,)).changed is True
+    assert buffer.text == "r"
+    result = buffer.handle_key(10, backspace_keys=(127,))
+    assert result.submitted_prompt == "r"
+
+
+def test_refresh_clock_respects_cadence_and_forced_refresh():
+    clock = console.RefreshClock(1.0)
+
+    assert clock.should_refresh(0.0) is True
+    clock.mark_refreshed(0.0)
+    assert clock.should_refresh(0.5) is False
+    assert clock.should_refresh(0.5, forced=True) is True
+    assert clock.should_refresh(1.0) is True
+
+
+def test_prompt_entry_loop_does_not_sleep_read_state_or_create_output_dir(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([ord("a"), ord("b"), 127, ord("c"), 3])
+    output_dir = tmp_path / "runs" / "case"
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(
+        console.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(AssertionError("sleep called")),
+    )
+    monkeypatch.setattr(
+        console,
+        "read_console_state",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("state read")),
+    )
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt=None,
+        case_id="case",
+        runs_root=tmp_path / "runs",
+        source_root=None,
+        watch_only=False,
+        refresh_seconds=1.0,
+    )
+
+    assert exit_code == 130
+    assert not output_dir.exists()
+    assert screen.timeouts[0] == console.INPUT_TIMEOUT_MS
+
+
+def test_watch_mode_reads_state_on_cadence_and_r_forces_refresh(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([-1, -1, ord("r"), 3])
+    output_dir = tmp_path / "runs" / "case"
+    output_dir.mkdir(parents=True)
+    reads: list[float] = []
+    times = iter([0.0, 0.2, 0.4, 0.6])
+    original_read = console.read_console_state
+
+    def counted_state(path: Path, *, prompt: str | None = None):
+        reads.append(float(len(reads)))
+        return original_read(path, prompt=prompt)
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(console.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(console, "read_console_state", counted_state)
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt=None,
+        case_id=None,
+        runs_root=tmp_path / "runs",
+        source_root=None,
+        watch_only=True,
+        refresh_seconds=1.0,
+    )
+
+    assert exit_code == 130
+    assert len(reads) == 2

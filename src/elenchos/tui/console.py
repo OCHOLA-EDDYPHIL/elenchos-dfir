@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import textwrap
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,63 @@ TERMINAL_JOB_STATUSES = {
     "not_found",
 }
 TRANSCRIPT_FILENAME = "case_console_transcript.md"
+INPUT_POLL_SECONDS = 0.02
+INPUT_TIMEOUT_MS = int(INPUT_POLL_SECONDS * 1000)
+MIN_REFRESH_SECONDS = 0.1
+KEY_CTRL_C = 3
+KEY_ENTER = 10
+KEY_CARRIAGE_RETURN = 13
+KEY_BACKSPACE_VALUES = (127, 8)
+
+
+@dataclass(slots=True)
+class PromptKeyResult:
+    submitted_prompt: str | None = None
+    should_quit: bool = False
+    exit_code: int | None = None
+    changed: bool = False
+
+
+class PromptInputBuffer:
+    def __init__(self) -> None:
+        self.text = ""
+
+    def handle_key(self, key: int, *, backspace_keys: tuple[int, ...]) -> PromptKeyResult:
+        if key == -1:
+            return PromptKeyResult()
+        if key == KEY_CTRL_C:
+            return PromptKeyResult(should_quit=True, exit_code=130)
+        if key in (KEY_ENTER, KEY_CARRIAGE_RETURN):
+            prompt = self.text.strip()
+            if prompt:
+                return PromptKeyResult(submitted_prompt=prompt)
+            return PromptKeyResult()
+        if key in (ord("q"), ord("Q")) and not self.text:
+            return PromptKeyResult(should_quit=True, exit_code=0)
+        if key in backspace_keys:
+            if not self.text:
+                return PromptKeyResult()
+            self.text = self.text[:-1]
+            return PromptKeyResult(changed=True)
+        if 32 <= key <= 126:
+            self.text += chr(key)
+            return PromptKeyResult(changed=True)
+        return PromptKeyResult()
+
+
+@dataclass(slots=True)
+class RefreshClock:
+    interval_seconds: float
+    next_refresh_at: float = 0.0
+
+    def __post_init__(self) -> None:
+        self.interval_seconds = max(self.interval_seconds, MIN_REFRESH_SECONDS)
+
+    def should_refresh(self, now: float, *, forced: bool = False) -> bool:
+        return forced or now >= self.next_refresh_at
+
+    def mark_refreshed(self, now: float) -> None:
+        self.next_refresh_at = now + self.interval_seconds
 
 
 def run_tui(
@@ -171,7 +229,7 @@ def _run_curses(
     import curses
 
     screen = stdscr
-    screen.nodelay(True)
+    screen.timeout(INPUT_TIMEOUT_MS)
     curses.curs_set(0)
     if curses.has_colors():
         curses.start_color()
@@ -184,59 +242,75 @@ def _run_curses(
     openclaw_status = "watch-only" if watch_only else "ready"
     launch_error: str | None = None
     final_refreshes = 0
-    prompt_input = ""
+    prompt_buffer = PromptInputBuffer()
+    prompt_dirty = True
     submitted_prompt = analyst_prompt
     active_output_dir = output_dir if watch_only or submitted_prompt else None
+    refresh_clock = RefreshClock(refresh_seconds)
+    force_state_refresh = active_output_dir is not None
+    last_state: ConsoleState | None = None
+    needs_redraw = True
+    completed_process_returncode: int | None = None
 
     while True:
         if active_output_dir is None:
-            _draw_prompt_entry(
-                screen,
-                prompt_input=prompt_input,
-                error=launch_error,
-                case_id=case_id,
-                runs_root=runs_root,
+            if prompt_dirty:
+                _draw_prompt_entry(
+                    screen,
+                    prompt_input=prompt_buffer.text,
+                    error=launch_error,
+                    case_id=case_id,
+                    runs_root=runs_root,
+                )
+                prompt_dirty = False
+            key = screen.getch()
+            result = prompt_buffer.handle_key(
+                key,
+                backspace_keys=(curses.KEY_BACKSPACE, *KEY_BACKSPACE_VALUES),
             )
-            state = None
-        else:
-            wrapped_preview = (
-                build_wrapped_prompt(submitted_prompt, active_output_dir, source_root)
-                if submitted_prompt
-                else None
-            )
+            if result.should_quit:
+                return result.exit_code or 0
+            if result.submitted_prompt is not None:
+                submitted_prompt = result.submitted_prompt
+                active_output_dir = output_dir or plan_output_dir(case_id, runs_root=runs_root)
+                launch_error, process, openclaw_status = _launch_from_prompt(
+                    output_dir=active_output_dir,
+                    agent=agent,
+                    analyst_prompt=submitted_prompt,
+                    case_id=case_id,
+                    runs_root=runs_root,
+                    source_root=source_root,
+                )
+                force_state_refresh = True
+                needs_redraw = True
+                continue
+            if result.changed:
+                prompt_dirty = True
+            continue
+
+        wrapped_preview = (
+            build_wrapped_prompt(submitted_prompt, active_output_dir, source_root)
+            if submitted_prompt
+            else None
+        )
+        now = time.monotonic()
+        if last_state is None or refresh_clock.should_refresh(now, forced=force_state_refresh):
             state = read_console_state(active_output_dir, prompt=wrapped_preview)
             _mirror_visible_transcript(active_output_dir, state)
             if launch_error:
                 state = _state_with_error(state, launch_error)
-            _draw(screen, state, openclaw_status=openclaw_status, watch_only=watch_only)
+            last_state = state
+            refresh_clock.mark_refreshed(now)
+            force_state_refresh = False
+            needs_redraw = True
+
+        if needs_redraw and last_state is not None:
+            _draw(screen, last_state, openclaw_status=openclaw_status, watch_only=watch_only)
+            needs_redraw = False
 
         key = screen.getch()
-        if key == 3:
+        if key == KEY_CTRL_C:
             return 130
-        if active_output_dir is None:
-            if key in (ord("q"), ord("Q")) and not prompt_input:
-                return 0
-            if key in (ord("\n"), 10, 13):
-                if prompt_input.strip():
-                    submitted_prompt = prompt_input.strip()
-                    active_output_dir = output_dir or plan_output_dir(case_id, runs_root=runs_root)
-                    launch_error, process, openclaw_status = _launch_from_prompt(
-                        output_dir=active_output_dir,
-                        agent=agent,
-                        analyst_prompt=submitted_prompt,
-                        case_id=case_id,
-                        runs_root=runs_root,
-                        source_root=source_root,
-                    )
-                continue
-            if key in (curses.KEY_BACKSPACE, 127, 8):
-                prompt_input = prompt_input[:-1]
-                continue
-            if 32 <= key <= 126:
-                prompt_input += chr(key)
-            time.sleep(max(refresh_seconds, 0.1))
-            continue
-
         if key in (ord("q"), ord("Q")):
             if process is not None and process.poll() is None:
                 if _confirm_quit(screen):
@@ -244,7 +318,10 @@ def _run_curses(
                     return 0
             else:
                 return 0
-        if key in (ord("\n"), 10, 13) and process is None and not watch_only:
+        if key in (ord("r"), ord("R")):
+            force_state_refresh = True
+            continue
+        if key in (KEY_ENTER, KEY_CARRIAGE_RETURN) and process is None and not watch_only:
             if submitted_prompt is not None:
                 launch_error, process, openclaw_status = _launch_from_prompt(
                     output_dir=active_output_dir,
@@ -254,10 +331,14 @@ def _run_curses(
                     runs_root=runs_root,
                     source_root=source_root,
                 )
+                force_state_refresh = True
+                needs_redraw = True
+                continue
 
-        if process is not None:
+        if process is not None and completed_process_returncode is None:
             returncode = process.poll()
             if returncode is not None:
+                completed_process_returncode = returncode
                 openclaw_status = f"exited rc={returncode}"
                 complete_active_run(
                     runs_root=runs_root,
@@ -266,13 +347,18 @@ def _run_curses(
                 )
                 if returncode != 0:
                     launch_error = f"OpenClaw exited rc={returncode}"
-                elif state is not None and (
-                    state.job_status in TERMINAL_JOB_STATUSES or state.job_status is None
-                ):
-                    final_refreshes += 1
-                    if final_refreshes >= 3:
-                        return 0
-        time.sleep(max(refresh_seconds, 0.1))
+                force_state_refresh = True
+                needs_redraw = True
+                continue
+
+        if (
+            completed_process_returncode == 0
+            and last_state is not None
+            and (last_state.job_status in TERMINAL_JOB_STATUSES or last_state.job_status is None)
+        ):
+            final_refreshes += 1
+            if final_refreshes >= 3:
+                return 0
 
 
 def _launch_from_prompt(
@@ -473,9 +559,9 @@ def _confirm_quit(screen: Any) -> bool:
         "OpenClaw is still running. Press y to terminate OpenClaw, any other key to continue.",
         width,
     )
-    screen.nodelay(False)
+    screen.timeout(-1)
     key = screen.getch()
-    screen.nodelay(True)
+    screen.timeout(INPUT_TIMEOUT_MS)
     return key in (ord("y"), ord("Y"))
 
 

@@ -50,6 +50,10 @@ Use one-shot text mode for non-interactive checks:
 elenchos tui --watch-only --output-dir runs/<case> --once
 ```
 
+The prompt editor is designed for immediate analyst input. The
+`--refresh-seconds` option controls how often the console rereads generated
+Elenchos artifacts; it does not control typing latency.
+
 Elenchos wraps the analyst prompt with runtime constraints: use only bounded
 Elenchos tools, keep raw evidence read-only, use the exact generated output
 directory, write generated outputs only under that directory, use the
