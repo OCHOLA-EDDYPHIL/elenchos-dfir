@@ -103,6 +103,17 @@ POSIX_PATH_PATTERN = re.compile(r"(?<![:/])/[^\s\"'<>|;]+")
 PATH_TRAILING_PUNCTUATION = ".,:)]}"
 
 CommandRunner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
+SELF_POLICY_GATED_TOOLS = {
+    "prepare_case",
+    "run_case",
+    "summarize_run",
+    "validate_run_outputs",
+    "inspect_run_state",
+    "start_case_run",
+    "poll_case_run",
+    "finish_case_run",
+    "emit_claim_boundary",
+}
 
 
 def _string_schema(description: str) -> dict[str, object]:
@@ -1404,6 +1415,33 @@ def evaluate_action_policy(request: Mapping[str, object]) -> dict[str, object]:
     )
 
 
+def _self_policy_gate(name: str, request: Mapping[str, object]) -> dict[str, object] | None:
+    if name not in SELF_POLICY_GATED_TOOLS:
+        return None
+    output_dir = resolve_user_path(_required_string(request, "output_dir"), "output_dir")
+    decision = evaluate_policy(
+        output_dir=output_dir,
+        proposed_action=name,
+        action_args=dict(request),
+        rationale_id=_optional_string(request, "rationale_id"),
+    )
+    if decision["decision"] != "allowed":
+        raise ValueError(f"{name} rejected by policy: {decision['reason']}")
+    return decision
+
+
+def _attach_policy(
+    result: dict[str, object],
+    policy: dict[str, object] | None,
+) -> dict[str, object]:
+    if policy is None:
+        return result
+    result["policy_decision"] = policy.get("policy_decision")
+    result["policy_decisions_path"] = policy.get("policy_decisions_path")
+    result["visible_policy_message"] = policy.get("visible_policy_message")
+    return result
+
+
 def start_case_run(request: Mapping[str, object]) -> dict[str, object]:
     return start_case_run_job(request)
 
@@ -1493,28 +1531,29 @@ def dispatch_tool(
     *,
     command_runner: CommandRunner = _default_command_runner,
 ) -> dict[str, object]:
+    policy = _self_policy_gate(name, request)
     if name == "prepare_case":
-        return prepare_case(request, command_runner=command_runner)
+        return _attach_policy(prepare_case(request, command_runner=command_runner), policy)
     if name == "run_case":
-        return run_case(request, command_runner=command_runner)
+        return _attach_policy(run_case(request, command_runner=command_runner), policy)
     if name == "summarize_run":
-        return summarize_run(request)
+        return _attach_policy(summarize_run(request), policy)
     if name == "validate_run_outputs":
-        return validate_run_outputs(request)
+        return _attach_policy(validate_run_outputs(request), policy)
     if name == "inspect_run_state":
-        return inspect_run_state(request)
+        return _attach_policy(inspect_run_state(request), policy)
     if name == "record_model_rationale":
         return record_model_rationale(request)
     if name == "evaluate_action_policy":
         return evaluate_action_policy(request)
     if name == "start_case_run":
-        return start_case_run(request)
+        return _attach_policy(start_case_run(request), policy)
     if name == "poll_case_run":
-        return poll_case_run(request)
+        return _attach_policy(poll_case_run(request), policy)
     if name == "finish_case_run":
-        return finish_case_run(request)
+        return _attach_policy(finish_case_run(request), policy)
     if name == "emit_claim_boundary":
-        return emit_claim_boundary(request)
+        return _attach_policy(emit_claim_boundary(request), policy)
     raise ValueError(f"unknown Elenchos integration operation: {name}")
 
 

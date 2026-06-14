@@ -57,8 +57,11 @@ def _fake_prepare(argv: list[str]) -> subprocess.CompletedProcess[str]:
     source_manifest = output_dir / "source_manifest.json"
     source_image_manifest = output_dir / "source_image_manifest.json"
     extraction_audit = output_dir / "extraction_audit.jsonl"
+    prepared_mft = output_dir / "extracted" / "mft" / "$MFT"
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    prepared_mft.parent.mkdir(parents=True, exist_ok=True)
+    prepared_mft.write_bytes(b"synthetic mft")
     source_root.mkdir(parents=True, exist_ok=True)
     (source_root / "synthetic.E01").write_bytes(b"synthetic smoke source marker")
     sources: list[dict[str, object]] = [
@@ -103,7 +106,16 @@ def _fake_prepare(argv: list[str]) -> subprocess.CompletedProcess[str]:
             "coverage_gaps": [],
             "created_at": "2026-01-01T00:00:00Z",
             "output_dir": "runs/openclaw-smoke/case-prep",
-            "prepared_artifacts": [],
+            "prepared_artifacts": [
+                {
+                    "artifact_id": "prep_mft",
+                    "artifact_type": "mft",
+                    "parser_eligible": True,
+                    "path": "extracted/mft/$MFT",
+                    "source_id": "src_openclaw_smoke",
+                    "status": "available",
+                }
+            ],
             "schema_version": 1,
             "source_set_id": "srcset_openclaw_smoke",
             "sources": sources,
@@ -129,7 +141,7 @@ def _fake_prepare(argv: list[str]) -> subprocess.CompletedProcess[str]:
             f"case_id={case_id}",
             "status=completed",
             "sources=1",
-            "prepared_artifacts=0",
+            "prepared_artifacts=1",
             "coverage_gaps=0",
             f"output_dir={output_dir}",
             f"case_prep={case_prep}",

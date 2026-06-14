@@ -260,8 +260,10 @@ def evaluate_action_policy(
         rejected_fields=rejected_fields,
         normalized_action=normalized,
     )
+    decision_payload = decision_record.to_dict()
+    decision_payload["visible_policy_message"] = visible
     if write_decision:
-        append_jsonl(policy_path, decision_record.to_dict())
+        append_jsonl(policy_path, decision_payload)
         append_orchestration_event(
             agent_run_dir,
             event_type="policy_decision",
@@ -277,7 +279,7 @@ def evaluate_action_policy(
     payload.update(
         {
             "status": "completed",
-            "policy_decision": decision_record.to_dict(),
+            "policy_decision": decision_payload,
             "policy_decisions_path": display_path(policy_path),
             "output_dir": display_path(agent_run_dir),
         }

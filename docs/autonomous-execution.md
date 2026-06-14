@@ -27,6 +27,11 @@ The policy gate decides whether the action is allowed. Elenchos deterministic
 code remains the source of findings, statuses, reports, validation, and
 evidence-backed traceability.
 
+Agent hosts should still call `evaluate_action_policy` explicitly and print the
+returned `[policy]` line. The tool adapter also self-gates bounded tool calls
+through the same policy layer, records `policy_decisions.jsonl`, and rejects
+unsafe calls before execution if an agent skips the explicit policy step.
+
 For live progress, use:
 
 - `start_case_run` to start deterministic `agent run-case` with a fixed argv

@@ -233,6 +233,40 @@ def test_tool_adapter_rejects_unknown_operation():
         dispatch_tool("shell", {})
 
 
+def test_dispatch_self_gates_tool_calls_with_policy(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+
+    result = dispatch_tool("inspect_run_state", {"output_dir": str(output_dir)})
+
+    assert result["status"] == "completed"
+    assert str(result["visible_policy_message"]).startswith(
+        "[policy] proposed inspect_run_state -> allowed"
+    )
+    policy_path = output_dir / "policy_decisions.jsonl"
+    assert policy_path.is_file()
+    assert "[policy]" in policy_path.read_text(encoding="utf-8")
+
+
+def test_dispatch_rejects_policy_blocked_start_before_launch(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    bad_manifest = output_dir / "run_integrity_manifest.json"
+    bad_manifest.parent.mkdir(parents=True)
+    bad_manifest.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="start_case_run rejected by policy"):
+        dispatch_tool(
+            "start_case_run",
+            {
+                "output_dir": str(output_dir),
+                "prepared_manifest_path": str(bad_manifest),
+            },
+        )
+
+    policy_text = (output_dir / "policy_decisions.jsonl").read_text(encoding="utf-8")
+    assert "[policy] proposed start_case_run -> rejected" in policy_text
+
+
 def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     seen: list[list[str]] = []
 

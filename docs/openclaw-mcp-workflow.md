@@ -72,7 +72,9 @@ The adapter exposes deterministic workflow tools plus a live autonomy layer:
 - `record_model_rationale`: records model-generated operational rationale in
   `model_rationale.jsonl`; model rationale is not forensic evidence.
 - `evaluate_action_policy`: records deterministic allow/reject decisions in
-  `policy_decisions.jsonl`.
+  `policy_decisions.jsonl`. The adapter also self-gates bounded tool calls
+  through the same policy layer so missing explicit policy calls still leave a
+  deterministic policy trace and rejected unsafe actions do not execute.
 - `start_case_run`, `poll_case_run`, `finish_case_run`: support live
   deterministic run progress without arbitrary shell access. `start_case_run`
   must receive `prepared_manifest_path` from `prepare_case` or

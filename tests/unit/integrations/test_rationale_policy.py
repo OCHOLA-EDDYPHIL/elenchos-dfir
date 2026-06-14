@@ -133,6 +133,7 @@ def test_policy_allows_valid_prepared_manifest_path(tmp_path: Path):
 
     assert result["decision"] == "allowed"
     assert result["safety_checks"]["prepared_manifest_valid"] is True
+    assert str(result["policy_decision"]["visible_policy_message"]).startswith("[policy]")
 
 
 def test_policy_allows_prepare_case_source_root_as_bounded_tool_input(tmp_path: Path):
