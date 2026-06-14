@@ -1,6 +1,6 @@
 # Elenchos
 
-Elenchos takes its name from the ancient Greek term associated with refutation
+> Elenchos takes its name from the ancient Greek term associated with refutation
 and cross-examination. The project uses that idea operationally: every forensic
 claim must survive evidence checks, unsupported conclusions are downgraded, and
 analyst review remains explicit.
