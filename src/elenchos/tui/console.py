@@ -99,6 +99,13 @@ class RefreshClock:
         self.next_refresh_at = now + self.interval_seconds
 
 
+@dataclass(slots=True)
+class PanelWindow:
+    lines: list[str]
+    hidden_before: int
+    hidden_after: int
+
+
 def run_tui(
     *,
     source_root: str | None,
@@ -230,6 +237,8 @@ def _run_curses(
 
     screen = stdscr
     screen.timeout(INPUT_TIMEOUT_MS)
+    if hasattr(screen, "keypad"):
+        screen.keypad(True)
     curses.curs_set(0)
     if curses.has_colors():
         curses.start_color()
@@ -251,6 +260,7 @@ def _run_curses(
     last_state: ConsoleState | None = None
     needs_redraw = True
     completed_process_returncode: int | None = None
+    scroll_offset = 0
 
     while True:
         if active_output_dir is None:
@@ -305,7 +315,13 @@ def _run_curses(
             needs_redraw = True
 
         if needs_redraw and last_state is not None:
-            _draw(screen, last_state, openclaw_status=openclaw_status, watch_only=watch_only)
+            _draw(
+                screen,
+                last_state,
+                openclaw_status=openclaw_status,
+                watch_only=watch_only,
+                scroll_offset=scroll_offset,
+            )
             needs_redraw = False
 
         key = screen.getch()
@@ -320,6 +336,30 @@ def _run_curses(
                 return 0
         if key in (ord("r"), ord("R")):
             force_state_refresh = True
+            continue
+        if key in (curses.KEY_DOWN, ord("j"), ord("J")):
+            scroll_offset += 1
+            needs_redraw = True
+            continue
+        if key in (curses.KEY_UP, ord("k"), ord("K")):
+            scroll_offset = max(0, scroll_offset - 1)
+            needs_redraw = True
+            continue
+        if key == curses.KEY_NPAGE:
+            scroll_offset += 8
+            needs_redraw = True
+            continue
+        if key == curses.KEY_PPAGE:
+            scroll_offset = max(0, scroll_offset - 8)
+            needs_redraw = True
+            continue
+        if key == curses.KEY_HOME:
+            scroll_offset = 0
+            needs_redraw = True
+            continue
+        if key == curses.KEY_END:
+            scroll_offset += 10_000
+            needs_redraw = True
             continue
         if key in (KEY_ENTER, KEY_CARRIAGE_RETURN) and process is None and not watch_only:
             if submitted_prompt is not None:
@@ -424,7 +464,12 @@ def _state_with_error(state: ConsoleState, error: str) -> ConsoleState:
         normalized_events=state.normalized_events,
         rationale_events=state.rationale_events,
         policy_events=state.policy_events,
+        raw_policy_event_count=state.raw_policy_event_count,
         progress_events=state.progress_events,
+        self_correction_count=state.self_correction_count,
+        self_correction_status=state.self_correction_status,
+        latest_self_correction=state.latest_self_correction,
+        latest_corrected_claim_status=state.latest_corrected_claim_status,
         final_summary=state.final_summary,
         claim_boundary=state.claim_boundary,
         openclaw_log_tail=state.openclaw_log_tail,
@@ -459,7 +504,8 @@ def _draw_prompt_entry(
     ]
     if error:
         lines.extend(["", f"warning: {error}"])
-    for index, line in enumerate(lines[: max(0, height - 2)]):
+    rendered = wrap_panel_lines(lines, width - 1)
+    for index, line in enumerate(rendered[: max(0, height - 2)]):
         attr = curses.A_BOLD if index == 0 else 0
         _add_line(screen, index, 0, line, width, attr)
     _add_line(screen, height - 1, 0, "Enter submit | Backspace edit | q quit", width, curses.A_DIM)
@@ -472,78 +518,32 @@ def _draw(
     *,
     openclaw_status: str,
     watch_only: bool,
+    scroll_offset: int = 0,
 ) -> None:
     import curses
 
     screen.erase()
     height, width = screen.getmaxyx()
     width = max(width, 20)
-    header = (
-        "Elenchos Case Console | "
-        f"OpenClaw: {openclaw_status} | "
-        f"job: {state.job_status or 'pending'} | "
-        f"validation: {state.validation_status or 'pending'}"
+    header = "Elenchos Case Console | " + " | ".join(
+        _status_badges(state, openclaw_status=openclaw_status)
     )
     _add_line(screen, 0, 0, header, width, curses.A_BOLD)
     _add_line(screen, 1, 0, f"path: {state.output_dir}", width)
 
-    y = 3
-    panel_height = max(4, (height - 6) // 5)
-    y = _panel(
+    body_lines = _state_body_lines(state, watch_only=watch_only)
+    _panel(
         screen,
-        y,
+        3,
         0,
-        panel_height,
+        max(4, height - 4),
         width,
-        "Prompt",
-        _wrapped_lines(
-            state.prompt or "Watch-only mode. No prompt will be launched.",
-            width - 4,
-        )[:2],
+        "Case stream",
+        body_lines,
+        scroll_offset=scroll_offset,
     )
-    y = _panel(
-        screen,
-        y,
-        0,
-        panel_height,
-        width,
-        "Live rationale",
-        _event_lines(state.rationale_events, limit=max(1, panel_height - 3)),
-    )
-    y = _panel(
-        screen,
-        y,
-        0,
-        panel_height,
-        width,
-        "Policy gate",
-        _event_lines(state.policy_events, limit=max(1, panel_height - 3)),
-    )
-    status_lines = [
-        f"findings: {_format_counts(state.finding_counts) or 'none'}",
-        f"case questions: {_format_counts(state.case_question_counts) or 'none'}",
-        "normalized events: "
-        f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
-        "required outputs: "
-        + ", ".join(
-            f"{name}={'yes' if present else 'no'}"
-            for name, present in sorted(state.required_outputs_present.items())
-        ),
-    ]
-    y = _panel(screen, y, 0, panel_height, width, "Run status", status_lines)
-    summary_lines = _wrapped_lines(
-        state.final_summary or "Pending generated Elenchos summary.",
-        width - 4,
-    )
-    summary_lines.extend(_wrapped_lines(f"Claim boundary: {state.claim_boundary}", width - 4))
-    if state.errors:
-        summary_lines.append(f"warnings: {len(state.errors)}")
-    if state.openclaw_log_tail:
-        summary_lines.append("OpenClaw log tail:")
-        summary_lines.extend(state.openclaw_log_tail[-3:])
-    _panel(screen, y, 0, max(4, height - y - 2), width, "Final summary", summary_lines)
 
-    footer = "q quit | r refresh"
+    footer = "q quit | r refresh | up/down/k/j scroll | pgup/pgdn | home/end"
     if not watch_only and openclaw_status == "ready":
         footer = "Enter start | " + footer
     _add_line(screen, height - 1, 0, footer, width, curses.A_DIM)
@@ -573,6 +573,7 @@ def _panel(
     width: int,
     title: str,
     lines: list[str],
+    scroll_offset: int = 0,
 ) -> int:
     if y >= screen.getmaxyx()[0] - 2:
         return y
@@ -587,7 +588,14 @@ def _panel(
             if right < screen.getmaxyx()[1]:
                 _add_line(screen, row, right, "|", 1)
         _add_line(screen, bottom, x, "+" + "-" * (width - 2) + "+", width)
-    for index, line in enumerate(lines[: max(0, actual_height - 2)], start=1):
+    content_width = max(1, width - 4)
+    wrapped = wrap_panel_lines(lines, content_width)
+    window = visible_panel_lines(
+        wrapped,
+        max(0, actual_height - 2),
+        scroll_offset=scroll_offset,
+    )
+    for index, line in enumerate(window.lines, start=1):
         _add_line(screen, y + index, x + 2, line, max(1, width - 4))
     return y + actual_height
 
@@ -602,11 +610,160 @@ def _add_line(screen: Any, y: int, x: int, text: str, width: int, attr: int = 0)
 def _event_lines(events: list[ConsoleEvent], *, limit: int) -> list[str]:
     if not events:
         return ["pending"]
-    return [event.message for event in events[-limit:]]
+    return [event.display_message for event in events[-limit:]]
 
 
 def _wrapped_lines(text: str, width: int) -> list[str]:
     return textwrap.wrap(text, width=max(width, 20)) or [""]
+
+
+def wrap_panel_lines(lines: list[str], width: int) -> list[str]:
+    wrapped: list[str] = []
+    safe_width = max(10, width)
+    for line in lines:
+        if not line:
+            wrapped.append("")
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        subsequent_indent = " " * min(indent, max(0, safe_width - 1))
+        wrapped.extend(
+            textwrap.wrap(
+                line,
+                width=safe_width,
+                replace_whitespace=False,
+                drop_whitespace=True,
+                subsequent_indent=subsequent_indent,
+            )
+            or [""]
+        )
+    return wrapped
+
+
+def visible_panel_lines(
+    lines: list[str],
+    height: int,
+    *,
+    scroll_offset: int = 0,
+) -> PanelWindow:
+    if height <= 0:
+        return PanelWindow([], 0, len(lines))
+    if len(lines) <= height:
+        return PanelWindow(lines, 0, 0)
+    max_offset = max(0, len(lines) - height)
+    offset = min(max(scroll_offset, 0), max_offset)
+    hidden_before = offset
+    hidden_after = max(0, len(lines) - offset - height)
+    visible = list(lines[offset : offset + height])
+    if hidden_before and visible:
+        visible[0] = f"... {hidden_before} earlier lines. Use Home/PgUp/Up."
+    if hidden_after and visible:
+        visible[-1] = f"... {hidden_after} more lines. Use Down/PgDn/End."
+    return PanelWindow(visible, hidden_before, hidden_after)
+
+
+def _state_body_lines(state: ConsoleState, *, watch_only: bool) -> list[str]:
+    del watch_only
+    output_state = ", ".join(
+        f"{name}={'yes' if present else 'no'}"
+        for name, present in sorted(state.required_outputs_present.items())
+    )
+    lines = [
+        "Prompt / analyst request",
+        state.prompt or "Watch-only mode. No prompt will be launched.",
+        "",
+        "Live rationale",
+        *_event_lines(state.rationale_events, limit=8),
+        "",
+        "Policy gate",
+        *_event_lines(state.policy_events, limit=8),
+        f"raw policy events: {state.raw_policy_event_count}",
+        "",
+        "Self-correction",
+        _self_correction_line(state),
+        "",
+        "Run status / validation",
+        f"findings: {_format_counts(state.finding_counts) or 'none'}",
+        f"case questions: {_format_counts(state.case_question_counts) or 'none'}",
+        "normalized events: "
+        f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
+        f"required outputs: {output_state}",
+        "",
+        "Final summary / claim boundary",
+        state.final_summary or "Pending generated Elenchos summary.",
+        f"Claim boundary: {state.claim_boundary}",
+    ]
+    if state.errors:
+        lines.extend(["", "Warnings / failures"])
+        lines.extend(state.errors[-8:])
+    if state.openclaw_log_tail:
+        lines.extend(["", "OpenClaw log tail"])
+        lines.extend(state.openclaw_log_tail)
+    return lines
+
+
+def _self_correction_line(state: ConsoleState) -> str:
+    if not state.self_correction_count:
+        return "Self-correction: pending/not observed in this run"
+    suffix = (
+        f"; corrected status: {state.latest_corrected_claim_status}"
+        if state.latest_corrected_claim_status
+        else ""
+    )
+    return (
+        f"Self-correction: observed ({state.self_correction_count} event(s)); "
+        f"latest: {state.latest_self_correction or 'not summarized'}{suffix}"
+    )
+
+
+def _status_badges(state: ConsoleState, *, openclaw_status: str) -> list[str]:
+    policy = "PENDING"
+    if state.policy_events:
+        latest_policy = state.policy_events[-1].message.lower()
+        if "rejected" in latest_policy:
+            policy = "REJECTED"
+        elif "allowed" in latest_policy:
+            policy = "ALLOWED"
+    return [
+        f"OpenClaw {openclaw_status_label(openclaw_status)}",
+        f"Job {(state.job_status or 'pending').upper()}",
+        f"Validation {validation_status_label(state.validation_status)}",
+        f"Policy {policy}",
+        f"Self-correction {self_correction_status_label(state.self_correction_status)}",
+    ]
+
+
+def openclaw_status_label(status: str) -> str:
+    lower = status.lower()
+    if "blocked" in lower:
+        return "BLOCKED"
+    if "failed" in lower or "rc=1" in lower or "rc=2" in lower:
+        return "FAILED"
+    if "running" in lower:
+        return "RUNNING"
+    if "exited" in lower:
+        return "EXITED"
+    if "watch" in lower:
+        return "WATCH"
+    return "READY"
+
+
+def validation_status_label(status: str | None) -> str:
+    if status is None:
+        return "PENDING"
+    lower = status.lower()
+    if lower in {"pass", "passed", "completed", "valid"}:
+        return "PASS"
+    if lower in {"fail", "failed", "invalid", "rejected"}:
+        return "FAIL"
+    return lower.upper()
+
+
+def self_correction_status_label(status: str) -> str:
+    if status == "observed":
+        return "OBSERVED"
+    if status == "required":
+        return "REQUIRED"
+    return "NONE"
 
 
 def _format_counts(counts: dict[str, int]) -> str:

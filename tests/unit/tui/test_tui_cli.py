@@ -293,3 +293,74 @@ def test_watch_mode_reads_state_on_cadence_and_r_forces_refresh(
 
     assert exit_code == 130
     assert len(reads) == 2
+
+
+def test_wrap_panel_lines_wraps_long_policy_and_rationale_lines():
+    long_line = (
+        "[policy] validate_run_outputs -> allowed: generated-output read only "
+        "with a very long explanatory reason that must remain visible"
+    )
+
+    wrapped = console.wrap_panel_lines([long_line], width=42)
+
+    assert len(wrapped) > 1
+    assert all(len(line) <= 42 for line in wrapped)
+    assert "visible" in " ".join(wrapped)
+
+
+def test_visible_panel_lines_reports_overflow_indicator():
+    lines = [f"line {index}" for index in range(8)]
+
+    window = console.visible_panel_lines(lines, height=3, scroll_offset=0)
+
+    assert len(window.lines) == 3
+    assert window.hidden_after == 5
+    assert window.lines[-1].startswith("... 5 more lines")
+
+
+def test_visible_panel_lines_reports_scrolled_overflow_indicator():
+    lines = [f"line {index}" for index in range(8)]
+
+    window = console.visible_panel_lines(lines, height=3, scroll_offset=4)
+
+    assert window.hidden_before == 4
+    assert window.lines[0].startswith("... 4 earlier lines")
+
+
+def test_state_body_lines_include_self_correction_and_log_tail(tmp_path: Path):
+    (tmp_path / "openclaw-console.log").write_text(
+        "OpenClaw exited rc=1\n"
+        'Missing required option "-m, --message <text>". This is a deliberately long line.\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "self_correction_events.json").write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "correction": "Downgraded unsupported claim.",
+                        "status": "needs_review",
+                    }
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    state = console.read_console_state(tmp_path)
+
+    lines = console._state_body_lines(state, watch_only=True)  # noqa: SLF001
+    wrapped = console.wrap_panel_lines(lines, width=50)
+    joined = "\n".join(wrapped)
+
+    assert "Self-correction: observed" in joined
+    assert "Downgraded unsupported claim" in joined
+    assert 'Missing required option "-m, --message <text>".' in joined
+
+
+def test_status_label_helpers_are_demo_readable():
+    assert console.openclaw_status_label("running pid=123") == "RUNNING"
+    assert console.openclaw_status_label("blocked") == "BLOCKED"
+    assert console.validation_status_label("pass") == "PASS"
+    assert console.validation_status_label("failed") == "FAIL"
+    assert console.self_correction_status_label("observed") == "OBSERVED"

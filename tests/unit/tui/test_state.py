@@ -94,6 +94,53 @@ def test_read_console_state_deduplicates_root_and_run_policy_events(tmp_path: Pa
     assert [event.message for event in state.policy_events] == [
         "[policy] proposed inspect_run_state -> allowed."
     ]
+    assert state.raw_policy_event_count == 1
+
+
+def test_read_console_state_collapses_adjacent_policy_repeats_for_display(tmp_path: Path):
+    for second in range(4):
+        _append_jsonl(
+            tmp_path / "policy_decisions.jsonl",
+            {
+                "timestamp_utc": f"2026-06-14T00:00:0{second}Z",
+                "proposed_action": "validate_run_outputs",
+                "decision": "allowed",
+                "reason": "generated-output read only",
+                "normalized_action": {"tool": "validate_run_outputs"},
+            },
+        )
+
+    state = read_console_state(tmp_path)
+
+    assert len(state.policy_events) == 1
+    assert state.policy_events[0].repeat_count == 4
+    assert state.policy_events[0].display_message.endswith("(x4)")
+    assert state.raw_policy_event_count == 4
+
+
+def test_read_console_state_keeps_non_adjacent_policy_repeats_visible(tmp_path: Path):
+    rows = [
+        ("2026-06-14T00:00:00Z", "validate_run_outputs", "allowed"),
+        ("2026-06-14T00:00:01Z", "inspect_run_state", "allowed"),
+        ("2026-06-14T00:00:02Z", "validate_run_outputs", "allowed"),
+    ]
+    for timestamp, action, decision in rows:
+        _append_jsonl(
+            tmp_path / "policy_decisions.jsonl",
+            {
+                "timestamp_utc": timestamp,
+                "proposed_action": action,
+                "decision": decision,
+                "reason": "generated-output read only",
+            },
+        )
+
+    state = read_console_state(tmp_path)
+
+    assert [event.repeat_count for event in state.policy_events] == [1, 1, 1]
+    assert [event.message for event in state.policy_events].count(
+        "[policy] proposed validate_run_outputs -> allowed: generated-output read only"
+    ) == 2
 
 
 def test_read_console_state_counts_statuses_and_normalized_events(tmp_path: Path):
@@ -156,3 +203,90 @@ def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
     state = read_console_state(tmp_path)
 
     assert 'Missing required option "-m, --message <text>".' in state.openclaw_log_tail
+
+
+def test_read_console_state_reports_no_self_correction_when_absent(tmp_path: Path):
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 0
+    assert state.self_correction_status == "none"
+    assert state.latest_self_correction is None
+
+
+def test_read_console_state_reports_empty_self_correction_artifact(tmp_path: Path):
+    _write_json(tmp_path / "self_correction_events.json", [])
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 0
+    assert state.self_correction_status == "none"
+    assert state.errors == []
+
+
+def test_read_console_state_reads_self_correction_events_json(tmp_path: Path):
+    _write_json(
+        tmp_path / "self_correction_events.json",
+        {
+            "events": [
+                {
+                    "event_id": "correction-001",
+                    "correction": "Downgraded unsupported conclusion.",
+                    "status": "needs_review",
+                }
+            ]
+        },
+    )
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 1
+    assert state.self_correction_status == "observed"
+    assert state.latest_self_correction == "Downgraded unsupported conclusion."
+    assert state.latest_corrected_claim_status == "needs_review"
+
+
+def test_read_console_state_reads_self_correction_events_jsonl(tmp_path: Path):
+    _append_jsonl(
+        tmp_path / "self_correction_events.jsonl",
+        {
+            "timestamp_utc": "2026-06-14T00:00:00Z",
+            "summary": "Rejected unsupported claim path.",
+            "corrected_status": "rejected",
+        },
+    )
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 1
+    assert state.latest_self_correction == "Rejected unsupported claim path."
+    assert state.latest_corrected_claim_status == "rejected"
+
+
+def test_read_console_state_reads_latest_agent_run_correction(tmp_path: Path):
+    _write_json(
+        tmp_path / "agent_run.json",
+        {
+            "corrections": [
+                {
+                    "correction_id": "correction-001",
+                    "created_at": "2026-06-14T00:00:00Z",
+                    "action": "downgrade_finding",
+                    "trigger": "unsupported_finding",
+                    "result": "First correction.",
+                },
+                {
+                    "correction_id": "correction-002",
+                    "created_at": "2026-06-14T00:00:01Z",
+                    "action": "downgrade_claim",
+                    "trigger": "unsupported_claim",
+                    "result": "Latest correction.",
+                },
+            ]
+        },
+    )
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 2
+    assert state.latest_self_correction == "Latest correction."
+    assert state.latest_corrected_claim_status == "downgrade_claim"

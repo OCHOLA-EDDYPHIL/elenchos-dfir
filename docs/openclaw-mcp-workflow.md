@@ -248,6 +248,10 @@ under `runs/`. The TUI wraps the analyst prompt with safety/output constraints,
 launches OpenClaw, watches the exact generated output directory, and displays
 live rationale, policy gate decisions, run status, validation, and
 claim-boundary summary from generated Elenchos artifacts.
+It collapses adjacent duplicate policy-gate messages for readability only; the
+raw `policy_decisions.jsonl` audit record is not rewritten. It also displays
+self-correction when deterministic Elenchos artifacts record unsupported claim
+or tool-path downgrades. Model rationale and TUI output remain non-evidence.
 
 ```bash
 elenchos tui
@@ -261,6 +265,11 @@ elenchos tui --watch-only --output-dir runs/<case>
 
 The console does not inspect raw evidence. Its transcript is a generated
 display mirror only and is not forensic evidence.
+
+`prepare_case` can take longer than ordinary agent-tool calls on large evidence
+sets. The adapter uses a long configurable prepare timeout and writes
+`prepare_case` progress records; parser execution and deterministic triage keep
+their bounded workflow controls.
 
 Example visible UI lines:
 

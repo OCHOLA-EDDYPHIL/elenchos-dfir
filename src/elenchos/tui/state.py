@@ -26,6 +26,14 @@ class ConsoleEvent:
     timestamp_utc: str | None
     kind: str
     message: str
+    fingerprint: str | None = None
+    repeat_count: int = 1
+
+    @property
+    def display_message(self) -> str:
+        if self.repeat_count <= 1:
+            return self.message
+        return f"{self.message} (x{self.repeat_count})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,7 +49,12 @@ class ConsoleState:
     normalized_events: int | None
     rationale_events: list[ConsoleEvent]
     policy_events: list[ConsoleEvent]
+    raw_policy_event_count: int
     progress_events: list[ConsoleEvent]
+    self_correction_count: int
+    self_correction_status: str
+    latest_self_correction: str | None
+    latest_corrected_claim_status: str | None
     final_summary: str | None
     claim_boundary: str | None
     openclaw_log_tail: list[str] = field(default_factory=list)
@@ -69,15 +82,17 @@ def read_console_state(
             errors=errors,
         )
     )[-event_limit:]
-    policy_events = _dedupe_events(
+    raw_policy_events = _dedupe_events(
         _events_from_jsonl(
             candidates,
             "policy_decisions.jsonl",
             kind="policy",
             message_getter=_policy_message,
+            fingerprint_getter=_policy_fingerprint,
             errors=errors,
         )
-    )[-event_limit:]
+    )
+    policy_events = _collapse_adjacent_policy_events(raw_policy_events)[-event_limit:]
     progress_events = _dedupe_events(
         _events_from_jsonl(
             candidates,
@@ -94,7 +109,8 @@ def read_console_state(
     questions = _first_json(candidates, "case_questions.json", errors)
     normalized = _first_json(candidates, "normalized_events.json", errors)
     gap_analysis = _first_json(candidates, "gap_analysis.json", errors)
-    self_correction = _first_json(candidates, "self_correction_events.json", errors)
+    self_correction = _first_self_correction_json_object(candidates, errors)
+    self_correction_summary = _self_correction_summary(candidates, errors)
     report = _first_text(candidates, "report.md", errors)
     openclaw_log_tail = _first_text_tail(candidates, "openclaw-console.log", errors)
 
@@ -128,7 +144,12 @@ def read_console_state(
         normalized_events=normalized_events,
         rationale_events=rationale_events,
         policy_events=policy_events,
+        raw_policy_event_count=len(raw_policy_events),
         progress_events=progress_events,
+        self_correction_count=self_correction_summary["count"],
+        self_correction_status=self_correction_summary["status"],
+        latest_self_correction=self_correction_summary["latest"],
+        latest_corrected_claim_status=self_correction_summary["corrected_status"],
         final_summary=final_summary,
         claim_boundary=claim_boundary or SAFE_FALLBACK_CLAIM_BOUNDARY,
         openclaw_log_tail=openclaw_log_tail,
@@ -189,6 +210,16 @@ def _safe_json(path: Path, errors: list[str]) -> dict[str, Any] | None:
     return payload
 
 
+def _safe_json_any(path: Path, errors: list[str]) -> Any | None:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"{path.name}: {exc}")
+        return None
+
+
 def _first_json(
     candidates: Iterable[Path],
     filename: str,
@@ -197,6 +228,17 @@ def _first_json(
     for candidate in candidates:
         payload = _safe_json(candidate / filename, errors)
         if payload is not None:
+            return payload
+    return None
+
+
+def _first_self_correction_json_object(
+    candidates: Iterable[Path],
+    errors: list[str],
+) -> dict[str, Any] | None:
+    for candidate in candidates:
+        payload = _safe_json_any(candidate / "self_correction_events.json", errors)
+        if isinstance(payload, dict):
             return payload
     return None
 
@@ -264,6 +306,7 @@ def _events_from_jsonl(
     *,
     kind: str,
     message_getter: Any,
+    fingerprint_getter: Any | None = None,
     errors: list[str],
 ) -> list[ConsoleEvent]:
     events: list[ConsoleEvent] = []
@@ -277,6 +320,9 @@ def _events_from_jsonl(
                     timestamp_utc=_event_timestamp(row),
                     kind=kind,
                     message=message,
+                    fingerprint=fingerprint_getter(row, message)
+                    if fingerprint_getter is not None
+                    else None,
                 )
             )
     return sorted(events, key=lambda event: (event.timestamp_utc or "", event.kind, event.message))
@@ -308,6 +354,17 @@ def _policy_message(row: Mapping[str, Any]) -> str | None:
     return None
 
 
+def _policy_fingerprint(row: Mapping[str, Any], message: str) -> str:
+    parts = [
+        row.get("proposed_action"),
+        row.get("decision"),
+        row.get("reason"),
+        row.get("normalized_action"),
+        message,
+    ]
+    return "\x1f".join(str(part) for part in parts if part is not None)
+
+
 def _progress_message(row: Mapping[str, Any]) -> str | None:
     phase = row.get("phase")
     status = row.get("status")
@@ -329,6 +386,27 @@ def _dedupe_events(events: list[ConsoleEvent]) -> list[ConsoleEvent]:
         seen.add(key)
         deduped.append(event)
     return deduped
+
+
+def _collapse_adjacent_policy_events(events: list[ConsoleEvent]) -> list[ConsoleEvent]:
+    collapsed: list[ConsoleEvent] = []
+    for event in events:
+        if (
+            collapsed
+            and event.fingerprint is not None
+            and collapsed[-1].fingerprint == event.fingerprint
+        ):
+            previous = collapsed[-1]
+            collapsed[-1] = ConsoleEvent(
+                timestamp_utc=previous.timestamp_utc,
+                kind=previous.kind,
+                message=previous.message,
+                fingerprint=previous.fingerprint,
+                repeat_count=previous.repeat_count + event.repeat_count,
+            )
+            continue
+        collapsed.append(event)
+    return collapsed
 
 
 def _job_status(job: Mapping[str, Any] | None) -> tuple[str | None, int | None]:
@@ -428,6 +506,96 @@ def _claim_boundary(
     return None
 
 
+def _self_correction_summary(
+    candidates: Iterable[Path],
+    errors: list[str],
+) -> dict[str, Any]:
+    events: list[dict[str, Any]] = []
+    for candidate in candidates:
+        payload = _safe_json_any(candidate / "self_correction_events.json", errors)
+        if isinstance(payload, dict):
+            events.extend(_rows(payload, "events"))
+        elif isinstance(payload, list):
+            events.extend(row for row in payload if isinstance(row, dict))
+        elif payload is not None:
+            errors.append("self_correction_events.json: JSON root is not an object or list")
+        events.extend(_jsonl_rows(candidate / "self_correction_events.jsonl", errors))
+        agent_run = _safe_json(candidate / "agent_run.json", errors)
+        if agent_run is not None:
+            events.extend(_rows(agent_run, "corrections"))
+
+    deduped = _dedupe_mapping_rows(events)
+    if not deduped:
+        return {
+            "count": 0,
+            "status": "none",
+            "latest": None,
+            "corrected_status": None,
+        }
+    latest = sorted(
+        deduped,
+        key=lambda row: str(
+            row.get("created_at")
+            or row.get("timestamp_utc")
+            or row.get("timestamp")
+            or row.get("event_id")
+            or row.get("correction_id")
+            or ""
+        ),
+    )[-1]
+    return {
+        "count": len(deduped),
+        "status": "observed",
+        "latest": _self_correction_message(latest),
+        "corrected_status": _self_correction_status(latest),
+    }
+
+
+def _dedupe_mapping_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        key = json.dumps(row, sort_keys=True, default=str)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(row)
+    return deduped
+
+
+def _self_correction_message(row: Mapping[str, Any]) -> str:
+    for key in (
+        "summary",
+        "correction",
+        "result",
+        "diagnosis",
+        "problem_detected",
+        "final_wording",
+    ):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    action = row.get("action")
+    trigger = row.get("trigger")
+    if isinstance(action, str) and isinstance(trigger, str):
+        return f"{action} after {trigger}"
+    event_id = row.get("event_id") or row.get("correction_id")
+    if isinstance(event_id, str) and event_id:
+        return event_id
+    return "Self-correction event observed."
+
+
+def _self_correction_status(row: Mapping[str, Any]) -> str | None:
+    for key in ("corrected_status", "final_status", "status"):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    action = row.get("action")
+    if isinstance(action, str) and action:
+        return action
+    return None
+
+
 def _final_summary(
     *,
     report: str | None,
@@ -477,9 +645,21 @@ def render_text_snapshot(state: ConsoleState) -> str:
         lines.append("- pending")
     lines.append("")
     lines.append("Policy gate")
-    lines.extend(f"- {event.message}" for event in state.policy_events[-8:])
+    lines.extend(f"- {event.display_message}" for event in state.policy_events[-8:])
     if not state.policy_events:
         lines.append("- pending")
+    lines.append(f"Raw policy events: {state.raw_policy_event_count}")
+    lines.append("")
+    lines.append("Self-correction")
+    if state.self_correction_count:
+        lines.append(
+            f"- observed: {state.self_correction_count} event(s); "
+            f"latest: {state.latest_self_correction or 'not summarized'}"
+        )
+        if state.latest_corrected_claim_status:
+            lines.append(f"- corrected status: {state.latest_corrected_claim_status}")
+    else:
+        lines.append("- pending/not observed in this run")
     lines.append("")
     lines.append("Run status")
     lines.extend(f"- {event.message}" for event in state.progress_events[-8:])

@@ -344,6 +344,9 @@ The TUI wraps the analyst prompt with runtime safety/output constraints,
 launches OpenClaw, and renders live rationale, policy-gate decisions, run
 status, validation status, and final claim-boundary summary from generated
 Elenchos artifacts.
+For readability it collapses adjacent duplicate visible policy-gate messages in
+the display only; raw JSONL audit records remain complete. It also surfaces
+self-correction artifacts when deterministic workflows generate them.
 
 ```bash
 elenchos tui

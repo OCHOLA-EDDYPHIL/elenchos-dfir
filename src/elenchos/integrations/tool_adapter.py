@@ -58,7 +58,7 @@ from elenchos.validation.integrity import (
     validate_integrity_manifest,
 )
 
-DEFAULT_PREPARE_TIMEOUT_SECONDS = 900
+DEFAULT_PREPARE_TIMEOUT_SECONDS = 7200
 DEFAULT_RUN_CASE_TIMEOUT_SECONDS = 1800
 DEFAULT_SUMMARY_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_ITERATIONS = 10
@@ -866,6 +866,25 @@ def _traceability_files(output_dir: Path) -> dict[str, str | None]:
     }
 
 
+def _append_prepare_progress(
+    progress_path: Path,
+    *,
+    case_id: str,
+    status: str,
+    message: str,
+) -> None:
+    try:
+        append_progress_event(
+            progress_path,
+            case_id=case_id,
+            phase="prepare_case",
+            status=status,
+            message=message,
+        )
+    except (OSError, ValueError):
+        return
+
+
 def prepare_case(
     request: Mapping[str, object],
     *,
@@ -930,6 +949,13 @@ def prepare_case(
     if source_manifest_out is not None:
         argv.extend(["--source-manifest-out", str(source_manifest_out)])
 
+    progress_path = progress_path_for_output_dir(output_dir)
+    _append_prepare_progress(
+        progress_path,
+        case_id=case_id,
+        status="started",
+        message="prepare_case started",
+    )
     started = time.monotonic()
     try:
         completed = command_runner(argv, timeout_seconds)
@@ -942,6 +968,12 @@ def prepare_case(
             operation_name="prepare_case",
             stdout=stdout,
             stderr=stderr,
+        )
+        _append_prepare_progress(
+            progress_path,
+            case_id=case_id,
+            status="failed",
+            message="prepare_case timed out",
         )
         return {
             "status": "failed",
@@ -973,6 +1005,14 @@ def prepare_case(
         output_dir / "extraction_audit.jsonl",
     )
     status = "failed" if completed.returncode else parsed.get("status", "completed")
+    _append_prepare_progress(
+        progress_path,
+        case_id=case_id,
+        status="completed" if completed.returncode == 0 else "failed",
+        message="prepare_case completed"
+        if completed.returncode == 0
+        else "prepare_case failed",
+    )
     result: dict[str, object] = {
         "status": status,
         "command_name": "elenchos case prepare",

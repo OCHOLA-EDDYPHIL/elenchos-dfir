@@ -13,6 +13,7 @@ from elenchos.integrations.safe_paths import (
     validate_integration_output_dir,
 )
 from elenchos.integrations.tool_adapter import (
+    DEFAULT_PREPARE_TIMEOUT_SECONDS,
     dispatch_tool,
     get_tool_definitions,
     prepare_case,
@@ -306,6 +307,47 @@ def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     assert str(result["prepared_manifest_path"]).endswith("case_prep.json")
     assert seen[0][:4] == [seen[0][0], "-m", "elenchos", "case"]
     assert "shell" not in seen[0]
+
+
+def test_prepare_case_default_timeout_is_long_and_progress_is_written(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "case-prep"
+    seen_timeout: list[int] = []
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        seen_timeout.append(timeout_seconds)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "\n".join(
+                [
+                    f"case_id={CASE_ID}",
+                    "status=completed",
+                    "prepared_artifacts=1",
+                    "coverage_gaps=0",
+                    f"case_prep={output_dir / 'case_prep.json'}",
+                ]
+            ),
+            "",
+        )
+
+    result = prepare_case(
+        {
+            "case_id": CASE_ID,
+            "source_root": str(tmp_path / "evidence"),
+            "output_dir": str(output_dir),
+        },
+        command_runner=runner,
+    )
+
+    assert result["status"] == "completed"
+    assert DEFAULT_PREPARE_TIMEOUT_SECONDS >= 7200
+    assert seen_timeout == [DEFAULT_PREPARE_TIMEOUT_SECONDS]
+    progress_rows = [
+        json.loads(line)
+        for line in (output_dir / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["status"] for row in progress_rows] == ["started", "completed"]
+    assert {row["phase"] for row in progress_rows} == {"prepare_case"}
 
 
 def test_prepare_case_generates_human_readable_case_id_when_omitted(tmp_path: Path):

@@ -22,14 +22,21 @@ under that run directory.
 The console displays:
 
 - live rationale from `model_rationale.jsonl`
-- policy gate decisions from `policy_decisions.jsonl`
+- policy gate decisions from `policy_decisions.jsonl`; adjacent duplicate
+  visible decisions are collapsed in the display only, while the raw JSONL audit
+  file remains complete
 - run status from `run_job.json` and `progress.jsonl`
 - validation status from `validation_summary.json`
 - finding and case-question counts from generated JSON outputs
+- self-correction status when deterministic Elenchos artifacts record
+  unsupported claim/tool-path correction
 - final summary and claim-boundary wording from generated Elenchos artifacts
 
 The TUI does not inspect raw evidence. Model rationale and TUI text are not
 forensic evidence. Deterministic Elenchos outputs remain the evidence authority.
+Model rationale is not self-correction. Self-correction means an unsupported or
+invalid claim/tool path was detected and downgraded or recovered in generated
+trace artifacts.
 
 CLI flags are advanced/debug options. For example, an operator can provide a
 source root or case identifier explicitly:
@@ -65,6 +72,8 @@ Generated files read by the console include:
 
 - `model_rationale.jsonl`
 - `policy_decisions.jsonl`
+- `self_correction_events.json`
+- `self_correction_events.jsonl`
 - `run_job.json`
 - `progress.jsonl`
 - `report.md`
@@ -77,6 +86,20 @@ Generated files read by the console include:
 When the selected output directory is under an ignored generated-output root,
 the console may write `case_console_transcript.md`. That transcript mirrors the
 TUI-visible rationale and policy stream and is not forensic evidence.
+
+`prepare_case` may take time on large evidence sets. The adapter keeps parser
+execution bounded, but case preparation has a long configurable timeout and
+writes `prepare_case` progress records so the console can show activity instead
+of looking frozen.
+
+Synthetic self-correction smoke check:
+
+```bash
+.venv/bin/python scripts/self_correction_smoke.py
+```
+
+The smoke uses controlled fixture data only. It does not require ROCBA evidence,
+SIFT parsers, or OpenClaw credentials.
 
 This behavior belongs in the repository runtime and guidance, not in `.skills`:
 `AGENTS.md` carries repo-level agent/developer guidance, the TUI runtime wraps
