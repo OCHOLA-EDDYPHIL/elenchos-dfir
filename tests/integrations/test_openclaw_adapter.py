@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from siftguard.integrations.integrity import write_integrity_manifest
 from siftguard.integrations import mcp_server
 from siftguard.integrations.safe_paths import (
     resolve_user_path,
@@ -214,6 +215,7 @@ def write_good_run(output_dir: Path) -> None:
         "# Report\n\nGenerated report with bounded language.\n",
         encoding="utf-8",
     )
+    write_integrity_manifest(output_dir)
 
 
 def test_safe_path_validation_rejects_output_under_mnt_evidence():
@@ -269,6 +271,40 @@ def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     assert result["coverage_gap_count"] == 1
     assert seen[0][:4] == [seen[0][0], "-m", "siftguard", "case"]
     assert "shell" not in seen[0]
+
+
+def test_prepare_case_generates_human_readable_case_id_when_omitted(tmp_path: Path):
+    seen: list[list[str]] = []
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        seen.append(argv)
+        case_id = argv[argv.index("--case-id") + 1]
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "\n".join(
+                [
+                    f"case_id={case_id}",
+                    "status=completed",
+                    "prepared_artifacts=0",
+                    "coverage_gaps=0",
+                ]
+            ),
+            "",
+        )
+
+    result = prepare_case(
+        {
+            "source_root": str(tmp_path / "ROCBA Evidence"),
+            "output_dir": str(tmp_path / "runs" / "auto" / "case-prep"),
+        },
+        command_runner=runner,
+    )
+
+    generated_case_id = seen[0][seen[0].index("--case-id") + 1]
+    assert generated_case_id.startswith("rocba-evidence-20")
+    assert result["case_id"] == generated_case_id
 
 
 def test_prepare_case_returns_structured_failure_from_mocked_subprocess(tmp_path: Path):
@@ -384,7 +420,32 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
     assert result["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert result["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
     assert str(result["self_correction_events"]).endswith("self_correction_events.json")
+    assert str(result["integrity_manifest"]).endswith("run_integrity_manifest.json")
     assert "parser_status_summary" in result
+
+
+def test_run_case_defaults_case_id_from_case_prep(tmp_path: Path):
+    case_prep = tmp_path / "runs" / CASE_ID / "case-prep" / "case_prep.json"
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_case_prep(case_prep)
+    seen: list[list[str]] = []
+
+    def runner(argv: list[str], timeout_seconds: int) -> subprocess.CompletedProcess[str]:
+        del timeout_seconds
+        seen.append(argv)
+        write_good_run(output_dir)
+        return subprocess.CompletedProcess(argv, 0, f"case_id={CASE_ID}\nstatus=completed\n", "")
+
+    result = run_case(
+        {
+            "artifact_manifest": str(case_prep),
+            "output_dir": str(output_dir),
+        },
+        command_runner=runner,
+    )
+
+    assert result["case_id"] == CASE_ID
+    assert seen[0][seen[0].index("--case-id") + 1] == CASE_ID
 
 
 def test_run_case_sanitizes_private_paths_from_structured_failure(tmp_path: Path):
@@ -454,6 +515,8 @@ def test_validate_run_outputs_passes_for_safe_generated_outputs(tmp_path: Path):
     assert validation["forbidden_wording_hits"] == []
     assert validation["unsupported_question_violations"] == []
     assert validation["self_correction_event_count"] == 1
+    assert validation["integrity_violations"] == []
+    assert "run integrity manifest hashes verified" in validation["notes"]
     assert FINAL_WORDING in validation["notes"]
 
 
@@ -491,6 +554,52 @@ def test_validate_run_outputs_fails_on_forbidden_wording(tmp_path: Path):
 
     assert validation["validation_status"] == "fail"
     assert validation["forbidden_wording_hits"] == [{"line": 1, "phrase": "proved compromise"}]
+    assert validation["integrity_violations"]
+
+
+def test_validate_run_outputs_fails_when_integrity_manifest_is_missing(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+    (output_dir / "run_integrity_manifest.json").unlink()
+
+    validation = validate_run_outputs({"output_dir": str(output_dir)})
+
+    assert validation["validation_status"] == "fail"
+    assert "run_integrity_manifest.json" in validation["missing_files"]
+    assert validation["integrity_violations"] == [
+        {
+            "path": "run_integrity_manifest.json",
+            "reason": "missing_integrity_manifest",
+        }
+    ]
+
+
+def test_validate_run_outputs_detects_tampered_generated_output(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+    (output_dir / "report.md").write_text(
+        "# Report\n\nGenerated report with bounded language.\nExtra line.\n",
+        encoding="utf-8",
+    )
+
+    validation = validate_run_outputs({"output_dir": str(output_dir)})
+
+    assert validation["validation_status"] == "fail"
+    assert any(
+        row["path"] == "report.md" and row["reason"] in {"size_mismatch", "sha256_mismatch"}
+        for row in validation["integrity_violations"]
+    )
+
+
+def test_validate_run_outputs_reports_malformed_integrity_manifest(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+    (output_dir / "run_integrity_manifest.json").write_text("{not-json\n", encoding="utf-8")
+
+    validation = validate_run_outputs({"output_dir": str(output_dir)})
+
+    assert validation["validation_status"] == "fail"
+    assert validation["integrity_violations"][0]["reason"] == "malformed_integrity_manifest"
 
 
 def test_validate_run_outputs_detects_missing_required_files(tmp_path: Path):

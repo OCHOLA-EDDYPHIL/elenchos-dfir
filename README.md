@@ -326,6 +326,9 @@ the natural-language agent host; SIFTGuard remains the deterministic,
 model-agnostic forensic core. The model may request typed tools, but SIFTGuard
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
+Generated run outputs include a SHA-256 `run_integrity_manifest.json` so
+validation can detect tampering in the run directory without claiming that
+hashes prove an investigative conclusion.
 
 ### Agent orchestration guidance
 
@@ -354,6 +357,7 @@ Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
 keys:
 
 ```bash
+.venv/bin/python scripts/demo_siftguard_preflight.py
 .venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
