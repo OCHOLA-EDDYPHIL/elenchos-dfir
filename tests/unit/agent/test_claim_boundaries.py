@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from siftguard.agent.casebook import CasebookClaimBoundary, casebook_from_dict
-from siftguard.agent.claim_boundaries import (
+from elenchos.agent.casebook import CasebookClaimBoundary, casebook_from_dict
+from elenchos.agent.claim_boundaries import (
     build_claim_boundary_records,
     build_self_correction_events,
 )
 
-FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+FINAL_WORDING = "Elenchos kept the configured claim not_assessed."
 SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
 RECOMMENDED_ARTIFACTS = ("network telemetry", "browser history")
 

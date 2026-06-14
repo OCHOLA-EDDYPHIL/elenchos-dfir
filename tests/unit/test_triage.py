@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from siftguard.triage import TriageAnchors, classify_selection_reason, select_event_rows_for_triage
+from elenchos.triage import TriageAnchors, classify_selection_reason, select_event_rows_for_triage
 
 
 def test_case_window_events_are_selected_before_deterministic_fill():

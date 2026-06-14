@@ -2,7 +2,7 @@
 
 ## Scope
 
-This review covers the parser workflow available in SIFTGuard MCP. It
+This review covers the parser workflow available in Elenchos. It
 verifies parser wrappers, normalization, CLI and MCP parser schemas, local SIFT
 validation, failure visibility, gated integration tests, evidence handling, and
 supporting documentation.
@@ -61,7 +61,7 @@ Parser events are observational records, not final incident conclusions.
 
 ## Quality Gate Results
 
-Recorded on 2026-05-26 UTC from the SIFTGuard MCP repository.
+Recorded on 2026-05-26 UTC from the Elenchos repository.
 
 | Gate | Result |
 | --- | --- |

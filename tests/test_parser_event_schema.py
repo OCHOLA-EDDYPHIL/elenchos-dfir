@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
+from elenchos.correlation.event_schema import ParserEvent, RawRecordRef
 
 
 def make_event(**overrides):

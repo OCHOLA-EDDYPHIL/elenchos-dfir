@@ -1,6 +1,11 @@
-# SIFTGuard MCP
+# Elenchos
 
-SIFTGuard MCP is a local-first, constrained DFIR workflow for SANS SIFT
+Elenchos takes its name from the ancient Greek term associated with refutation
+and cross-examination. The project uses that idea operationally: every forensic
+claim must survive evidence checks, unsupported conclusions are downgraded, and
+analyst review remains explicit.
+
+Elenchos is a local-first, constrained DFIR workflow for SANS SIFT
 Workstation and Linux terminal environments. It addresses Windows disk-artifact
 triage by inventorying evidence, running typed parser workflows, correlating
 drop / persistence / execution signals, validating findings, and producing
@@ -10,7 +15,7 @@ The supported submission scope is intentionally narrow: `$MFT`, Registry
 `Run`/`RunOnce` keys, and `Amcache.hve`. Evidence is treated as read-only input.
 Parser and agent outputs are written to ignored generated-output directories,
 not into raw evidence locations. Public command surfaces use typed arguments and
-constrained SIFTGuard entrypoints instead of arbitrary shell execution.
+constrained Elenchos entrypoints instead of arbitrary shell execution.
 
 ## What This Does
 
@@ -36,7 +41,7 @@ constrained SIFTGuard entrypoints instead of arbitrary shell execution.
   response, or remote endpoint triage.
 - Does not replace analyst review.
 
-Parser observations are not findings by themselves. SIFTGuard is triage and
+Parser observations are not findings by themselves. Elenchos is triage and
 analyst-assist tooling that makes evidence references, validation status, and
 audit trail quality explicit.
 
@@ -45,8 +50,8 @@ audit trail quality explicit.
 Use Python 3.10 or newer in a Linux/SIFT-compatible shell.
 
 ```bash
-git clone https://github.com/OCHOLA-EDDYPHIL/siftguard-mcp.git
-cd siftguard-mcp
+git clone <repository-url>
+cd <repository-directory>
 
 python -m venv .venv
 source .venv/bin/activate
@@ -57,8 +62,8 @@ source .venv/bin/activate
 .venv/bin/python -m mypy src
 ```
 
-The package also installs a `siftguard` console script. The examples below use
-`.venv/bin/python -m siftguard` so they work without relying on shell `PATH`.
+The package also installs a `elenchos` console script. The examples below use
+`.venv/bin/python -m elenchos` so they work without relying on shell `PATH`.
 
 ## Local Evidence Layout
 
@@ -86,7 +91,7 @@ mkdir -p "$RUN_DIR"
 
 For the placeholder evidence root above, the inventory command derives
 `case_id=case_evidence`. If you use a different evidence directory name, update
-`CASE_ID` to match the `case_id=` value printed by `siftguard inventory`.
+`CASE_ID` to match the `case_id=` value printed by `elenchos inventory`.
 
 Raw evidence and generated parser outputs should remain uncommitted unless a
 specific sanitized example is intentionally added for documentation.
@@ -96,14 +101,14 @@ specific sanitized example is intentionally added for documentation.
 Inventory staged evidence and write a manifest:
 
 ```bash
-.venv/bin/python -m siftguard inventory "$EVIDENCE_ROOT" \
+.venv/bin/python -m elenchos inventory "$EVIDENCE_ROOT" \
   --manifest-out "$RUN_DIR/manifest.json"
 ```
 
 Hash a specific artifact when needed:
 
 ```bash
-.venv/bin/python -m siftguard hash "$EVIDENCE_ROOT/mft/\$MFT"
+.venv/bin/python -m elenchos hash "$EVIDENCE_ROOT/mft/\$MFT"
 ```
 
 Expected output:
@@ -114,7 +119,7 @@ Expected output:
 
 ## Case Preparation
 
-For E01-backed cases, SIFTGuard can discover sources and prepare the supported
+For E01-backed cases, Elenchos can discover sources and prepare the supported
 artifact set itself. Analysts should not hand-author the prepared artifact
 manifest consumed by later workflows.
 
@@ -122,7 +127,7 @@ Source-root discovery writes a local JSON source manifest under ignored
 `.local/` and writes generated case-prep outputs under ignored run paths:
 
 ```bash
-.venv/bin/python -m siftguard case prepare \
+.venv/bin/python -m elenchos case prepare \
   --case-id "$CASE_ID" \
   --source-root "<SOURCE_ROOT>" \
   --source-manifest-out ".local/cases/$CASE_ID/source-manifest.json" \
@@ -132,7 +137,7 @@ Source-root discovery writes a local JSON source manifest under ignored
 An existing JSON source manifest can be reused:
 
 ```bash
-.venv/bin/python -m siftguard case prepare \
+.venv/bin/python -m elenchos case prepare \
   --case-id "$CASE_ID" \
   --source-manifest ".local/cases/$CASE_ID/source-manifest.json" \
   --output-dir "$RUN_DIR/case-prep"
@@ -153,7 +158,7 @@ and the documented SIFT parser tools to be available in the environment. See
 Run MFTECmd against a staged `$MFT`:
 
 ```bash
-.venv/bin/python -m siftguard parse-mft \
+.venv/bin/python -m elenchos parse-mft \
   --case-id "$CASE_ID" \
   --artifact-id "EV-MFT-0001" \
   --mft-path "$EVIDENCE_ROOT/mft/\$MFT" \
@@ -166,7 +171,7 @@ Run MFTECmd against a staged `$MFT`:
 Run RECmd against user and machine Run Key hives:
 
 ```bash
-.venv/bin/python -m siftguard parse-registry-runkeys \
+.venv/bin/python -m elenchos parse-registry-runkeys \
   --case-id "$CASE_ID" \
   --artifact-id "EV-REG-USER-0001" \
   --hive-path "$EVIDENCE_ROOT/registry/NTUSER.DAT" \
@@ -176,7 +181,7 @@ Run RECmd against user and machine Run Key hives:
   --ledger-path "$LEDGER_PATH" \
   --json-out "normalized/EV-REG-USER-0001-recmd.json"
 
-.venv/bin/python -m siftguard parse-registry-runkeys \
+.venv/bin/python -m elenchos parse-registry-runkeys \
   --case-id "$CASE_ID" \
   --artifact-id "EV-REG-SOFTWARE-0001" \
   --hive-path "$EVIDENCE_ROOT/registry/SOFTWARE" \
@@ -190,7 +195,7 @@ Run RECmd against user and machine Run Key hives:
 Run AmcacheParser against a staged `Amcache.hve`:
 
 ```bash
-.venv/bin/python -m siftguard parse-amcache \
+.venv/bin/python -m elenchos parse-amcache \
   --case-id "$CASE_ID" \
   --artifact-id "EV-AMCACHE-0001" \
   --amcache-path "$EVIDENCE_ROOT/amcache/Amcache.hve" \
@@ -213,7 +218,7 @@ The direct correlation command consumes one normalized parser-output JSON file
 and writes timelines, findings, a Markdown report, and an audit ledger.
 
 ```bash
-.venv/bin/python -m siftguard correlate \
+.venv/bin/python -m elenchos correlate \
   --case-id "$CASE_ID" \
   --input "$RUN_DIR/normalized/EV-MFT-0001-mftecmd.json" \
   --output-dir "$RUN_DIR/correlation"
@@ -231,17 +236,17 @@ artifact set.
 
 ## Agent Workflow
 
-The constrained agent workflow runs the deterministic SIFTGuard pipeline around
+The constrained agent workflow runs the deterministic Elenchos pipeline around
 an evidence manifest or supported parser-output manifest. With raw artifacts, it
 requires the same staged evidence and SIFT parser tools as the parser workflow.
 
-For E01-backed cases prepared by SIFTGuard, use the generated
+For E01-backed cases prepared by Elenchos, use the generated
 `case_prep.json` from `case prepare`; analysts do not hand-author the prepared
 artifact manifest. Memory source records are preserved as inventory/provenance
 only and are not analyzed in the final submission scope.
 
 ```bash
-.venv/bin/python -m siftguard agent run-case \
+.venv/bin/python -m elenchos agent run-case \
   --artifact-manifest "$RUN_DIR/case-prep/case_prep.json" \
   --casebook "docs/casebooks/$CASE_ID.json" \
   --output-dir "$RUN_DIR/agent-run" \
@@ -277,7 +282,7 @@ for profile hives that were discovered, extracted, and considered by
 coverage gaps.
 
 ```bash
-.venv/bin/python -m siftguard agent run \
+.venv/bin/python -m elenchos agent run \
   --case-id "$CASE_ID" \
   --manifest "$RUN_DIR/manifest.json" \
   --output-dir "$RUN_DIR/agent-run" \
@@ -316,14 +321,14 @@ selection behavior.
 Read an audit ledger summary:
 
 ```bash
-.venv/bin/python -m siftguard audit-read "$RUN_DIR/agent-run/audit.jsonl"
+.venv/bin/python -m elenchos audit-read "$RUN_DIR/agent-run/audit.jsonl"
 ```
 
 ## Natural-Language/OpenClaw Workflow
 
-SIFTGuard provides a bounded OpenClaw/MCP-style analyst workflow. OpenClaw is
-the natural-language agent host; SIFTGuard remains the deterministic,
-model-agnostic forensic core. The model may request typed tools, but SIFTGuard
+Elenchos provides a bounded OpenClaw/MCP-style analyst workflow. OpenClaw is
+the natural-language agent host; Elenchos remains the deterministic,
+model-agnostic forensic core. The model may request typed tools, but Elenchos
 computes the evidence-backed result and no model output is treated as forensic
 evidence.
 Generated run outputs include a SHA-256 `run_integrity_manifest.json` so
@@ -333,7 +338,7 @@ hashes prove an investigative conclusion.
 ### Agent orchestration guidance
 
 This repository includes [`AGENTS.md`](AGENTS.md) for OpenClaw, Claude Code,
-and other agentic CLI hosts. It instructs agents to use SIFTGuard as a bounded
+and other agentic CLI hosts. It instructs agents to use Elenchos as a bounded
 forensic orchestration layer, preserve read-only evidence handling, summarize
 progress telemetry, validate outputs, and avoid unsupported claims.
 
@@ -344,7 +349,7 @@ operator prompt is available at
 Preferred final OpenClaw/MCP path:
 
 ```bash
-.venv/bin/python -m siftguard.integrations.mcp_server
+.venv/bin/python -m elenchos.integrations.mcp_server
 ```
 
 Bounded tools:
@@ -357,19 +362,19 @@ Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
 keys:
 
 ```bash
-.venv/bin/python scripts/demo_siftguard_preflight.py
-.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+.venv/bin/python scripts/demo_elenchos_preflight.py
+.venv/bin/python scripts/openclaw_elenchos_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
 The direct CLI remains the reproducible fallback:
 
 ```bash
-.venv/bin/python -m siftguard case prepare ...
-.venv/bin/python -m siftguard agent run-case ...
+.venv/bin/python -m elenchos case prepare ...
+.venv/bin/python -m elenchos agent run-case ...
 ```
 
 Case-specific claim boundaries belong in JSON casebook metadata. When
-SIFTGuard emits claim-boundary events, OpenClaw should repeat the generated
+Elenchos emits claim-boundary events, OpenClaw should repeat the generated
 `final_wording` and `scope_boundary` rather than inventing model wording.
 For storyless Windows disk images, use
 `docs/casebooks/generic-windows-disk-triage.json` for conservative
@@ -385,7 +390,7 @@ Positive-control fixture:
 
 ```bash
 rm -rf runs/case_positive-control
-.venv/bin/python -m siftguard agent run-fixture \
+.venv/bin/python -m elenchos agent run-fixture \
   --case-id case_positive-control \
   --fixture tests/fixtures/positive_control/positive_chain.json \
   --output-dir runs/case_positive-control/agent-run \
@@ -396,7 +401,7 @@ Self-correction fixture:
 
 ```bash
 rm -rf runs/case_self-correction-control
-.venv/bin/python -m siftguard agent run-fixture \
+.venv/bin/python -m elenchos agent run-fixture \
   --case-id case_self-correction-control \
   --fixture tests/fixtures/positive_control/unsupported_claim.json \
   --output-dir runs/case_self-correction-control/agent-run \

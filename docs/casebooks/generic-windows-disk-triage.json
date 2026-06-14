@@ -6,7 +6,7 @@
       "id": "storyless_image"
     },
     {
-      "fact": "Questions are limited to supported Windows disk triage artifacts and generated SIFTGuard outputs.",
+      "fact": "Questions are limited to supported Windows disk triage artifacts and generated Elenchos outputs.",
       "id": "supported_disk_triage_scope"
     }
   ],

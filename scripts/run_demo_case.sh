@@ -8,6 +8,6 @@ if [ ! -d "cases/official/selected" ] || [ -z "$(find cases/official/selected -t
 fi
 
 echo "Demo placeholder commands:"
-echo "  siftguard inventory cases/official/selected --manifest-out runs/case_demo_001/manifest.json"
-echo "  siftguard hash cases/official/selected/<artifact>"
+echo "  elenchos inventory cases/official/selected --manifest-out runs/case_demo_001/manifest.json"
+echo "  elenchos hash cases/official/selected/<artifact>"
 echo "  # parser/correlation/reporting steps will be added in later milestones"

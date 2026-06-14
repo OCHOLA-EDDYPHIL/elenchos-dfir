@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import pytest
 
-from siftguard.correlation.models import SubjectTimeline, TimelineEvent, TimelineEventType
-from siftguard.reporting.markdown_report import (
+from elenchos.correlation.models import SubjectTimeline, TimelineEvent, TimelineEventType
+from elenchos.reporting.markdown_report import (
     ReportInput,
     generate_markdown_report,
     render_markdown_report,
 )
-from siftguard.validation.claims import ClaimCandidate, validate_claim_candidate
-from siftguard.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
+from elenchos.validation.claims import ClaimCandidate, validate_claim_candidate
+from elenchos.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
 
 CASE_ID = "CASE-SYN-001"
 SYNTHETIC_HASH = "sha256:" + ("a" * 64)

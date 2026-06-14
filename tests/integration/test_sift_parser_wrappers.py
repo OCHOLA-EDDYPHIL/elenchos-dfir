@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.parser.amcache import parse_amcache
-from siftguard.parser.mft import parse_mft
-from siftguard.parser.registry_runkeys import parse_registry_runkeys
+from elenchos.audit.execution_ledger import read_events
+from elenchos.parser.amcache import parse_amcache
+from elenchos.parser.mft import parse_mft
+from elenchos.parser.registry_runkeys import parse_registry_runkeys
 
 pytestmark = pytest.mark.skipif(
     os.getenv("SIFTGUARD_RUN_SIFT_INTEGRATION") != "1",

@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from siftguard.correlation.models import TimelineEvent, TimelineEventType
-from siftguard.correlation.timeline import build_subject_timelines, correlate_timeline
-from siftguard.validation.models import EvidenceRef
+from elenchos.correlation.models import TimelineEvent, TimelineEventType
+from elenchos.correlation.timeline import build_subject_timelines, correlate_timeline
+from elenchos.validation.models import EvidenceRef
 
 PATH_A = "C:/Users/Alice/AppData/Local/Temp/example-a.exe"
 PATH_B = "C:/ProgramData/example-a.exe"

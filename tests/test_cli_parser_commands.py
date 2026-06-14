@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from siftguard.cli import main
-from siftguard.parser.result import ParserResult
+from elenchos.cli import main
+from elenchos.parser.result import ParserResult
 
 
 def make_result(
@@ -40,7 +40,7 @@ def test_cli_help_exits_zero_and_keeps_existing_commands(capsys):
 
 
 def test_parse_mft_calls_wrapper_and_prints_json(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import mft
+    from elenchos.parser import mft
 
     captured: dict[str, object] = {}
 
@@ -75,7 +75,7 @@ def test_parse_mft_calls_wrapper_and_prints_json(monkeypatch, tmp_path, capsys):
 
 
 def test_parse_registry_runkeys_calls_wrapper(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import registry_runkeys
+    from elenchos.parser import registry_runkeys
 
     captured: dict[str, object] = {}
 
@@ -114,7 +114,7 @@ def test_parse_registry_runkeys_calls_wrapper(monkeypatch, tmp_path, capsys):
 
 
 def test_parse_amcache_calls_wrapper(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import amcache
+    from elenchos.parser import amcache
 
     captured: dict[str, object] = {}
 
@@ -150,7 +150,7 @@ def test_parse_amcache_calls_wrapper(monkeypatch, tmp_path, capsys):
 
 
 def test_parse_command_json_out_writes_under_runs_root(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import mft
+    from elenchos.parser import mft
 
     monkeypatch.setattr(mft, "parse_mft", lambda **_: make_result())
 
@@ -183,7 +183,7 @@ def test_parse_command_json_out_writes_under_runs_root(monkeypatch, tmp_path, ca
 
 
 def test_parse_command_json_out_rejects_path_outside_runs_root(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import mft
+    from elenchos.parser import mft
 
     monkeypatch.setattr(mft, "parse_mft", lambda **_: make_result())
 
@@ -208,7 +208,7 @@ def test_parse_command_json_out_rejects_path_outside_runs_root(monkeypatch, tmp_
 
 
 def test_parse_command_json_out_rejects_evidence_root(monkeypatch, tmp_path, capsys):
-    from siftguard.parser import mft
+    from elenchos.parser import mft
 
     monkeypatch.setattr(mft, "parse_mft", lambda **_: make_result())
     evidence_root = tmp_path / "evidence"
@@ -245,7 +245,7 @@ def test_parse_command_json_out_rejects_evidence_root(monkeypatch, tmp_path, cap
     ],
 )
 def test_parse_command_exit_codes(monkeypatch, tmp_path, capsys, status, expected_exit_code):
-    from siftguard.parser import amcache
+    from elenchos.parser import amcache
 
     monkeypatch.setattr(
         amcache,

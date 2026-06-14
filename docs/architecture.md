@@ -12,7 +12,7 @@
 
 ## System Overview
 
-SIFTGuard MCP is a local-first, analyst-assist triage workflow. A human analyst
+Elenchos is a local-first, analyst-assist triage workflow. A human analyst
 starts a constrained run, the agent plans supported workflow steps, typed CLI and
 MCP-compatible schemas constrain execution, parser wrappers call deterministic
 SIFT tools, and validation controls which findings can appear in final outputs.
@@ -123,7 +123,7 @@ validation.
   data, secrets, local paths, hostnames, usernames, and tokens.
 - Public tool input does not accept free-form shell strings.
 - Argv-style commands and typed schemas are the execution safety boundary.
-- The agent uses constrained SIFTGuard entrypoints as the primary forensic
+- The agent uses constrained Elenchos entrypoints as the primary forensic
   interface, not arbitrary shell authority.
 - Analyst review remains required before using findings outside triage.
 

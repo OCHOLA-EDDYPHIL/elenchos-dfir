@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from siftguard.audit.execution_ledger import (
+from elenchos.audit.execution_ledger import (
     append_event,
     make_audit_event,
     make_event_id,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.cli import main
+from elenchos.cli import main
 
 CASE_ID = "CASE-SYN-001"
 SYNTHETIC_PATH = "C:/Users/Alice/AppData/Local/Temp/example-a.exe"

@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.evidence.manifest import EvidenceArtifact
-from siftguard.parser.config import ParserCommandConfig, ParserToolCommand
-from siftguard.parser.registry_runkeys import (
+from elenchos.evidence.manifest import EvidenceArtifact
+from elenchos.parser.config import ParserCommandConfig, ParserToolCommand
+from elenchos.parser.registry_runkeys import (
     NTUSER_RUN_CSV_NAME,
     NTUSER_RUNONCE_CSV_NAME,
     PARSER_NAME,
@@ -17,7 +17,7 @@ from siftguard.parser.registry_runkeys import (
     parse_registry_runkeys,
     parse_registry_runkeys_artifact,
 )
-from siftguard.runner.tool_result import ToolResult
+from elenchos.runner.tool_result import ToolResult
 
 FIXTURE_DIR = Path("tests/fixtures/parser_outputs/registry")
 

@@ -4,15 +4,15 @@ import hashlib
 
 import pytest
 
-from siftguard.audit.execution_ledger import append_event
-from siftguard.cli import main
+from elenchos.audit.execution_ledger import append_event
+from elenchos.cli import main
 
 
 def test_cli_version(capsys):
     with pytest.raises(SystemExit):
         main(["--version"])
     out = capsys.readouterr().out
-    assert "siftguard" in out
+    assert "elenchos" in out
 
 
 def test_cli_hash(tmp_path, capsys):

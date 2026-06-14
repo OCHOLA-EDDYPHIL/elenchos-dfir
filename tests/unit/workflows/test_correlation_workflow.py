@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.workflows.correlation import (
+from elenchos.audit.execution_ledger import read_events
+from elenchos.workflows.correlation import (
     load_normalized_timeline_events,
     run_correlation_workflow,
 )

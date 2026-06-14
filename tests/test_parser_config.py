@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from siftguard.parser.config import (
+from elenchos.parser.config import (
     ParserCommandConfig,
     ParserToolCommand,
     default_parser_command_config,

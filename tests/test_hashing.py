@@ -4,12 +4,12 @@ import hashlib
 
 import pytest
 
-from siftguard.evidence.hashing import sha256_file
+from elenchos.evidence.hashing import sha256_file
 
 
 def test_sha256_file_known_content(tmp_path):
     target = tmp_path / "sample.bin"
-    payload = b"siftguard-test"
+    payload = b"elenchos-test"
     target.write_bytes(payload)
 
     expected = hashlib.sha256(payload).hexdigest()

@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
-from siftguard.parser.result import ParserResult
+from elenchos.correlation.event_schema import ParserEvent, RawRecordRef
+from elenchos.parser.result import ParserResult
 
 
 def make_event() -> ParserEvent:

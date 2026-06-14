@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from siftguard.policy.tools import is_command_allowed
+from elenchos.policy.tools import is_command_allowed
 
 
 def test_harmless_command_allowed():

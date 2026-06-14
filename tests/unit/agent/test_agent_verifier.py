@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.agent.models import (
+from elenchos.agent.models import (
     AgentPhase,
     AgentPlan,
     AgentRun,
@@ -12,13 +12,13 @@ from siftguard.agent.models import (
     AgentStep,
     AgentStepStatus,
 )
-from siftguard.agent.verifier import (
+from elenchos.agent.verifier import (
     VerificationFailureKind,
     VerificationResult,
     VerificationStatus,
     verify_agent_outputs,
 )
-from siftguard.audit.execution_ledger import read_events
+from elenchos.audit.execution_ledger import read_events
 
 CASE_ID = "CASE-SYN-VERIFY-001"
 TIMESTAMP = "2026-01-01T00:00:00Z"
@@ -34,7 +34,7 @@ def _plan_step(phase: AgentPhase) -> AgentStep:
         step_id=f"step_{phase.value}",
         phase=phase,
         status=AgentStepStatus.PENDING,
-        action=f"siftguard.agent.{phase.value}",
+        action=f"elenchos.agent.{phase.value}",
     )
 
 
@@ -46,7 +46,7 @@ def _run_step(phase: AgentPhase, outputs: dict[str, object] | None = None) -> Ag
         started_at=TIMESTAMP,
         completed_at=TIMESTAMP,
         outputs=dict(outputs or {}),
-        action=f"siftguard.agent.{phase.value}",
+        action=f"elenchos.agent.{phase.value}",
     )
 
 

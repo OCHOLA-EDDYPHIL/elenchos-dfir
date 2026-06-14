@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.parser.config import ParserCommandConfig
-from siftguard.parser.registry_user_activity import (
+from elenchos.parser.config import ParserCommandConfig
+from elenchos.parser.registry_user_activity import (
     normalize_recmd_user_activity_csv,
     parse_registry_user_activity,
 )

@@ -1,14 +1,14 @@
-# AGENTS.md - SIFTGuard MCP Orchestration Guide
+# AGENTS.md - Elenchos Orchestration Guide
 
-This repository contains SIFTGuard MCP, a bounded autonomous forensic triage workflow for SANS SIFT / Protocol SIFT-style investigations.
+This repository contains Elenchos, a bounded autonomous forensic triage workflow for SANS SIFT / Protocol SIFT-style investigations.
 
-The agent's role is not to act as an unconstrained shell operator. The agent's role is to orchestrate SIFTGuard's typed forensic workflow, preserve evidence boundaries, validate outputs, summarize operational telemetry, and report only evidence-supported conclusions.
+The agent's role is not to act as an unconstrained shell operator. The agent's role is to orchestrate Elenchos' typed forensic workflow, preserve evidence boundaries, validate outputs, summarize operational telemetry, and report only evidence-supported conclusions.
 
 ## Primary Role
 
-Act as a DFIR orchestration layer over SIFTGuard.
+Act as a DFIR orchestration layer over Elenchos.
 
-Use the bounded SIFTGuard MCP/tool-adapter workflow whenever the user asks to triage a forensic case.
+Use the bounded Elenchos MCP/tool-adapter workflow whenever the user asks to triage a forensic case.
 
 Preferred tool sequence:
 
@@ -17,9 +17,9 @@ Preferred tool sequence:
 3. `summarize_run`
 4. `validate_run_outputs`
 
-Do not inspect raw evidence directly unless the user explicitly asks and the action is read-only. Prefer SIFTGuard-generated manifests, reports, JSON outputs, progress traces, audit logs, and decision traces.
+Do not inspect raw evidence directly unless the user explicitly asks and the action is read-only. Prefer Elenchos-generated manifests, reports, JSON outputs, progress traces, audit logs, and decision traces.
 
-The model coordinates the workflow. SIFTGuard computes the forensic outputs.
+The model coordinates the workflow. Elenchos computes the forensic outputs.
 
 ## Evidence Safety
 
@@ -38,11 +38,11 @@ runs/
 
 Do not commit raw evidence, generated parser output, local submission packets, transcripts, cast files, screenshots, private notes, or local OpenClaw session logs.
 
-## SIFTGuard Tool Boundary
+## Elenchos Tool Boundary
 
-Use SIFTGuard's bounded tools instead of arbitrary shell commands.
+Use Elenchos' bounded tools instead of arbitrary shell commands.
 
-Known SIFTGuard tool surface:
+Known Elenchos tool surface:
 
 ```text
 prepare_case
@@ -51,7 +51,7 @@ summarize_run
 validate_run_outputs
 ```
 
-These tools invoke deterministic SIFTGuard workflows and return structured outputs. The agent should coordinate the workflow; SIFTGuard should produce the forensic evidence records, findings, reports, audit logs, progress telemetry, and validation outputs.
+These tools invoke deterministic Elenchos workflows and return structured outputs. The agent should coordinate the workflow; Elenchos should produce the forensic evidence records, findings, reports, audit logs, progress telemetry, and validation outputs.
 
 ## Case Triage Behavior
 
@@ -82,9 +82,9 @@ During triage, provide concise operational updates.
 Good visible updates:
 
 ```text
-Planning bounded SIFTGuard workflow.
+Planning bounded Elenchos workflow.
 Preparing case artifacts.
-Running deterministic SIFTGuard case workflow.
+Running deterministic Elenchos case workflow.
 Inspecting generated summary outputs.
 Validating required files and claim safety.
 Reviewing progress telemetry.
@@ -109,7 +109,7 @@ timestamp
 case_id
 ```
 
-Use progress telemetry to explain what SIFTGuard did at a high level: case preparation, deterministic parser workflow, normalization/selection, report generation, summary, and validation.
+Use progress telemetry to explain what Elenchos did at a high level: case preparation, deterministic parser workflow, normalization/selection, report generation, summary, and validation.
 
 ## Claim Discipline
 
@@ -125,14 +125,14 @@ not_assessed
 rejected
 ```
 
-Do not claim theft, exfiltration, malware, compromise, attribution, or memory findings unless SIFTGuard outputs explicitly support that conclusion.
+Do not claim theft, exfiltration, malware, compromise, attribution, or memory findings unless Elenchos outputs explicitly support that conclusion.
 
 If the current artifact scope does not support a conclusion, say so directly.
 
 Preferred wording for unsupported ROCBA theft/exfiltration claims:
 
 ```text
-SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
+Elenchos did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope.
 ```
 
 Do not convert `needs_review` or `not_assessed` into a stronger conclusion.
@@ -183,7 +183,7 @@ max_iterations: 10
 max_normalized_events: 5000
 ```
 
-ROCBA is the primary validation/demo case, but SIFTGuard must remain usable on other Windows disk images.
+ROCBA is the primary validation/demo case, but Elenchos must remain usable on other Windows disk images.
 
 ## Final Response Format
 

@@ -6,27 +6,27 @@ from typing import Any
 
 import pytest
 
-from siftguard.agent.audit import append_agent_audit_event
-from siftguard.agent.casebook import load_casebook
-from siftguard.agent.models import AgentRun, AgentRunStatus, AgentState
-from siftguard.agent.planner import build_default_agent_plan
-from siftguard.agent.run_case import (
+from elenchos.agent.audit import append_agent_audit_event
+from elenchos.agent.casebook import load_casebook
+from elenchos.agent.models import AgentRun, AgentRunStatus, AgentState
+from elenchos.agent.planner import build_default_agent_plan
+from elenchos.agent.run_case import (
     CASEBOOK_YAML_REJECTION,
     run_case_output_summary,
     run_case_workflow,
 )
-from siftguard.audit.execution_ledger import read_events
-from siftguard.cli import main
-from siftguard.evidence.manifest import read_manifest
-from siftguard.parser.result import ParserResult
-from siftguard.validation.integrity import read_integrity_manifest
+from elenchos.audit.execution_ledger import read_events
+from elenchos.cli import main
+from elenchos.evidence.manifest import read_manifest
+from elenchos.parser.result import ParserResult
+from elenchos.validation.integrity import read_integrity_manifest
 
 CASE_ID = "rocba-standard"
 GENERIC_CASEBOOK_ID = "generic-windows-disk-triage"
 GENERIC_CASEBOOK_PATH = Path("docs/casebooks/generic-windows-disk-triage.json")
 FIXED_TIME = "2026-01-01T00:00:00Z"
 USER_ACTIVITY_FINAL_WORDING = (
-    "SIFTGuard did not find sufficient support for a theft or exfiltration "
+    "Elenchos did not find sufficient support for a theft or exfiltration "
     "conclusion within the submitted artifact scope."
 )
 USER_ACTIVITY_SCOPE_BOUNDARY = (
@@ -806,9 +806,9 @@ def test_run_case_resolves_relative_prepared_paths_for_raw_parsers(
             ended_at_utc=FIXED_TIME,
         )
 
-    monkeypatch.setattr("siftguard.agent.runner.parse_mft_artifact", fake_parser)
-    monkeypatch.setattr("siftguard.agent.runner.parse_registry_runkeys_artifact", fake_parser)
-    monkeypatch.setattr("siftguard.agent.runner.parse_amcache_artifact", fake_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_mft_artifact", fake_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_registry_runkeys_artifact", fake_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_amcache_artifact", fake_parser)
 
     run_case_workflow(
         artifact_manifest_path=case_prep_path,
@@ -842,9 +842,9 @@ def test_run_case_records_partial_parser_results_without_confirmed_claims(
             ended_at_utc=FIXED_TIME,
         )
 
-    monkeypatch.setattr("siftguard.agent.runner.parse_mft_artifact", partial_parser)
-    monkeypatch.setattr("siftguard.agent.runner.parse_registry_runkeys_artifact", partial_parser)
-    monkeypatch.setattr("siftguard.agent.runner.parse_amcache_artifact", partial_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_mft_artifact", partial_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_registry_runkeys_artifact", partial_parser)
+    monkeypatch.setattr("elenchos.agent.runner.parse_amcache_artifact", partial_parser)
 
     run_case_workflow(
         artifact_manifest_path=case_prep_path,

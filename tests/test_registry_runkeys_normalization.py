@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
-from siftguard.parser.registry_runkeys import (
+from elenchos.correlation.event_schema import ParserEvent, RawRecordRef
+from elenchos.parser.registry_runkeys import (
     normalize_recmd_runkeys_csv,
     normalize_recmd_runkeys_json,
 )

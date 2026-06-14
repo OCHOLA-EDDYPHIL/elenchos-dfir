@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from siftguard.agent.audit import (
+from elenchos.agent.audit import (
     append_agent_audit_event,
     record_agent_step_event,
     record_correction_event,
     record_verification_failure,
 )
-from siftguard.agent.models import (
+from elenchos.agent.models import (
     AgentCorrection,
     AgentPhase,
     AgentStep,
@@ -16,7 +16,7 @@ from siftguard.agent.models import (
     CorrectionAction,
     CorrectionTrigger,
 )
-from siftguard.audit.execution_ledger import read_events
+from elenchos.audit.execution_ledger import read_events
 
 CASE_ID = "CASE-SYN-AUDIT-001"
 RUN_ID = "run_CASE-SYN-AUDIT-001"
@@ -70,7 +70,7 @@ def test_record_agent_step_event_includes_step_context(tmp_path: Path):
         step_id="step_parse",
         phase=AgentPhase.PARSE,
         status=AgentStepStatus.COMPLETED,
-        action="siftguard.agent.parse",
+        action="elenchos.agent.parse",
         attempt=2,
         max_attempts=2,
         outputs={"normalized_events": "normalized_events.json"},

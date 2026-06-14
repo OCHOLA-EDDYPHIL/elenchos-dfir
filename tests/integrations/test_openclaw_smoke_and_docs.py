@@ -26,12 +26,12 @@ def _text_files_under(root: Path, names: tuple[str, ...]) -> list[Path]:
     return files
 
 
-def test_openclaw_siftguard_smoke_runs_in_dry_run_mode(tmp_path: Path):
+def test_openclaw_elenchos_smoke_runs_in_dry_run_mode(tmp_path: Path):
     output_dir = tmp_path / "runs" / "openclaw-smoke"
     result = subprocess.run(
         [
             str(repo_root() / ".venv" / "bin" / "python"),
-            str(repo_root() / "scripts" / "openclaw_siftguard_smoke.py"),
+            str(repo_root() / "scripts" / "openclaw_elenchos_smoke.py"),
             "--dry-run",
             "--output-dir",
             str(output_dir),
@@ -115,11 +115,11 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert "Current repo implementation" in mcp_docs
     assert "The preferred integration path is the bounded MCP/tool adapter" in mcp_docs
     assert "Preferred final OpenClaw/MCP path" in readme
-    assert ".venv/bin/python -m siftguard.integrations.mcp_server" in mcp_docs
-    assert ".venv/bin/python -m siftguard.integrations.mcp_server" in readme
-    assert "scripts/openclaw_siftguard_smoke.py --dry-run" in mcp_docs
-    assert "scripts/openclaw_siftguard_smoke.py --dry-run" in readme
-    assert "scripts/demo_siftguard_preflight.py" in mcp_docs
+    assert ".venv/bin/python -m elenchos.integrations.mcp_server" in mcp_docs
+    assert ".venv/bin/python -m elenchos.integrations.mcp_server" in readme
+    assert "scripts/openclaw_elenchos_smoke.py --dry-run" in mcp_docs
+    assert "scripts/openclaw_elenchos_smoke.py --dry-run" in readme
+    assert "scripts/demo_elenchos_preflight.py" in mcp_docs
     assert "examples/openclaw/case-triage.prompt.md" in readme
     assert "examples/openclaw/case-triage.prompt.md" in mcp_docs
     assert "Casebook Selection" in mcp_docs
@@ -131,8 +131,8 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert "self_correction_events.json" in mcp_docs
     assert "casebooks may define claim-boundary metadata" in mcp_docs.casefold()
     assert "Bounded tools" in readme
-    assert ".venv/bin/python -m siftguard case prepare ..." in readme
-    assert ".venv/bin/python -m siftguard agent run-case ..." in readme
+    assert ".venv/bin/python -m elenchos case prepare ..." in readme
+    assert ".venv/bin/python -m elenchos agent run-case ..." in readme
 
 
 def test_no_legacy_openclaw_references_remain():
@@ -181,7 +181,7 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
         "validate_run_outputs",
     ):
         assert tool_name in prompt
-    assert "bounded SIFTGuard MCP/tool-adapter surface" in prompt
+    assert "bounded Elenchos MCP/tool-adapter surface" in prompt
     assert "do not run raw shell commands" in lowered
     assert "do not run destructive commands" in lowered
     assert "do not write to evidence" in lowered
@@ -190,8 +190,8 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     assert "Do not invent case allegations" in collapsed
     assert "repeat the generated final_wording and scope_boundary exactly" in collapsed
     assert len(analyst_prompt.split()) < 80
-    assert ("SIFTGuard proves " + "theft") not in prompt
-    assert ("SIFTGuard proves " + "exfiltration") not in prompt
+    assert ("Elenchos proves " + "theft") not in prompt
+    assert ("Elenchos proves " + "exfiltration") not in prompt
     assert ("courtroom" + "-ready") not in lowered
 
 
@@ -247,7 +247,8 @@ def test_public_docs_do_not_hardcode_local_home_paths():
 
     stale_user_hits: list[str] = []
     stale_user = "nyama" + "bites"
-    for path in _text_files_under(root, ("README.md", "docs", "examples", "src", "scripts", "tests")):
+    public_paths = ("README.md", "docs", "examples", "src", "scripts", "tests")
+    for path in _text_files_under(root, public_paths):
         if stale_user in path.read_text(encoding="utf-8", errors="ignore"):
             stale_user_hits.append(str(path.relative_to(root)))
 
