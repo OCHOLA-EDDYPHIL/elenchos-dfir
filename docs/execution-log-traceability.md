@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SIFTGuard MCP writes structured local execution artifacts so an evaluator or
+Elenchos writes structured local execution artifacts so an evaluator or
 practitioner can trace generated findings back to workflow steps, tool
 executions, normalized records, and manifest artifacts. Raw private logs,
 private paths, raw evidence, and generated parser outputs are not committed.
@@ -100,7 +100,7 @@ AGENT_OUT="${RUN_ROOT}/agent-run"
 
 mkdir -p "$RUN_ROOT"
 
-.venv/bin/python -m siftguard inventory <STAGED_PRIMARY_ROOT> \
+.venv/bin/python -m elenchos inventory <STAGED_PRIMARY_ROOT> \
   --manifest-out "$MANIFEST_PATH"
 ```
 
@@ -119,7 +119,7 @@ PY
 Run the constrained agent workflow:
 
 ```bash
-.venv/bin/python -m siftguard agent run \
+.venv/bin/python -m elenchos agent run \
   --case-id "$MANIFEST_CASE_ID" \
   --manifest "$MANIFEST_PATH" \
   --output-dir "$AGENT_OUT" \
@@ -131,13 +131,13 @@ Run the constrained agent workflow:
 Run controlled validation fixtures:
 
 ```bash
-.venv/bin/python -m siftguard agent run-fixture \
+.venv/bin/python -m elenchos agent run-fixture \
   --case-id case_positive-control \
   --fixture tests/fixtures/positive_control/positive_chain.json \
   --output-dir runs/case_positive-control/agent-run \
   --max-iterations 7
 
-.venv/bin/python -m siftguard agent run-fixture \
+.venv/bin/python -m elenchos agent run-fixture \
   --case-id case_self-correction-control \
   --fixture tests/fixtures/positive_control/unsupported_claim.json \
   --output-dir runs/case_self-correction-control/agent-run \
@@ -148,7 +148,7 @@ Inspect generated summaries without committing raw logs:
 
 ```bash
 find "$AGENT_OUT" -maxdepth 2 -type f -printf '%P %s bytes\n'
-.venv/bin/python -m siftguard audit-read "$AGENT_OUT/audit.jsonl"
+.venv/bin/python -m elenchos audit-read "$AGENT_OUT/audit.jsonl"
 SUMMARY_PATH="$AGENT_OUT/coverage_summary.json" .venv/bin/python - <<'PY'
 import json
 import os
@@ -180,7 +180,7 @@ Sanitized run facts:
 | --- | --- |
 | Manifest case id | `case_staged-primary` |
 | Manifest artifact count | 4 |
-| Agent command | `siftguard agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run-final --max-iterations 7 --max-normalized-events 5000 --event-selection-profile forensic-triage` |
+| Agent command | `elenchos agent run --case-id case_staged-primary --manifest runs/<case-id>/manifest.json --output-dir runs/<case-id>/agent-run-final --max-iterations 7 --max-normalized-events 5000 --event-selection-profile forensic-triage` |
 | Agent exit code | 0 |
 | Agent final status | `completed` |
 | Step count | 6 |
@@ -239,7 +239,7 @@ The verifier fixture is synthetic and introduces an unsupported proposed
 `inferred` claim. It remains useful for regression testing verifier downgrade
 behavior, but it is not the final OpenClaw self-correction path. The bounded
 OpenClaw workflow uses casebook-defined claim-boundary posture revisions
-recorded by SIFTGuard outputs.
+recorded by Elenchos outputs.
 
 | Item | Value |
 | --- | --- |
@@ -258,14 +258,14 @@ The preferred OpenClaw/MCP smoke example is generated through the bounded
 adapter harness:
 
 ```bash
-.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+.venv/bin/python scripts/openclaw_elenchos_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
 Sanitized summary:
 
 | Item | Value |
 | --- | --- |
-| Case id | `CASE-OPENCLAW-SIFTGUARD-SMOKE` |
+| Case id | `CASE-OPENCLAW-ELENCHOS-SMOKE` |
 | Prepare status | `completed` |
 | Run status | `completed` |
 | Validation status | `pass` |
@@ -287,9 +287,9 @@ Adapter trace outputs:
 ## Real-Gap OpenClaw Self-Correction Path
 
 The final OpenClaw demo self-correction is not an induced error. OpenClaw calls
-the bounded SIFTGuard tools, reads generated outputs only, and discovers that
+the bounded Elenchos tools, reads generated outputs only, and discovers that
 the configured claim-boundary questions remain unsupported by the submitted
-artifact scope. SIFTGuard records this as `self_correction_events.json` from
+artifact scope. Elenchos records this as `self_correction_events.json` from
 casebook metadata so OpenClaw can revise its final investigative posture without
 treating model output as evidence.
 
@@ -301,7 +301,7 @@ Sanitized summary:
 | Phase | `claim_validation` |
 | Human intervention | `false` |
 | Source questions | Casebook-defined primary and related claim-boundary question IDs |
-| Final wording | SIFTGuard did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope. |
+| Final wording | Elenchos did not find sufficient support for a theft or exfiltration conclusion within the submitted artifact scope. |
 | Scope boundary | The current artifact scope does not support a theft/exfiltration conclusion; additional artifacts such as browser history, cloud sync logs, network telemetry, removable-device artifacts, or memory analysis would be required. |
 
 ## Sanitized Examples

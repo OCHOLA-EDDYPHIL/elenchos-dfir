@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.mcp_server import schemas, server
+from elenchos.mcp_server import schemas, server
 
 CASE_ID = "CASE-SYN-001"
 SYNTHETIC_PATH = "C:/Users/Alice/AppData/Local/Temp/example-a.exe"

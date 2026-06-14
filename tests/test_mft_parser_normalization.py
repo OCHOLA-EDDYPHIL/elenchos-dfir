@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
-from siftguard.parser.mft import normalize_mftecmd_csv
+from elenchos.correlation.event_schema import ParserEvent, RawRecordRef
+from elenchos.parser.mft import normalize_mftecmd_csv
 
 FIXTURE_DIR = Path("tests/fixtures/parser_outputs/mft")
 

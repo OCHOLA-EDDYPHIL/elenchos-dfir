@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from siftguard.mcp_server import schemas
+from elenchos.mcp_server import schemas
 
 FORBIDDEN_EXECUTION_FIELDS = {"command", "cmd", "argv", "shell", "executable"}
 FORBIDDEN_REGISTRY_FIELDS = {"bn", "batch_file_path", "sync"}

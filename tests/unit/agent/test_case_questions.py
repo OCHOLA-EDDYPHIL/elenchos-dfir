@@ -5,10 +5,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from siftguard.agent import case_questions as case_questions_module
-from siftguard.agent.case_manifest_adapter import adapt_case_prep_to_evidence_manifest
-from siftguard.agent.case_questions import evaluate_case_questions, render_case_question_report
-from siftguard.agent.casebook import Casebook, casebook_from_dict, load_casebook
+from elenchos.agent import case_questions as case_questions_module
+from elenchos.agent.case_manifest_adapter import adapt_case_prep_to_evidence_manifest
+from elenchos.agent.case_questions import evaluate_case_questions, render_case_question_report
+from elenchos.agent.casebook import Casebook, casebook_from_dict, load_casebook
 
 CASE_ID = "rocba-standard"
 CASEBOOK_PATH = Path("docs/casebooks/rocba-standard.json")
@@ -564,7 +564,7 @@ def test_report_is_curated_traceable_and_sanitizes_mru_values(tmp_path: Path):
     assert first == second
     assert len(first.splitlines()) < 160
     assert "## Traceability" in first
-    assert "What SIFTGuard did not assess within the submitted artifact scope:" in first
+    assert "What Elenchos did not assess within the submitted artifact scope:" in first
     assert expected_boundary.final_wording in first
     assert expected_boundary.scope_boundary in first
     assert "F-LINK-024" not in first

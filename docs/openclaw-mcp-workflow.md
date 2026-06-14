@@ -2,13 +2,13 @@
 
 ## Purpose
 
-SIFTGuard's analyst-facing architecture is a natural-language OpenClaw/MCP
+Elenchos' analyst-facing architecture is a natural-language OpenClaw/MCP
 workflow over a deterministic forensic core. OpenClaw is the agent host where
-the analyst asks for work in natural language. SIFTGuard exposes bounded tools
-that OpenClaw can call, while SIFTGuard Python code performs case preparation,
+the analyst asks for work in natural language. Elenchos exposes bounded tools
+that OpenClaw can call, while Elenchos Python code performs case preparation,
 parser execution, validation, self-correction, reporting, and audit logging.
 
-The preferred integration path is the bounded MCP/tool adapter. SIFTGuard
+The preferred integration path is the bounded MCP/tool adapter. Elenchos
 remains model-agnostic. It does not require Claude Code, does not select an
 OpenClaw provider or model, and does not treat model output as forensic
 evidence.
@@ -16,15 +16,15 @@ evidence.
 ### Agent orchestration guidance
 
 This repository includes [`AGENTS.md`](../AGENTS.md) for OpenClaw, Claude Code,
-and other agentic CLI hosts. It instructs agents to use SIFTGuard as a bounded
+and other agentic CLI hosts. It instructs agents to use Elenchos as a bounded
 forensic orchestration layer, preserve read-only evidence handling, summarize
 progress telemetry, validate outputs, and avoid unsupported claims.
 
 ## Component Roles
 
 - OpenClaw: analyst-facing agent host and natural-language front end.
-- SIFTGuard adapter: bounded MCP/OpenClaw tool surface with typed JSON inputs.
-- SIFTGuard core: deterministic forensic execution, evidence validation,
+- Elenchos adapter: bounded MCP/OpenClaw tool surface with typed JSON inputs.
+- Elenchos core: deterministic forensic execution, evidence validation,
   decision trace, generated report, and audit trail.
 - SIFT parser layer: deterministic local parser wrappers for the supported
   artifact scope.
@@ -34,8 +34,8 @@ The intended flow is:
 ```text
 Analyst natural-language prompt
   -> OpenClaw / agent host
-  -> bounded SIFTGuard MCP/tool adapter
-  -> SIFTGuard deterministic CLI/core
+  -> bounded Elenchos MCP/tool adapter
+  -> Elenchos deterministic CLI/core
   -> report + findings + audit + decision trace
   -> OpenClaw-visible summary and trace paths
 ```
@@ -44,8 +44,8 @@ Analyst natural-language prompt
 
 | Architecture role | Current repo implementation |
 | --- | --- |
-| Bounded MCP/tool server | `src/siftguard/integrations/` stdio server and JSON tool adapter |
-| Deterministic forensic orchestrator | `src/siftguard/agent/` workflow modules |
+| Bounded MCP/tool server | `src/elenchos/integrations/` stdio server and JSON tool adapter |
+| Deterministic forensic orchestrator | `src/elenchos/agent/` workflow modules |
 | Evidence ledger and findings store | `findings.json`, `normalized_events.json`, and evidence refs |
 | Execution logs | `audit.jsonl`, `decision_trace.json`, and adapter/OpenClaw traces |
 | Reports | Generated `report.md` and validation summaries |
@@ -55,9 +55,9 @@ Analyst natural-language prompt
 The adapter exposes four operations only:
 
 - `prepare_case`: validates paths, rejects unsafe output locations, and runs
-  `.venv/bin/python -m siftguard case prepare ...` through argv subprocesses.
+  `.venv/bin/python -m elenchos case prepare ...` through argv subprocesses.
 - `run_case`: validates a prepared `case_prep.json`, rejects unsafe output
-  locations, and runs `.venv/bin/python -m siftguard agent run-case ...`.
+  locations, and runs `.venv/bin/python -m elenchos agent run-case ...`.
 - `summarize_run`: reads generated JSON/report outputs only and returns concise
   finding counts, case-question statuses, parser coverage, event-family counts,
   unsupported areas, limitations, and traceability paths.
@@ -67,14 +67,14 @@ The adapter exposes four operations only:
 Run the stdio MCP server:
 
 ```bash
-.venv/bin/python -m siftguard.integrations.mcp_server
+.venv/bin/python -m elenchos.integrations.mcp_server
 ```
 
 The same bounded surface is available as a JSON CLI dispatcher:
 
 ```bash
-.venv/bin/python -m siftguard.integrations.tool_adapter manifest
-.venv/bin/python -m siftguard.integrations.tool_adapter summarize-run --json-input '{"output_dir":"runs/<CASE_ID>/agent-run"}'
+.venv/bin/python -m elenchos.integrations.tool_adapter manifest
+.venv/bin/python -m elenchos.integrations.tool_adapter summarize-run --json-input '{"output_dir":"runs/<CASE_ID>/agent-run"}'
 ```
 
 ## Safety Model
@@ -85,7 +85,7 @@ The same bounded surface is available as a JSON CLI dispatcher:
   roots are rejected.
 - Evidence remains read-only; generated outputs stay under ignored directories
   such as `runs/`.
-- `summarize_run` and `validate_run_outputs` read generated SIFTGuard outputs
+- `summarize_run` and `validate_run_outputs` read generated Elenchos outputs
   only, not raw evidence.
 - `run_case` writes `run_integrity_manifest.json` with SHA-256 hashes for
   generated run outputs. `validate_run_outputs` verifies that manifest and
@@ -93,7 +93,7 @@ The same bounded surface is available as a JSON CLI dispatcher:
   a cryptographic guarantee that a forensic conclusion is true.
 - Raw evidence contents, parser CSVs, hives, memory images, private paths,
   tokens, and OpenClaw provider credentials must not be committed.
-- The model may request bounded tools, but SIFTGuard computes the
+- The model may request bounded tools, but Elenchos computes the
   evidence-backed result. Model output is not forensic evidence.
 - Do not paste or transmit raw evidence contents to OpenClaw or any LLM.
 - Do not ask OpenClaw or any LLM to decide compromise from raw parser data.
@@ -116,13 +116,13 @@ On the validated workstation, `openclaw` is installed and exposes
 OpenClaw provider/model configuration is local to the operator's OpenClaw
 installation and must not be committed.
 
-Register the SIFTGuard MCP server with OpenClaw locally:
+Register the Elenchos server with OpenClaw locally:
 
 ```bash
 REPO_ROOT="$(pwd)"
-openclaw mcp set siftguard "{
+openclaw mcp set elenchos "{
   \"command\": \"$REPO_ROOT/.venv/bin/python\",
-  \"args\": [\"-m\", \"siftguard.integrations.mcp_server\"],
+  \"args\": [\"-m\", \"elenchos.integrations.mcp_server\"],
   \"cwd\": \"$REPO_ROOT\"
 }"
 ```
@@ -137,22 +137,22 @@ than repository files.
 Before recording a demo, run the preflight from the current checkout:
 
 ```bash
-.venv/bin/python scripts/demo_siftguard_preflight.py
+.venv/bin/python scripts/demo_elenchos_preflight.py
 ```
 
 The preflight confirms that OpenClaw points at the current repository, that the
-MCP server exposes exactly the four SIFTGuard tools, and that the local SIFT /
+MCP server exposes exactly the four Elenchos tools, and that the local SIFT /
 Zimmerman commands needed by the deterministic workflow are available. If it
-reports a stale path, re-run the `openclaw mcp set siftguard ...` command above.
+reports a stale path, re-run the `openclaw mcp set elenchos ...` command above.
 `AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
-boundary is the typed MCP adapter plus SIFTGuard's path validation, deterministic
+boundary is the typed MCP adapter plus Elenchos' path validation, deterministic
 CLI calls, generated-output validation, and claim-boundary files.
 
 Run the deterministic smoke harness without OpenClaw credentials or ROCBA
 evidence:
 
 ```bash
-.venv/bin/python scripts/openclaw_siftguard_smoke.py --dry-run --output-dir runs/openclaw-smoke
+.venv/bin/python scripts/openclaw_elenchos_smoke.py --dry-run --output-dir runs/openclaw-smoke
 ```
 
 The automated smoke test exercises the same bounded tool boundary without
@@ -162,8 +162,8 @@ The deterministic CLI remains the reproducible fallback for every adapter
 operation:
 
 ```bash
-.venv/bin/python -m siftguard case prepare ...
-.venv/bin/python -m siftguard agent run-case ...
+.venv/bin/python -m elenchos case prepare ...
+.venv/bin/python -m elenchos agent run-case ...
 ```
 
 ## Casebook Selection
@@ -175,10 +175,10 @@ is marked `reusable_template: true`, so it can be used with arbitrary prepared
 case IDs while generated outputs preserve the actual prepared case ID and
 record the template identity separately.
 
-With the generic casebook, SIFTGuard performs conservative evidence-led triage
+With the generic casebook, Elenchos performs conservative evidence-led triage
 and does not infer theft, exfiltration, APT attribution, or confirmed
 compromise. Case-specific conclusions require a case-specific JSON casebook
-plus supporting evidence in generated SIFTGuard outputs.
+plus supporting evidence in generated Elenchos outputs.
 
 ## Case Triage Workflow
 
@@ -187,7 +187,7 @@ Example analyst request:
 ```text
 Prepare and triage the case, then summarize supported findings,
 unsupported gaps, and trace paths. Do not inspect raw evidence directly.
-Use only the SIFTGuard tools.
+Use only the Elenchos tools.
 ```
 
 Canonical tool sequence:
@@ -210,7 +210,7 @@ Expected generated outputs include:
 - `runs/<CASE_ID>/agent-run/openclaw-trace/*.stdout|*.stderr`
 
 Casebooks may define claim-boundary metadata. When generated case-question
-statuses satisfy a configured boundary, SIFTGuard records that posture revision
+statuses satisfy a configured boundary, Elenchos records that posture revision
 in `self_correction_events.json`, `gap_analysis.json`, and summary/validation
 tool output. OpenClaw should repeat the generated `final_wording` and
 `scope_boundary` exactly and should not replace them with model wording.
@@ -221,14 +221,14 @@ as a reusable operator prompt.
 ## Model Statement
 
 OpenClaw controls provider and model selection through local operator
-configuration. SIFTGuard itself does not call a model during forensic
+configuration. Elenchos itself does not call a model during forensic
 validation, does not require a Claude Code subscription, and does not store or
-ship model API keys. Natural-language orchestration can request SIFTGuard
-tools, but SIFTGuard deterministic code performs the evidence-backed work.
+ship model API keys. Natural-language orchestration can request Elenchos
+tools, but Elenchos deterministic code performs the evidence-backed work.
 
 ## Limitations
 
-- The adapter does not expand SIFTGuard artifact scope.
+- The adapter does not expand Elenchos artifact scope.
 - The adapter does not make unsupported compromise, theft, exfiltration, or
   memory claims.
 - The workflow remains bounded to supported generated outputs and direct CLI

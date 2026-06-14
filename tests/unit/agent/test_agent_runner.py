@@ -6,12 +6,12 @@ from pathlib import Path
 
 import pytest
 
-import siftguard.agent.runner as agent_runner
-from siftguard.agent.models import AgentRun, AgentRunStatus
-from siftguard.agent.runner import run_agent_workflow
-from siftguard.audit.execution_ledger import read_events
-from siftguard.cli import main
-from siftguard.evidence.manifest import EvidenceArtifact, EvidenceManifest, write_manifest
+import elenchos.agent.runner as agent_runner
+from elenchos.agent.models import AgentRun, AgentRunStatus
+from elenchos.agent.runner import run_agent_workflow
+from elenchos.audit.execution_ledger import read_events
+from elenchos.cli import main
+from elenchos.evidence.manifest import EvidenceArtifact, EvidenceManifest, write_manifest
 
 CASE_ID = "CASE-SYN-001"
 SYNTHETIC_PATH = "C:\\Users\\Alice\\AppData\\Local\\Temp\\example-a.exe"
@@ -259,7 +259,7 @@ def test_agent_runner_completes_successful_synthetic_run(tmp_path: Path):
         EXPECTED_AGENT_PHASES
     )
     assert [step["action"] for step in agent_run["plan"]["steps"]] == [
-        f"siftguard.agent.{phase}" for phase in EXPECTED_AGENT_PHASES
+        f"elenchos.agent.{phase}" for phase in EXPECTED_AGENT_PHASES
     ]
     assert AgentRun.from_dict(agent_run).to_dict() == agent_run
     assert "command" not in json.dumps(agent_run).lower()

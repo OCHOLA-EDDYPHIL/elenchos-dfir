@@ -4,8 +4,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.cli import main
+from elenchos.audit.execution_ledger import read_events
+from elenchos.cli import main
 
 POSITIVE_FIXTURE = Path("tests/fixtures/positive_control/positive_chain.json")
 SELF_CORRECTION_FIXTURE = Path("tests/fixtures/positive_control/unsupported_claim.json")

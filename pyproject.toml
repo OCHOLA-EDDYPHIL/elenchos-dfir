@@ -3,9 +3,9 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "siftguard"
+name = "elenchos"
 version = "0.1.0"
-description = "Constrained autonomous DFIR workflow foundation for SANS SIFT Workstation"
+description = "Elenchos constrained autonomous DFIR workflow foundation for SANS SIFT Workstation"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -35,7 +35,7 @@ dev = [
 ]
 
 [project.scripts]
-siftguard = "siftguard.cli:main"
+elenchos = "elenchos.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

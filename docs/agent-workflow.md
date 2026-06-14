@@ -3,7 +3,7 @@
 ## Purpose
 
 The agent workflow adds a deterministic control loop around the existing
-SIFTGuard pipeline. It plans a constrained forensic workflow, executes existing
+Elenchos pipeline. It plans a constrained forensic workflow, executes existing
 inventory/parser/correlation/validation/reporting code, verifies generated
 outputs, applies safe self-correction where possible, and records traceable
 artifacts.
@@ -19,8 +19,8 @@ plan -> execute -> verify -> correct -> report
 
 - Plan: create an `AgentPlan` with inventory, parse, correlate, validate,
   report, and verify phases.
-- Execute: run only constrained SIFTGuard Python workflow functions through
-  `siftguard agent run`.
+- Execute: run only constrained Elenchos Python workflow functions through
+  `elenchos agent run`.
 - Verify: check generated outputs before trusting findings or reports.
 - Correct: retry or fall back only through explicit safe paths, then downgrade
   unsupported findings to `needs_review` where needed.
@@ -44,7 +44,7 @@ plan -> execute -> verify -> correct -> report
 The constrained entrypoint is:
 
 ```bash
-.venv/bin/python -m siftguard agent run-case \
+.venv/bin/python -m elenchos agent run-case \
   --artifact-manifest runs/CASE-ID/case-prep/case_prep.json \
   --casebook docs/casebooks/CASE-ID.json \
   --output-dir runs/CASE-ID/agent-run \
@@ -53,8 +53,8 @@ The constrained entrypoint is:
   --event-selection-profile forensic-triage
 ```
 
-`agent run-case` is the manifest-first path after `siftguard case prepare`.
-It consumes the SIFTGuard-generated `case_prep.json`, adapts available
+`agent run-case` is the manifest-first path after `elenchos case prepare`.
+It consumes the Elenchos-generated `case_prep.json`, adapts available
 parser-eligible artifacts into the deterministic agent workflow, preserves
 source provenance, and carries case-prep coverage gaps forward. The casebook is
 optional for now and must be JSON when provided; YAML casebooks are rejected.
@@ -104,7 +104,7 @@ complete when any discovered profile hive failed extraction or parsing.
 The lower-level manifest entrypoint remains available:
 
 ```bash
-.venv/bin/python -m siftguard agent run \
+.venv/bin/python -m elenchos agent run \
   --case-id CASE-ID \
   --manifest runs/CASE-ID/manifest.json \
   --output-dir runs/CASE-ID/agent-run \
@@ -188,7 +188,7 @@ show that the submitted artifact scope is insufficient for a configured claim.
 
 ## Limitations
 
-SIFTGuard is triage and analyst-assist tooling. It helps make deterministic
+Elenchos is triage and analyst-assist tooling. It helps make deterministic
 workflow execution, evidence grounding, verification, correction, and audit
 visibility explicit. It does not make final forensic claims by itself, and
 analyst review remains required.

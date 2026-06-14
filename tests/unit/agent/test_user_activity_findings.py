@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
-from siftguard.agent.casebook import casebook_from_dict
-from siftguard.agent.user_activity_findings import generate_user_activity_findings
-from siftguard.evidence.manifest import EvidenceManifest
+from elenchos.agent.case_manifest_adapter import AdaptedCaseManifest
+from elenchos.agent.casebook import casebook_from_dict
+from elenchos.agent.user_activity_findings import generate_user_activity_findings
+from elenchos.evidence.manifest import EvidenceManifest
 
 
 def _adapted_manifest(tmp_path: Path) -> AdaptedCaseManifest:

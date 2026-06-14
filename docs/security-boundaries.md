@@ -2,7 +2,7 @@
 
 ## Evidence Integrity
 
-Evidence remains local-only and read-only. SIFTGuard demos use synthetic inputs
+Evidence remains local-only and read-only. Elenchos demos use synthetic inputs
 unless a maintainer explicitly prepares a local evidence demo. Generated
 outputs go under ignored run paths such as `runs/`, and raw evidence is never
 committed.
@@ -15,10 +15,10 @@ declares those current invariants without claiming a comprehensive sandbox.
 
 ## Constrained Execution
 
-OpenClaw is instructed to call constrained SIFTGuard entrypoints. The preferred
+OpenClaw is instructed to call constrained Elenchos entrypoints. The preferred
 final workflow boundary is the bounded MCP/tool adapter, which exposes typed
 operations for case preparation, run execution, summarization, and validation.
-Raw shell is not the forensic interface. SIFTGuard does not expose arbitrary
+Raw shell is not the forensic interface. Elenchos does not expose arbitrary
 command execution as an agent feature.
 
 The planner is deterministic. It constructs the fixed inventory, parse,
@@ -55,7 +55,7 @@ usernames into OpenClaw prompts or committed documentation.
 
 ## Limitations
 
-SIFTGuard is triage and analyst-assist tooling. Deterministic verification and
+Elenchos is triage and analyst-assist tooling. Deterministic verification and
 audit-visible correction reduce interpretation risk, but they do not eliminate
 the need for analyst review. The project should not be presented as
 final forensic proof.

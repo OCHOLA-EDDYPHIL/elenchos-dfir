@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.progress import (
+from elenchos.progress import (
     append_progress_event,
     make_progress_event,
     read_progress_events,

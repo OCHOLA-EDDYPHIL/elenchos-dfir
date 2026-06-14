@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.agent.models import (
+from elenchos.agent.models import (
     AgentPhase,
     AgentPlan,
     AgentRun,
@@ -14,15 +14,15 @@ from siftguard.agent.models import (
     CorrectionAction,
     CorrectionTrigger,
 )
-from siftguard.agent.self_correction import apply_self_correction
-from siftguard.agent.verifier import (
+from elenchos.agent.self_correction import apply_self_correction
+from elenchos.agent.verifier import (
     VerificationFailure,
     VerificationFailureKind,
     VerificationResult,
     VerificationStatus,
     verify_agent_outputs,
 )
-from siftguard.audit.execution_ledger import read_events
+from elenchos.audit.execution_ledger import read_events
 
 CASE_ID = "CASE-SYN-CORRECT-001"
 TIMESTAMP = "2026-01-01T00:00:00Z"
@@ -50,7 +50,7 @@ def make_agent_run() -> AgentRun:
                 step_id=f"step_{phase.value}",
                 phase=phase,
                 status=AgentStepStatus.PENDING,
-                action=f"siftguard.agent.{phase.value}",
+                action=f"elenchos.agent.{phase.value}",
             )
             for phase in phases
         ],

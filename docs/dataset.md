@@ -4,12 +4,12 @@
 
 This document explains the supported evidence inputs, local staging layout,
 validation scope, expected demo observations, and evidence safety rules for the
-submission-ready SIFTGuard MCP workflow. It does not publish raw evidence,
+submission-ready Elenchos workflow. It does not publish raw evidence,
 private local paths, or private evidence hashes.
 
 ## Supported Dataset Scope
 
-SIFTGuard MCP is scoped to Windows disk-artifact triage. The final supported
+Elenchos is scoped to Windows disk-artifact triage. The final supported
 artifact classes are:
 
 - `$MFT` for filesystem metadata and file timeline observations.
@@ -51,12 +51,12 @@ relationship is independently supported.
 
 ## E01 Case Preparation
 
-For E01-backed cases, prefer SIFTGuard case preparation over hand-authored
+For E01-backed cases, prefer Elenchos case preparation over hand-authored
 prepared artifact manifests. Source-root mode discovers local sources and writes
 a JSON source manifest under ignored `.local/`:
 
 ```bash
-.venv/bin/python -m siftguard case prepare \
+.venv/bin/python -m elenchos case prepare \
   --case-id <CASE_ID> \
   --source-root <SOURCE_ROOT> \
   --source-manifest-out .local/cases/<CASE_ID>/source-manifest.json \
@@ -66,7 +66,7 @@ a JSON source manifest under ignored `.local/`:
 The same JSON source manifest can be reused later:
 
 ```bash
-.venv/bin/python -m siftguard case prepare \
+.venv/bin/python -m elenchos case prepare \
   --case-id <CASE_ID> \
   --source-manifest .local/cases/<CASE_ID>/source-manifest.json \
   --output-dir runs/<CASE_ID>/case-prep
@@ -199,5 +199,5 @@ The final submission scope does not include:
 - Offensive actions.
 - Legal evidence certification.
 
-SIFTGuard MCP is analyst-assist triage tooling. Analyst review remains required
+Elenchos is analyst-assist triage tooling. Analyst review remains required
 for interpretation, reporting decisions, and any use outside local evaluation.

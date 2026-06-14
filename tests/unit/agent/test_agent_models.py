@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from siftguard.agent.models import (
+from elenchos.agent.models import (
     AgentArtifactRef,
     AgentCorrection,
     AgentPhase,
@@ -18,7 +18,7 @@ from siftguard.agent.models import (
     CorrectionAction,
     CorrectionTrigger,
 )
-from siftguard.validation.models import EvidenceRef
+from elenchos.validation.models import EvidenceRef
 
 TIMESTAMP = "2026-01-01T00:00:00Z"
 
@@ -39,7 +39,7 @@ def make_step(phase: AgentPhase, *, status: AgentStepStatus = AgentStepStatus.PE
         step_id=f"step_{phase.value}",
         phase=phase,
         status=status,
-        action=f"siftguard.{phase.value}",
+        action=f"elenchos.{phase.value}",
         inputs={"artifact_ids": ["artifact_syn_mft"]},
         outputs={"result_ref": f"runs/synthetic/{phase.value}.json"},
     )
@@ -57,7 +57,7 @@ def make_plan() -> AgentPlan:
     return AgentPlan(
         plan_id="plan_syn_001",
         case_id="case_syn_001",
-        objective="Run the constrained SIFTGuard workflow over synthetic artifacts.",
+        objective="Run the constrained Elenchos workflow over synthetic artifacts.",
         steps=[make_step(phase) for phase in phases],
         created_at=TIMESTAMP,
     )
@@ -137,7 +137,7 @@ def test_agent_correction_includes_auditable_contract_fields():
     [
         ("command", {"command": "python parser.py"}),
         ("shell", {"safe": {"shell": "/bin/bash"}}),
-        ("argv", {"items": [{"argv": ["python", "-m", "siftguard"]}]}),
+        ("argv", {"items": [{"argv": ["python", "-m", "elenchos"]}]}),
         ("powershell", {"nested": [{"safe": {"powershell": "Get-ChildItem"}}]}),
     ],
 )

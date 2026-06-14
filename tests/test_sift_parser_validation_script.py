@@ -7,8 +7,8 @@ from types import ModuleType
 
 import pytest
 
-from siftguard.correlation.event_schema import ParserEvent
-from siftguard.parser.result import ParserResult
+from elenchos.correlation.event_schema import ParserEvent
+from elenchos.parser.result import ParserResult
 
 
 def load_validation_script() -> ModuleType:

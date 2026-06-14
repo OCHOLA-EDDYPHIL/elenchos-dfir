@@ -229,7 +229,7 @@ Recommended approach for issue #26:
   and Amcache plugins, but not selected because RECmd and AmcacheParser are more
   specific for structured wrapper output.
 - `log2timeline.py`: installed plaso timeline tool, version `20260119`, but not
-  selected because SIFTGuard uses narrow artifact parser wrappers.
+  selected because Elenchos uses narrow artifact parser wrappers.
 - `psort.py`: installed plaso post-processing tool, version `20260119`, but not
   selected because it depends on broader plaso timeline workflows.
 - `fls`, `icat`, `mmls`, and `fsstat`: installed Sleuth Kit tools, useful for

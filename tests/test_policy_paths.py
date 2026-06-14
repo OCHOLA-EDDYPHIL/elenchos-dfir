@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.policy.paths import (
+from elenchos.policy.paths import (
     assert_not_inside_evidence_output,
     assert_output_under_runs,
     resolve_under,

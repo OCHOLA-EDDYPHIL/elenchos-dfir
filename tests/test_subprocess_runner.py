@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.runner.subprocess_runner import run_command
+from elenchos.audit.execution_ledger import read_events
+from elenchos.runner.subprocess_runner import run_command
 
 
 def test_runner_success_logs_audit(tmp_path):

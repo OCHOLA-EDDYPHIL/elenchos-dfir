@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from siftguard.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
-from siftguard.validation.provenance import validate_finding_has_evidence
+from elenchos.validation.models import ClaimStatus, Confidence, EvidenceRef, Finding, FindingKind
+from elenchos.validation.provenance import validate_finding_has_evidence
 
 
 def test_supported_confirmed_finding_passes_provenance_check():

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.agent.casebook import CASEBOOK_YAML_REJECTION, load_casebook
+from elenchos.agent.casebook import CASEBOOK_YAML_REJECTION, load_casebook
 
 CASE_ID = "rocba-standard"
 GENERIC_CASE_ID = "generic-windows-disk-triage"

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from siftguard.agent.models import AgentPlan, AgentStepStatus
-from siftguard.agent.planner import (
+from elenchos.agent.models import AgentPlan, AgentStepStatus
+from elenchos.agent.planner import (
     AGENT_PHASES,
     build_default_agent_plan,
     plan_next_actions,
@@ -37,7 +37,7 @@ def test_build_default_agent_plan_returns_deterministic_pending_plan():
         f"step_{phase}" for phase in EXPECTED_PHASES
     ]
     assert [step.action for step in plan.steps] == [
-        f"siftguard.agent.{phase}" for phase in EXPECTED_PHASES
+        f"elenchos.agent.{phase}" for phase in EXPECTED_PHASES
     ]
 
 

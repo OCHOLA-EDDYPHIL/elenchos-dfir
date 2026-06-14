@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from siftguard.validation.models import (
+from elenchos.validation.models import (
     ClaimStatus,
     Confidence,
     EvidenceRef,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from siftguard.correlation.models import SubjectTimeline, TimelineEvent, TimelineEventType
-from siftguard.validation.claims import (
+from elenchos.correlation.models import SubjectTimeline, TimelineEvent, TimelineEventType
+from elenchos.validation.claims import (
     ClaimCandidate,
     candidate_from_subject_timeline,
     candidates_from_subject_timelines,
@@ -11,7 +11,7 @@ from siftguard.validation.claims import (
     validate_claim_candidate,
     validate_claim_candidates,
 )
-from siftguard.validation.models import ClaimStatus, Confidence, EvidenceRef, FindingKind
+from elenchos.validation.models import ClaimStatus, Confidence, EvidenceRef, FindingKind
 
 SYNTHETIC_HASH = "sha256:" + ("a" * 64)
 SYNTHETIC_PATH = "C:/Users/Alice/AppData/Local/Temp/example-a.exe"

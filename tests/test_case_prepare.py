@@ -5,21 +5,21 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.case_prep.extractors import (
+from elenchos.audit.execution_ledger import read_events
+from elenchos.case_prep.extractors import (
     SUPPORTED_TARGETS,
     FixtureExtractor,
     _profile_ntuser_targets,
     _target_matches,
 )
-from siftguard.case_prep.models import ArtifactTarget, ExtractionOutcome
-from siftguard.case_prep.prepare import prepare_case
-from siftguard.case_prep.source_discovery import (
+from elenchos.case_prep.models import ArtifactTarget, ExtractionOutcome
+from elenchos.case_prep.prepare import prepare_case
+from elenchos.case_prep.source_discovery import (
     discover_source_root,
     read_source_manifest,
     write_source_manifest,
 )
-from siftguard.cli import main
+from elenchos.cli import main
 
 CASE_ID = "rocba-standard"
 FIXED_TIME = "2026-01-01T00:00:00Z"

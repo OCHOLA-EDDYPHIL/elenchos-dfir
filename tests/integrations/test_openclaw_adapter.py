@@ -7,12 +7,12 @@ from typing import Any
 
 import pytest
 
-from siftguard.integrations import mcp_server
-from siftguard.integrations.safe_paths import (
+from elenchos.integrations import mcp_server
+from elenchos.integrations.safe_paths import (
     resolve_user_path,
     validate_integration_output_dir,
 )
-from siftguard.integrations.tool_adapter import (
+from elenchos.integrations.tool_adapter import (
     dispatch_tool,
     get_tool_definitions,
     prepare_case,
@@ -20,13 +20,13 @@ from siftguard.integrations.tool_adapter import (
     summarize_run,
     validate_run_outputs,
 )
-from siftguard.integrations.tool_adapter import (
+from elenchos.integrations.tool_adapter import (
     main as tool_adapter_main,
 )
-from siftguard.validation.integrity import write_integrity_manifest
+from elenchos.validation.integrity import write_integrity_manifest
 
 CASE_ID = "case-openclaw-test"
-FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+FINAL_WORDING = "Elenchos kept the configured claim not_assessed."
 SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
 
 
@@ -229,7 +229,7 @@ def test_safe_path_validation_rejects_path_traversal():
 
 
 def test_tool_adapter_rejects_unknown_operation():
-    with pytest.raises(ValueError, match="unknown SIFTGuard integration operation"):
+    with pytest.raises(ValueError, match="unknown Elenchos integration operation"):
         dispatch_tool("shell", {})
 
 
@@ -269,7 +269,7 @@ def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     assert result["status"] == "completed"
     assert result["prepared_artifact_count"] == 2
     assert result["coverage_gap_count"] == 1
-    assert seen[0][:4] == [seen[0][0], "-m", "siftguard", "case"]
+    assert seen[0][:4] == [seen[0][0], "-m", "elenchos", "case"]
     assert "shell" not in seen[0]
 
 
@@ -322,7 +322,7 @@ def test_prepare_case_returns_structured_failure_from_mocked_subprocess(tmp_path
     )
 
     assert result["status"] == "failed"
-    assert result["command_name"] == "siftguard case prepare"
+    assert result["command_name"] == "elenchos case prepare"
     assert result["error"] == "error=source missing"
     assert str(result["trace_stdout"]).endswith("prepare_case.stdout")
     assert str(result["trace_stderr"]).endswith("prepare_case.stderr")
@@ -416,7 +416,7 @@ def test_run_case_returns_structured_result_from_mocked_subprocess(tmp_path: Pat
     )
 
     assert result["status"] == "completed"
-    assert result["command_name"] == "siftguard agent run-case"
+    assert result["command_name"] == "elenchos agent run-case"
     assert result["finding_status_counts"] == {"inferred": 1, "needs_review": 1}
     assert result["case_question_status_counts"] == {"needs_review": 1, "not_assessed": 4}
     assert str(result["self_correction_events"]).endswith("self_correction_events.json")
@@ -682,7 +682,7 @@ def test_mcp_server_exposes_tools_and_calls_summary(tmp_path: Path):
     )
 
     assert init_response is not None
-    assert init_response["result"]["serverInfo"]["name"] == "siftguard-openclaw-adapter"
+    assert init_response["result"]["serverInfo"]["name"] == "elenchos-openclaw-adapter"
     assert tools_response is not None
     tools = tools_response["result"]["tools"]
     assert {tool["name"] for tool in tools} == {

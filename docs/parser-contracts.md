@@ -145,9 +145,9 @@ injection. SIFT validation against the real tool is summarized in
 
 The CLI exposes constrained parser wrapper commands:
 
-- `siftguard parse-mft`
-- `siftguard parse-registry-runkeys`
-- `siftguard parse-amcache`
+- `elenchos parse-mft`
+- `elenchos parse-registry-runkeys`
+- `elenchos parse-amcache`
 
 Parser CLI commands emit `ParserResult` JSON to stdout by default. When
 `--json-out` is used, the result JSON path must resolve under `runs_root` and

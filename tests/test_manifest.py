@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from siftguard.evidence.inventory import classify_artifact
-from siftguard.evidence.manifest import (
+from elenchos.evidence.inventory import classify_artifact
+from elenchos.evidence.manifest import (
     artifact_id_for,
     build_manifest,
     read_manifest,

@@ -5,15 +5,15 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.evidence.manifest import EvidenceArtifact
-from siftguard.parser.amcache import (
+from elenchos.evidence.manifest import EvidenceArtifact
+from elenchos.parser.amcache import (
     DEFAULT_AMCACHE_CSV_NAME,
     PARSER_NAME,
     parse_amcache,
     parse_amcache_artifact,
 )
-from siftguard.parser.config import ParserCommandConfig, ParserToolCommand
-from siftguard.runner.tool_result import ToolResult
+from elenchos.parser.config import ParserCommandConfig, ParserToolCommand
+from elenchos.runner.tool_result import ToolResult
 
 FIXTURE_DIR = Path("tests/fixtures/parser_outputs/amcache")
 

@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+from typing import Any
+
+from elenchos.agent.casebook import Casebook, CasebookClaimBoundary
+
+
+def _questions_by_id(case_questions: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if case_questions is None:
+        return {}
+    rows = case_questions.get("questions", [])
+    if not isinstance(rows, list):
+        return {}
+    questions: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        question_id = row.get("question_id")
+        if isinstance(question_id, str) and question_id:
+            questions[question_id] = dict(row)
+    return questions
+
+
+def _status_for_question(
+    questions: dict[str, dict[str, Any]],
+    question_id: str,
+) -> str | None:
+    status = questions.get(question_id, {}).get("status")
+    return status if isinstance(status, str) and status else None
+
+
+def _source_question_ids(
+    *,
+    rule: CasebookClaimBoundary,
+    questions: dict[str, dict[str, Any]],
+) -> list[str]:
+    allowed = set(rule.emit_when_all_statuses)
+    source_ids: list[str] = []
+    for question_id in (*rule.question_ids, *rule.related_question_ids):
+        if question_id in source_ids:
+            continue
+        if _status_for_question(questions, question_id) in allowed:
+            source_ids.append(question_id)
+    return source_ids
+
+
+def _rule_is_satisfied(
+    *,
+    rule: CasebookClaimBoundary,
+    questions: dict[str, dict[str, Any]],
+) -> bool:
+    allowed = set(rule.emit_when_all_statuses)
+    return all(
+        _status_for_question(questions, question_id) in allowed
+        for question_id in rule.question_ids
+    )
+
+
+def build_claim_boundary_records(
+    *,
+    casebook: Casebook | None,
+    case_questions: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    if casebook is None:
+        return []
+    questions = _questions_by_id(case_questions)
+    records: list[dict[str, Any]] = []
+    for rule in casebook.claim_boundaries:
+        if not _rule_is_satisfied(rule=rule, questions=questions):
+            continue
+        source_question_ids = _source_question_ids(rule=rule, questions=questions)
+        records.append(
+            {
+                "claim_area": rule.claim_area,
+                "status": "not_assessed"
+                if set(rule.emit_when_all_statuses) == {"not_assessed"}
+                else "claim_boundary_applied",
+                "emit_when_all_statuses": list(rule.emit_when_all_statuses),
+                "final_wording": rule.final_wording,
+                "scope_boundary": rule.scope_boundary,
+                "recommended_next_artifacts": list(rule.recommended_next_artifacts),
+                "source_question_ids": source_question_ids,
+            }
+        )
+    return records
+
+
+def build_self_correction_events(
+    *,
+    case_id: str,
+    created_at: str,
+    casebook: Casebook | None,
+    case_questions: dict[str, Any] | None,
+) -> dict[str, Any]:
+    boundaries = build_claim_boundary_records(
+        casebook=casebook,
+        case_questions=case_questions,
+    )
+    events: list[dict[str, Any]] = []
+    for index, boundary in enumerate(boundaries, start=1):
+        event: dict[str, Any] = {
+            "event_id": f"claim-boundary-{index:03d}",
+            "phase": "claim_validation",
+            "claim_area": boundary["claim_area"],
+            "problem_detected": (
+                "Configured claim-boundary conditions were met by generated "
+                "case-question statuses."
+            ),
+            "correction": (
+                "The final posture follows the configured claim-boundary wording "
+                "instead of promoting an unsupported conclusion."
+            ),
+            "final_wording": boundary["final_wording"],
+            "scope_boundary": boundary["scope_boundary"],
+            "recommended_next_artifacts": boundary["recommended_next_artifacts"],
+            "source_question_ids": boundary["source_question_ids"],
+            "human_intervention": False,
+            "model_output_used_as_evidence": False,
+            "raw_evidence_sent_to_model": False,
+        }
+        initial_pressure = _initial_pressure_for_claim_area(
+            casebook=casebook,
+            claim_area=str(boundary["claim_area"]),
+        )
+        if initial_pressure is not None:
+            event["initial_investigative_pressure"] = initial_pressure
+        events.append(event)
+
+    return {
+        "case_id": case_id,
+        "casebook_id": casebook.case_id if casebook is not None else None,
+        "casebook_reusable_template": (
+            casebook.reusable_template if casebook is not None else None
+        ),
+        "created_at": created_at,
+        "mode": "claim_boundary_self_correction",
+        "event_count": len(events),
+        "events": events,
+        "notes": [
+            (
+                "Events are generated by deterministic Elenchos validation from "
+                "casebook claim-boundary metadata and case-question statuses; "
+                "OpenClaw may use them to revise narrative posture."
+            )
+        ],
+    }
+
+
+def _initial_pressure_for_claim_area(
+    *,
+    casebook: Casebook | None,
+    claim_area: str,
+) -> str | None:
+    if casebook is None:
+        return None
+    for rule in casebook.claim_boundaries:
+        if rule.claim_area == claim_area:
+            return rule.initial_investigative_pressure
+    return None

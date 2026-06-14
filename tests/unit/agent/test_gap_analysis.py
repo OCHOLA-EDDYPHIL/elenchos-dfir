@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from siftguard.agent.case_manifest_adapter import AdaptedCaseManifest
-from siftguard.agent.casebook import casebook_from_dict
-from siftguard.agent.gap_analysis import build_gap_analysis
-from siftguard.evidence.manifest import EvidenceManifest
+from elenchos.agent.case_manifest_adapter import AdaptedCaseManifest
+from elenchos.agent.casebook import casebook_from_dict
+from elenchos.agent.gap_analysis import build_gap_analysis
+from elenchos.evidence.manifest import EvidenceManifest
 
-FINAL_WORDING = "SIFTGuard kept the configured claim not_assessed."
+FINAL_WORDING = "Elenchos kept the configured claim not_assessed."
 SCOPE_BOUNDARY = "The submitted artifact scope does not support this configured claim."
 RECOMMENDED_NEXT_ARTIFACTS = ["network telemetry", "browser history"]
 

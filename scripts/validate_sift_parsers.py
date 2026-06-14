@@ -18,12 +18,12 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from siftguard.audit.execution_ledger import read_events
-from siftguard.parser.amcache import parse_amcache
-from siftguard.parser.mft import parse_mft
-from siftguard.parser.registry_runkeys import parse_registry_runkeys
-from siftguard.parser.result import ParserResult
-from siftguard.policy.paths import is_relative_to, validate_output_path
+from elenchos.audit.execution_ledger import read_events
+from elenchos.parser.amcache import parse_amcache
+from elenchos.parser.mft import parse_mft
+from elenchos.parser.registry_runkeys import parse_registry_runkeys
+from elenchos.parser.result import ParserResult
+from elenchos.policy.paths import is_relative_to, validate_output_path
 
 LOCAL_ENV_PATH = Path(".local/sift-validation/paths.env")
 VALIDATION_TOOLS = ("MFTECmd", "RECmd", "AmcacheParser")
@@ -105,7 +105,7 @@ def load_validation_defaults(
 def build_arg_parser(defaults: dict[str, Any] | None = None) -> argparse.ArgumentParser:
     resolved_defaults = defaults or {}
     parser = argparse.ArgumentParser(
-        description="Validate SIFTGuard parser wrappers against supplied local SIFT evidence."
+        description="Validate Elenchos parser wrappers against supplied local SIFT evidence."
     )
     parser.add_argument("--case-id", default=DEFAULT_CASE_ID, help="Validation case ID")
     parser.add_argument(

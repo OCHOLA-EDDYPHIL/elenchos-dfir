@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from siftguard.parser.paths import (
+from elenchos.parser.paths import (
     build_parser_logs_dir,
     build_parser_normalized_dir,
     build_parser_output_dir,

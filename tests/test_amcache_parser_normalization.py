@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from siftguard.correlation.event_schema import ParserEvent, RawRecordRef
-from siftguard.parser.amcache import normalize_amcache_csv
+from elenchos.correlation.event_schema import ParserEvent, RawRecordRef
+from elenchos.parser.amcache import normalize_amcache_csv
 
 FIXTURE_DIR = Path("tests/fixtures/parser_outputs/amcache")
 
