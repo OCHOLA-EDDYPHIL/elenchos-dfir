@@ -35,6 +35,15 @@ For live progress, use:
   outputs only.
 - `finish_case_run` to confirm terminal job state without killing processes.
 
+The live handoff from preparation to execution uses one manifest contract.
+`prepare_case` creates the prepared case manifest and returns
+`prepared_manifest_path`. `inspect_run_state` also reports
+`prepared_manifest_path` when the generated state contains a valid
+`case_prep.json`. Pass that exact value into `start_case_run`, or into
+`run_case` when using blocking execution. `run_integrity_manifest.json` is
+written after a deterministic run to describe generated-output integrity; it is
+not a case-prep manifest and must never be used as `prepared_manifest_path`.
+
 Generated autonomy logs:
 
 - `model_rationale.jsonl`: model-generated operational rationale, not forensic

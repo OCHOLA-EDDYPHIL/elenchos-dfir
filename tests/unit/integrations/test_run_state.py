@@ -11,6 +11,40 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _write_case_prep(path: Path) -> None:
+    artifact = path.parent / "extracted" / "mft" / "$MFT"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_bytes(b"mft")
+    _write_json(
+        path,
+        {
+            "case_id": "case",
+            "coverage_gaps": [],
+            "prepared_artifacts": [
+                {
+                    "artifact_id": "prep_mft",
+                    "artifact_type": "mft",
+                    "parser_eligible": True,
+                    "path": "extracted/mft/$MFT",
+                    "source_id": "src1",
+                    "status": "available",
+                }
+            ],
+            "sources": [
+                {
+                    "analysis_scope": "primary",
+                    "display_name": "source.E01",
+                    "kind": "ewf_e01",
+                    "role": "disk_image",
+                    "source_id": "src1",
+                    "status": "available",
+                }
+            ],
+            "warnings": [],
+        },
+    )
+
+
 def test_inspect_run_state_tolerates_missing_files(tmp_path: Path):
     output_dir = tmp_path / "runs" / "case" / "agent-run"
 
@@ -121,3 +155,16 @@ def test_inspect_run_state_recommends_poll_for_active_job(tmp_path: Path):
 
     assert summary.active_job is not None
     assert summary.recommended_next_actions == ["poll_case_run"]
+
+
+def test_inspect_run_state_returns_prepared_manifest_path(tmp_path: Path):
+    output_dir = tmp_path / "runs" / "case" / "run"
+    case_prep = tmp_path / "runs" / "case" / "prep" / "case_prep.json"
+    _write_case_prep(case_prep)
+
+    summary = inspect_run_state(output_dir)
+
+    assert summary.prepared_manifest_path is not None
+    assert summary.prepared_manifest_path.endswith("prep/case_prep.json")
+    assert summary.prepared_manifest_validation is not None
+    assert summary.recommended_next_actions == ["start_case_run", "run_case"]

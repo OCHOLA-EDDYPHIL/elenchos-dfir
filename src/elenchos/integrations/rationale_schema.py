@@ -225,6 +225,8 @@ class RunStateSummary:
     allowed_actions: list[str]
     claim_boundary_required: bool
     basis_files: list[str]
+    prepared_manifest_path: str | None = None
+    prepared_manifest_validation: dict[str, JSONValue] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "case_id", _optional_string("case_id", self.case_id))
@@ -269,6 +271,20 @@ class RunStateSummary:
             _string_list("allowed_actions", self.allowed_actions),
         )
         object.__setattr__(self, "basis_files", _string_list("basis_files", self.basis_files))
+        object.__setattr__(
+            self,
+            "prepared_manifest_path",
+            _optional_string("prepared_manifest_path", self.prepared_manifest_path),
+        )
+        if self.prepared_manifest_validation is not None:
+            object.__setattr__(
+                self,
+                "prepared_manifest_validation",
+                _json_object(
+                    "prepared_manifest_validation",
+                    self.prepared_manifest_validation,
+                ),
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -286,6 +302,12 @@ class RunStateSummary:
             "allowed_actions": list(self.allowed_actions),
             "claim_boundary_required": self.claim_boundary_required,
             "basis_files": list(self.basis_files),
+            "prepared_manifest_path": self.prepared_manifest_path,
+            "prepared_manifest_validation": (
+                None
+                if self.prepared_manifest_validation is None
+                else dict(self.prepared_manifest_validation)
+            ),
         }
 
 

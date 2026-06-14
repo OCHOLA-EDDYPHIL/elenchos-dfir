@@ -5,6 +5,10 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
+from elenchos.integrations.prepared_manifest import (
+    resolve_prepared_manifest_path,
+    validate_prepared_manifest_for_run,
+)
 from elenchos.integrations.rationale_policy import ALLOWED_ACTIONS
 from elenchos.integrations.rationale_schema import RunStateSummary
 from elenchos.integrations.rationale_trace import (
@@ -70,6 +74,7 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
     self_correction_count = _self_correction_count(agent_run_dir / "self_correction_events.json")
     validation_status = _validation_status(agent_run_dir)
     active_job = _active_job(agent_run_dir / RUN_JOB_FILENAME)
+    prepared_manifest_path, prepared_manifest_validation = _prepared_manifest_state(agent_run_dir)
     claim_boundary_required = _claim_boundary_required(agent_run_dir)
     recommended = _recommended_actions(
         agent_run_dir=agent_run_dir,
@@ -77,6 +82,7 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
         active_job=active_job,
         validation_status=validation_status,
         claim_boundary_required=claim_boundary_required,
+        prepared_manifest_path=prepared_manifest_path,
     )
     return RunStateSummary(
         case_id=case_id,
@@ -93,6 +99,8 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
         allowed_actions=sorted(ALLOWED_ACTIONS),
         claim_boundary_required=claim_boundary_required,
         basis_files=basis_files,
+        prepared_manifest_path=prepared_manifest_path,
+        prepared_manifest_validation=prepared_manifest_validation,
     )
 
 
@@ -209,6 +217,15 @@ def _active_job(path: Path) -> dict[str, Any] | None:
     return dict(payload)
 
 
+def _prepared_manifest_state(agent_run_dir: Path) -> tuple[str | None, dict[str, Any] | None]:
+    try:
+        path = resolve_prepared_manifest_path(output_dir=agent_run_dir)
+        validation = validate_prepared_manifest_for_run(path)
+    except ValueError:
+        return None, None
+    return display_path(path), validation.to_dict()
+
+
 def _question_requires_boundary(question: Mapping[str, Any]) -> bool:
     status = question.get("status")
     if status not in UNSUPPORTED_BOUNDARY_STATUSES:
@@ -267,13 +284,13 @@ def _recommended_actions(
     active_job: Mapping[str, object] | None,
     validation_status: str | None,
     claim_boundary_required: bool,
+    prepared_manifest_path: str | None,
 ) -> list[str]:
     if active_job is not None:
         return ["poll_case_run"]
 
-    case_prep = agent_run_dir.parent / "case-prep" / "case_prep.json"
     if not required_outputs_present.get("agent_run.json"):
-        if case_prep.exists():
+        if prepared_manifest_path is not None:
             return ["start_case_run", "run_case"]
         return ["prepare_case"]
 

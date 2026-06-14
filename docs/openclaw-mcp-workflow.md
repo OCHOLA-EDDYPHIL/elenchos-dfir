@@ -56,8 +56,12 @@ The adapter exposes deterministic workflow tools plus a live autonomy layer:
 
 - `prepare_case`: validates paths, rejects unsafe output locations, and runs
   `.venv/bin/python -m elenchos case prepare ...` through argv subprocesses.
+  Its response includes `prepared_manifest_path`, the stable handoff path to
+  the generated `case_prep.json`.
 - `run_case`: validates a prepared `case_prep.json`, rejects unsafe output
   locations, and runs `.venv/bin/python -m elenchos agent run-case ...`.
+  Blocking runs should use the same `prepared_manifest_path` returned by
+  `prepare_case` or surfaced by `inspect_run_state`.
 - `summarize_run`: reads generated JSON/report outputs only and returns concise
   finding counts, case-question statuses, parser coverage, event-family counts,
   unsupported areas, limitations, and traceability paths.
@@ -70,7 +74,10 @@ The adapter exposes deterministic workflow tools plus a live autonomy layer:
 - `evaluate_action_policy`: records deterministic allow/reject decisions in
   `policy_decisions.jsonl`.
 - `start_case_run`, `poll_case_run`, `finish_case_run`: support live
-  deterministic run progress without arbitrary shell access.
+  deterministic run progress without arbitrary shell access. `start_case_run`
+  must receive `prepared_manifest_path` from `prepare_case` or
+  `inspect_run_state`; `run_integrity_manifest.json` is an output integrity
+  manifest, not a case-prep manifest.
 - `emit_claim_boundary`: returns deterministic generated claim-boundary wording
   or conservative fallback wording without changing findings.
 
@@ -221,6 +228,14 @@ For live OpenClaw agent runs, use an observe/rationale/policy/execute loop:
    progress is desired.
 8. End with `summarize_run`, `validate_run_outputs`, and
    `emit_claim_boundary` when unsupported claim boundaries remain.
+
+The case-prep handoff is explicit. `prepare_case` produces a prepared manifest
+and returns it as `prepared_manifest_path`; `inspect_run_state` reports the same
+field when it can locate and validate the prepared manifest. Pass that exact
+field to `start_case_run` or the blocking `run_case` fallback. Do not pass
+`run_integrity_manifest.json`, `validation_summary.json`,
+`orchestration_trace.json`, `model_rationale.jsonl`, `policy_decisions.jsonl`,
+or any file found by wildcard manifest search.
 
 Example visible UI lines:
 

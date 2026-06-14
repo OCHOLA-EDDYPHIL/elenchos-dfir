@@ -269,6 +269,7 @@ def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     assert result["status"] == "completed"
     assert result["prepared_artifact_count"] == 2
     assert result["coverage_gap_count"] == 1
+    assert str(result["prepared_manifest_path"]).endswith("case_prep.json")
     assert seen[0][:4] == [seen[0][0], "-m", "elenchos", "case"]
     assert "shell" not in seen[0]
 

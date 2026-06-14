@@ -23,6 +23,7 @@ from elenchos.integrations.job_runner import (
 from elenchos.integrations.job_runner import (
     start_case_run as start_case_run_job,
 )
+from elenchos.integrations.prepared_manifest import resolve_prepared_manifest_path
 from elenchos.integrations.rationale_policy import evaluate_action_policy as evaluate_policy
 from elenchos.integrations.rationale_schema import ModelRationaleRecord
 from elenchos.integrations.rationale_trace import (
@@ -167,6 +168,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "case_id": {"type": "string"},
                 "output_dir": {"type": "string"},
                 "case_prep": _path_output_schema(),
+                "prepared_manifest_path": _path_output_schema(),
                 "source_manifest": _path_output_schema(),
                 "extraction_audit": _path_output_schema(),
                 "prepared_artifact_count": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
@@ -193,7 +195,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "case_id": _optional_string_schema(
                     "Optional case identifier. Defaults to case_id in case_prep.json."
                 ),
-                "artifact_manifest": _string_schema("Path to case_prep.json."),
+                "prepared_manifest_path": _optional_string_schema(
+                    "Stable path to prepared case_prep.json from prepare_case."
+                ),
+                "artifact_manifest": _optional_string_schema(
+                    "Backward-compatible path to case_prep.json."
+                ),
                 "output_dir": _string_schema("Generated agent output directory."),
                 "casebook": _optional_string_schema("Optional JSON casebook path."),
                 "max_iterations": _integer_schema(
@@ -215,7 +222,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     DEFAULT_RUN_CASE_TIMEOUT_SECONDS,
                 ),
             },
-            "required": ["artifact_manifest", "output_dir"],
+            "required": ["output_dir"],
         },
         "outputSchema": {
             "type": "object",
@@ -369,7 +376,9 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         "description": (
             "Start the deterministic Elenchos run-case workflow asynchronously with "
             "a fixed argv builder, shell=False, generated output logs, and duplicate "
-            "active-job rejection."
+            "active-job rejection. Use prepared_manifest_path from prepare_case or "
+            "inspect_run_state; run_integrity_manifest.json is not a prepared case "
+            "manifest."
         ),
         "inputSchema": {
             "type": "object",
@@ -378,7 +387,12 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "case_id": _optional_string_schema(
                     "Optional case identifier. Defaults to case_id in case_prep.json."
                 ),
-                "artifact_manifest": _string_schema("Path to case_prep.json."),
+                "prepared_manifest_path": _optional_string_schema(
+                    "Stable path to prepared case_prep.json from prepare_case or inspect_run_state."
+                ),
+                "artifact_manifest": _optional_string_schema(
+                    "Backward-compatible path to case_prep.json."
+                ),
                 "output_dir": _string_schema("Generated agent output directory."),
                 "casebook": _optional_string_schema("Optional JSON casebook path."),
                 "max_iterations": _integer_schema(
@@ -396,7 +410,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                     "description": "Bounded event selection policy.",
                 },
             },
-            "required": ["artifact_manifest", "output_dir"],
+            "required": ["output_dir"],
         },
         "outputSchema": {"type": "object", "additionalProperties": True},
         "annotations": {"readOnlyHint": False},
@@ -954,6 +968,7 @@ def prepare_case(
         "case_id": case_id,
         "output_dir": display_path(output_dir),
         "case_prep": display_path(case_prep),
+        "prepared_manifest_path": display_path(case_prep),
         "source_manifest": display_path(source_manifest_result),
         "extraction_audit": display_path(extraction_audit),
         "prepared_artifact_count": _safe_int(parsed.get("prepared_artifacts")),
@@ -976,10 +991,19 @@ def run_case(
     *,
     command_runner: CommandRunner = _default_command_runner,
 ) -> dict[str, object]:
-    artifact_manifest = resolve_user_path(
-        _required_string(request, "artifact_manifest"),
-        "artifact_manifest",
-    )
+    output_dir_text = _required_string(request, "output_dir")
+    manifest_text = _optional_string(request, "prepared_manifest_path")
+    if manifest_text is None:
+        manifest_text = _optional_string(request, "artifact_manifest")
+    if manifest_text is None:
+        artifact_manifest = resolve_prepared_manifest_path(
+            output_dir=resolve_user_path(output_dir_text, "output_dir"),
+        )
+    else:
+        artifact_manifest = resolve_prepared_manifest_path(
+            output_dir=resolve_user_path(output_dir_text, "output_dir"),
+            explicit_path=manifest_text,
+        )
     require_json_path(artifact_manifest, "artifact_manifest")
     case_id = _case_id_from_request_or_manifest(request, artifact_manifest)
     forbidden_roots: list[Path] = []
@@ -987,7 +1011,7 @@ def run_case(
         forbidden_roots.extend(evidence_roots_from_case_prep(artifact_manifest))
 
     output_dir = validate_integration_output_dir(
-        _required_string(request, "output_dir"),
+        output_dir_text,
         forbidden_roots=forbidden_roots,
     )
     casebook_text = _optional_string(request, "casebook")

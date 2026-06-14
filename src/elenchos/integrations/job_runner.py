@@ -13,6 +13,10 @@ from elenchos.integrations.job_state import (
     update_job_status,
     write_run_job,
 )
+from elenchos.integrations.prepared_manifest import (
+    resolve_prepared_manifest_path,
+    validate_prepared_manifest_for_run,
+)
 from elenchos.integrations.rationale_trace import (
     agent_run_dir_from_output_dir,
     append_orchestration_event,
@@ -73,23 +77,10 @@ def _event_selection_profile(request: Mapping[str, object]) -> str:
     return value
 
 
-def _case_id_from_manifest(path: Path) -> str | None:
-    try:
-        import json
-
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return None
-    if not isinstance(payload, dict):
-        return None
-    case_id = payload.get("case_id")
-    return case_id if isinstance(case_id, str) and case_id else None
-
-
-def _case_id(request: Mapping[str, object], artifact_manifest: Path) -> str:
-    value = _optional_string(request, "case_id") or _case_id_from_manifest(artifact_manifest)
+def _case_id(request: Mapping[str, object], manifest_case_id: str) -> str:
+    value = _optional_string(request, "case_id") or manifest_case_id
     if value is None:
-        raise ValueError("case_id is required when artifact_manifest has no case_id")
+        raise ValueError("case_id is required when prepared manifest has no case_id")
     return validate_parser_path_identifier(value, "case_id")
 
 
@@ -108,7 +99,7 @@ def _next_job_id(existing: Mapping[str, object] | None) -> str:
 def _build_run_case_argv(
     *,
     request: Mapping[str, object],
-    artifact_manifest: Path,
+    prepared_manifest_path: Path,
     output_dir: Path,
     case_id: str,
 ) -> list[str]:
@@ -128,7 +119,7 @@ def _build_run_case_argv(
         "--case-id",
         case_id,
         "--artifact-manifest",
-        str(artifact_manifest),
+        str(prepared_manifest_path),
         "--output-dir",
         str(output_dir),
         "--max-iterations",
@@ -146,23 +137,48 @@ def _build_run_case_argv(
     return argv
 
 
+def _explicit_prepared_manifest(request: Mapping[str, object]) -> str | None:
+    prepared_manifest_path = _optional_string(request, "prepared_manifest_path")
+    if prepared_manifest_path is not None:
+        return prepared_manifest_path
+    return _optional_string(request, "artifact_manifest")
+
+
+def _default_run_output_dir(output_dir: Path) -> Path:
+    resolved = output_dir.resolve()
+    if resolved.name in {"run", "agent-run"}:
+        return resolved
+    if (resolved / "prep" / "case_prep.json").is_file() or (
+        resolved / "case-prep" / "case_prep.json"
+    ).is_file():
+        return resolved / "run"
+    return resolved
+
+
 def start_case_run(
     request: Mapping[str, object],
     *,
     popen_factory: PopenFactory = subprocess.Popen,
 ) -> dict[str, object]:
-    artifact_manifest = resolve_user_path(
-        _required_string(request, "artifact_manifest"),
-        "artifact_manifest",
+    output_request_dir = resolve_user_path(
+        _required_string(request, "output_dir"),
+        "output_dir",
     )
-    require_json_path(artifact_manifest, "artifact_manifest")
+    try:
+        prepared_manifest_path = resolve_prepared_manifest_path(
+            output_dir=output_request_dir,
+            explicit_path=_explicit_prepared_manifest(request),
+        )
+        prepared_manifest_validation = validate_prepared_manifest_for_run(prepared_manifest_path)
+    except ValueError as exc:
+        raise ValueError(f"start_case_run refused to launch: {exc}") from exc
     forbidden_roots = (
-        evidence_roots_from_case_prep(artifact_manifest)
-        if artifact_manifest.exists()
+        evidence_roots_from_case_prep(prepared_manifest_path)
+        if prepared_manifest_path.exists()
         else []
     )
     output_dir = validate_integration_output_dir(
-        _required_string(request, "output_dir"),
+        str(_default_run_output_dir(output_request_dir)),
         forbidden_roots=forbidden_roots,
     )
     agent_run_dir = agent_run_dir_from_output_dir(output_dir)
@@ -175,10 +191,10 @@ def start_case_run(
             "output_dir": display_path(agent_run_dir),
         }
 
-    case_id = _case_id(request, artifact_manifest)
+    case_id = _case_id(request, str(prepared_manifest_validation.case_id))
     argv = _build_run_case_argv(
         request=request,
-        artifact_manifest=artifact_manifest,
+        prepared_manifest_path=prepared_manifest_path,
         output_dir=agent_run_dir,
         case_id=case_id,
     )
@@ -209,7 +225,7 @@ def start_case_run(
         case_id=case_id,
         pid=int(process.pid),
         output_dir=agent_run_dir,
-        artifact_manifest=artifact_manifest,
+        prepared_manifest_path=prepared_manifest_path,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         status="running",
@@ -221,18 +237,26 @@ def start_case_run(
         case_id=case_id,
         phase="run_case",
         status="started",
-        message="run_case started",
+        message="run_case started with prepared manifest",
     )
     append_orchestration_event(
         agent_run_dir,
         event_type="start_case_run",
-        payload={"job_id": job_id, "pid": int(process.pid), "status": "running"},
+        payload={
+            "job_id": job_id,
+            "pid": int(process.pid),
+            "status": "running",
+            "prepared_manifest_path": display_path(prepared_manifest_path),
+            "supported_artifact_count": prepared_manifest_validation.supported_artifact_count,
+        },
     )
     return {
         "status": "started",
         "job_id": job_id,
         "pid": int(process.pid),
         "case_id": case_id,
+        "prepared_manifest_path": display_path(prepared_manifest_path),
+        "prepared_manifest_validation": prepared_manifest_validation.to_dict(),
         "output_dir": display_path(agent_run_dir),
         "agent_run_dir": display_path(agent_run_dir),
         "run_job": display_path(run_job_path(agent_run_dir)),

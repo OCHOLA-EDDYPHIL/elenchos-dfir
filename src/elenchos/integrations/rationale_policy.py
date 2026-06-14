@@ -5,6 +5,10 @@ from pathlib import Path
 from typing import Literal, cast
 
 from elenchos.audit.execution_ledger import utc_now
+from elenchos.integrations.prepared_manifest import (
+    resolve_prepared_manifest_path,
+    validate_prepared_manifest_for_run,
+)
 from elenchos.integrations.rationale_schema import (
     ActionPolicyResult,
     PolicyDecisionRecord,
@@ -104,12 +108,14 @@ def _flatten_blocked_fields(payload: object, prefix: str = "") -> list[str]:
     return fields
 
 
-def _path_arg_violations(action_args: Mapping[str, object]) -> list[str]:
+def _path_arg_violations(action: str, action_args: Mapping[str, object]) -> list[str]:
     violations: list[str] = []
     for key, value in action_args.items():
         if not isinstance(value, str) or not value:
             continue
         key_lower = key.casefold()
+        if action == "prepare_case" and key_lower in {"source_root", "source_manifest"}:
+            continue
         if "source" not in key_lower and "evidence" not in key_lower:
             continue
         try:
@@ -126,6 +132,27 @@ def _output_dir_from_args(action_args: Mapping[str, object]) -> Path | None:
     if not isinstance(value, str) or not value:
         return None
     return resolve_user_path(value, "output_dir")
+
+
+def _prepared_manifest_is_valid(
+    *,
+    action: str,
+    output_dir: Path,
+    action_args: Mapping[str, object],
+) -> bool:
+    if action not in {"start_case_run", "run_case"}:
+        return True
+    explicit = action_args.get("prepared_manifest_path") or action_args.get("artifact_manifest")
+    if explicit is None:
+        return True
+    if not isinstance(explicit, str) or not explicit:
+        return False
+    try:
+        path = resolve_prepared_manifest_path(output_dir=output_dir, explicit_path=explicit)
+        validate_prepared_manifest_for_run(path)
+    except ValueError:
+        return False
+    return True
 
 
 def _active_job(job_path: Path) -> dict[str, object] | None:
@@ -151,12 +178,17 @@ def evaluate_action_policy(
     agent_run_dir = agent_run_dir_from_output_dir(output_dir)
     policy_path = policy_decisions_path(agent_run_dir)
     blocked_fields = sorted(set(_flatten_blocked_fields(action_args)))
-    evidence_path_fields = sorted(set(_path_arg_violations(action_args)))
+    evidence_path_fields = sorted(set(_path_arg_violations(action, action_args)))
     rejected_fields = sorted(set(blocked_fields + evidence_path_fields))
     explicit_output_dir = _output_dir_from_args(action_args)
     candidate_output_dir = explicit_output_dir or output_dir
     candidate_output_dir_resolved = candidate_output_dir.resolve()
     active_job = _active_job(run_job_path(agent_run_dir))
+    prepared_manifest_valid = _prepared_manifest_is_valid(
+        action=action,
+        output_dir=candidate_output_dir_resolved,
+        action_args=action_args,
+    )
 
     safety_checks = {
         "action_allowlisted": action in ALLOWED_ACTIONS,
@@ -173,6 +205,7 @@ def evaluate_action_policy(
         "duplicate_active_job_rejected": not (
             action == "start_case_run" and active_job is not None
         ),
+        "prepared_manifest_valid": prepared_manifest_valid,
         "generated_read_only_action": action not in GENERATED_READ_ONLY_ACTIONS
         or is_generated_output_path(candidate_output_dir_resolved),
     }
@@ -192,6 +225,8 @@ def evaluate_action_policy(
         reason = "output_dir is under the mounted evidence root"
     elif action == "start_case_run" and active_job is not None:
         reason = "an active run job is already recorded"
+    elif not prepared_manifest_valid:
+        reason = "prepared_manifest_path is not a valid prepared case manifest"
     elif action in GENERATED_READ_ONLY_ACTIONS:
         reason = "action is allowlisted and reads generated outputs only"
     elif action == "start_case_run":
