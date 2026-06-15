@@ -19,6 +19,20 @@ directory under `runs/`, wraps the analyst request with Elenchos safety and
 output constraints, launches OpenClaw, and watches generated Elenchos artifacts
 under that run directory.
 
+The UI is keyboard-driven and prompt-first. The main screen uses compact
+panes for the analyst prompt, live rationale, policy gate, self-correction,
+run status, and final summary or claim-boundary/log output. Wide terminals use
+a two-column middle layout; narrow terminals stack the panes.
+
+Keyboard controls:
+
+- `Tab` / `Shift-Tab` or left/right: change focused pane
+- up/down or `k`/`j`: scroll the focused pane
+- `PgUp` / `PgDn`: page the focused pane
+- `Home` / `End`: jump within the focused pane
+- `r`: refresh generated artifacts
+- `q`: quit
+
 The console displays:
 
 - live rationale from `model_rationale.jsonl`
@@ -37,6 +51,12 @@ forensic evidence. Deterministic Elenchos outputs remain the evidence authority.
 Model rationale is not self-correction. Self-correction means an unsupported or
 invalid claim/tool path was detected and downgraded or recovered in generated
 trace artifacts.
+
+Colors and borders are cosmetic only. Color terminals use muted pane borders,
+one active-pane accent, and textual status badges. No-color terminals,
+`NO_COLOR`, `TERM=dumb`, and ASCII borders via `ELENCHOS_TUI_ASCII=1` remain
+readable because statuses are rendered as text labels such as `PASS`, `FAIL`,
+`ALLOWED`, `REJECTED`, `OBSERVED`, and `PENDING`.
 
 CLI flags are advanced/debug options. For example, an operator can provide a
 source root or case identifier explicitly:
@@ -59,7 +79,9 @@ elenchos tui --watch-only --output-dir runs/<case> --once
 
 The prompt editor is designed for immediate analyst input. The
 `--refresh-seconds` option controls how often the console rereads generated
-Elenchos artifacts; it does not control typing latency.
+Elenchos artifacts; it does not control typing latency. Typing uses a short
+input poll interval and does not reread generated files, create the output
+directory, or write `run_context.json` before prompt submission.
 
 Elenchos wraps the analyst prompt with runtime constraints: use only bounded
 Elenchos tools, keep raw evidence read-only, use the exact generated output
@@ -86,6 +108,12 @@ Generated files read by the console include:
 When the selected output directory is under an ignored generated-output root,
 the console may write `case_console_transcript.md`. That transcript mirrors the
 TUI-visible rationale and policy stream and is not forensic evidence.
+
+The policy gate pane may collapse adjacent repeated visible policy messages for
+readability. The raw `policy_decisions.jsonl` audit file is not deduplicated or
+rewritten. Self-correction is shown only when generated self-correction
+artifacts exist; absence of those artifacts is displayed conservatively as no
+self-correction observed.
 
 `prepare_case` may take time on large evidence sets. It does not use a short
 artificial adapter timeout by default; set

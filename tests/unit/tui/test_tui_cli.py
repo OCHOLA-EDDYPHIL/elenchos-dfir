@@ -252,7 +252,7 @@ def test_prompt_entry_loop_does_not_sleep_read_state_or_create_output_dir(
         runs_root=tmp_path / "runs",
         source_root=None,
         watch_only=False,
-        refresh_seconds=DEFAULT_TUI_REFRESH_SECONDS,
+        refresh_seconds=99.0,
     )
 
     assert exit_code == 130
@@ -354,8 +354,9 @@ def test_state_body_lines_include_self_correction_and_log_tail(tmp_path: Path):
     wrapped = console.wrap_panel_lines(lines, width=50)
     joined = "\n".join(wrapped)
 
-    assert "Self-correction: observed" in joined
-    assert "Downgraded unsupported claim" in joined
+    assert "OBSERVED: 1 event" in joined
+    assert "Downgraded" in joined
+    assert "unsupported claim" in joined
     assert 'Missing required option "-m, --message <text>".' in joined
 
 

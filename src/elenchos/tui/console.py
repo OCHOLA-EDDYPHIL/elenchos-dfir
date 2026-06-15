@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import textwrap
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from elenchos.config.runtime import (
-    DEFAULT_TUI_INPUT_POLL_SECONDS,
     DEFAULT_TUI_REFRESH_SECONDS,
     MIN_TUI_REFRESH_SECONDS,
 )
@@ -17,6 +15,26 @@ from elenchos.policy.paths import (
     MOUNTED_EVIDENCE_ROOT,
     is_generated_output_path,
     is_relative_to,
+)
+from elenchos.tui.layout import Rect, choose_layout
+from elenchos.tui.rendering import (
+    END_SCROLL_SENTINEL,
+    PAGE_SCROLL_LINES,
+    FocusState,
+    PanelModel,
+    build_tui_model,
+    focus_next,
+    focus_previous,
+    openclaw_status_label,
+    render_panel_model,
+    scroll_focused_panel,
+    self_correction_status_label,
+    set_focused_scroll,
+    state_body_lines,
+    sync_focus_state,
+    validation_status_label,
+    visible_panel_lines,
+    wrap_panel_lines,
 )
 from elenchos.tui.runner import (
     DEFAULT_AGENT,
@@ -31,11 +49,32 @@ from elenchos.tui.runner import (
     write_run_context,
 )
 from elenchos.tui.state import (
-    ConsoleEvent,
     ConsoleState,
     read_console_state,
     render_text_snapshot,
 )
+from elenchos.tui.theme import (
+    INPUT_TIMEOUT_MS,
+    STYLE_ACCENT,
+    STYLE_ACTIVE_BORDER,
+    STYLE_FOOTER,
+    STYLE_HEADER,
+    STYLE_INACTIVE_BORDER,
+    STYLE_MUTED,
+    TuiTheme,
+    init_curses_theme,
+)
+
+__all__ = [
+    "INPUT_TIMEOUT_MS",
+    "PromptInputBuffer",
+    "RefreshClock",
+    "openclaw_status_label",
+    "self_correction_status_label",
+    "validation_status_label",
+    "visible_panel_lines",
+    "wrap_panel_lines",
+]
 
 TERMINAL_JOB_STATUSES = {
     "completed",
@@ -45,13 +84,12 @@ TERMINAL_JOB_STATUSES = {
     "not_found",
 }
 TRANSCRIPT_FILENAME = "case_console_transcript.md"
-INPUT_POLL_SECONDS = DEFAULT_TUI_INPUT_POLL_SECONDS
-INPUT_TIMEOUT_MS = int(INPUT_POLL_SECONDS * 1000)
 MIN_REFRESH_SECONDS = MIN_TUI_REFRESH_SECONDS
 KEY_CTRL_C = 3
 KEY_ENTER = 10
 KEY_CARRIAGE_RETURN = 13
 KEY_BACKSPACE_VALUES = (127, 8)
+KEY_TAB = 9
 
 
 @dataclass(slots=True)
@@ -102,13 +140,6 @@ class RefreshClock:
 
     def mark_refreshed(self, now: float) -> None:
         self.next_refresh_at = now + self.interval_seconds
-
-
-@dataclass(slots=True)
-class PanelWindow:
-    lines: list[str]
-    hidden_before: int
-    hidden_after: int
 
 
 def run_tui(
@@ -244,13 +275,12 @@ def _run_curses(
     screen.timeout(INPUT_TIMEOUT_MS)
     if hasattr(screen, "keypad"):
         screen.keypad(True)
-    curses.curs_set(0)
-    if curses.has_colors():
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(1, curses.COLOR_GREEN, -1)
-        curses.init_pair(2, curses.COLOR_YELLOW, -1)
-        curses.init_pair(3, curses.COLOR_RED, -1)
+    try:
+        curses.curs_set(0)
+    except Exception:
+        pass
+    theme = init_curses_theme(curses)
+    key_backtab = getattr(curses, "KEY_BTAB", -999)
 
     process: subprocess.Popen[str] | None = None
     openclaw_status = "watch-only" if watch_only else "ready"
@@ -265,7 +295,7 @@ def _run_curses(
     last_state: ConsoleState | None = None
     needs_redraw = True
     completed_process_returncode: int | None = None
-    scroll_offset = 0
+    focus = FocusState()
 
     while True:
         if active_output_dir is None:
@@ -276,6 +306,7 @@ def _run_curses(
                     error=launch_error,
                     case_id=case_id,
                     runs_root=runs_root,
+                    theme=theme,
                 )
                 prompt_dirty = False
             key = screen.getch()
@@ -325,7 +356,8 @@ def _run_curses(
                 last_state,
                 openclaw_status=openclaw_status,
                 watch_only=watch_only,
-                scroll_offset=scroll_offset,
+                focus=focus,
+                theme=theme,
             )
             needs_redraw = False
 
@@ -342,28 +374,36 @@ def _run_curses(
         if key in (ord("r"), ord("R")):
             force_state_refresh = True
             continue
+        if key in (KEY_TAB, curses.KEY_RIGHT):
+            focus_next(focus)
+            needs_redraw = True
+            continue
+        if key in (key_backtab, curses.KEY_LEFT):
+            focus_previous(focus)
+            needs_redraw = True
+            continue
         if key in (curses.KEY_DOWN, ord("j"), ord("J")):
-            scroll_offset += 1
+            scroll_focused_panel(focus, 1)
             needs_redraw = True
             continue
         if key in (curses.KEY_UP, ord("k"), ord("K")):
-            scroll_offset = max(0, scroll_offset - 1)
+            scroll_focused_panel(focus, -1)
             needs_redraw = True
             continue
         if key == curses.KEY_NPAGE:
-            scroll_offset += 8
+            scroll_focused_panel(focus, PAGE_SCROLL_LINES)
             needs_redraw = True
             continue
         if key == curses.KEY_PPAGE:
-            scroll_offset = max(0, scroll_offset - 8)
+            scroll_focused_panel(focus, -PAGE_SCROLL_LINES)
             needs_redraw = True
             continue
         if key == curses.KEY_HOME:
-            scroll_offset = 0
+            set_focused_scroll(focus, 0)
             needs_redraw = True
             continue
         if key == curses.KEY_END:
-            scroll_offset += 10_000
+            set_focused_scroll(focus, END_SCROLL_SENTINEL)
             needs_redraw = True
             continue
         if key in (KEY_ENTER, KEY_CARRIAGE_RETURN) and process is None and not watch_only:
@@ -490,30 +530,45 @@ def _draw_prompt_entry(
     error: str | None,
     case_id: str | None,
     runs_root: Path,
+    theme: TuiTheme,
 ) -> None:
-    import curses
-
     screen.erase()
     height, width = screen.getmaxyx()
     width = max(width, 20)
+    _add_line(screen, 0, 0, "Elenchos", width, theme.attr(STYLE_HEADER))
+    _add_line(
+        screen,
+        1,
+        0,
+        f"runs: {runs_root} | case: {case_id or 'auto'}",
+        width,
+        theme.attr(STYLE_MUTED),
+    )
     lines = [
-        "Elenchos Case Console",
-        "",
-        "Type a case request. Example:",
-        '"Triage the ROCBA case and tell me what happened."',
-        "",
+        "Type a case request:",
+        f"Elenchos> {prompt_input}",
         f"runs root: {runs_root}",
         f"case id: {case_id or 'auto'}",
-        "",
-        f"Elenchos> {prompt_input}",
     ]
     if error:
         lines.extend(["", f"warning: {error}"])
-    rendered = wrap_panel_lines(lines, width - 1)
-    for index, line in enumerate(rendered[: max(0, height - 2)]):
-        attr = curses.A_BOLD if index == 0 else 0
-        _add_line(screen, index, 0, line, width, attr)
-    _add_line(screen, height - 1, 0, "Enter submit | Backspace edit | q quit", width, curses.A_DIM)
+    rect = Rect(3, 0, max(3, height - 4), width)
+    _draw_panel(
+        screen,
+        rect,
+        PanelModel("prompt", "Analyst Request", lines),
+        focused=True,
+        scroll_offset=0,
+        theme=theme,
+    )
+    _add_line(
+        screen,
+        height - 1,
+        0,
+        "Enter submit | Backspace edit | q quit",
+        width,
+        theme.attr(STYLE_FOOTER),
+    )
     screen.refresh()
 
 
@@ -523,36 +578,61 @@ def _draw(
     *,
     openclaw_status: str,
     watch_only: bool,
-    scroll_offset: int = 0,
+    focus: FocusState,
+    theme: TuiTheme,
 ) -> None:
-    import curses
-
     screen.erase()
     height, width = screen.getmaxyx()
     width = max(width, 20)
-    header = "Elenchos Case Console | " + " | ".join(
-        _status_badges(state, openclaw_status=openclaw_status)
+    layout = choose_layout(width, height)
+    sync_focus_state(focus, layout)
+    model = build_tui_model(
+        state,
+        openclaw_status=openclaw_status,
+        watch_only=watch_only,
+        width=width,
     )
-    _add_line(screen, 0, 0, header, width, curses.A_BOLD)
-    _add_line(screen, 1, 0, f"path: {state.output_dir}", width)
+    _draw_header(screen, model, width, theme)
+    panel_by_id = {panel.panel_id: panel for panel in model.panels}
+    for placement in layout.panels:
+        panel = panel_by_id.get(placement.panel_id)
+        if panel is None:
+            continue
+        _draw_panel(
+            screen,
+            placement.rect,
+            panel,
+            focused=focus.focused_panel_id == panel.panel_id,
+            scroll_offset=focus.offset(panel.panel_id),
+            theme=theme,
+        )
 
-    body_lines = _state_body_lines(state, watch_only=watch_only)
-    _panel(
-        screen,
-        3,
-        0,
-        max(4, height - 4),
-        width,
-        "Case stream",
-        body_lines,
-        scroll_offset=scroll_offset,
-    )
-
-    footer = "q quit | r refresh | up/down/k/j scroll | pgup/pgdn | home/end"
+    footer = model.footer
     if not watch_only and openclaw_status == "ready":
         footer = "Enter start | " + footer
-    _add_line(screen, height - 1, 0, footer, width, curses.A_DIM)
+    _add_line(screen, height - 1, 0, footer, width, theme.attr(STYLE_FOOTER))
     screen.refresh()
+
+
+def _draw_header(screen: Any, model: Any, width: int, theme: TuiTheme) -> None:
+    x = 0
+    title = f" {model.header} "
+    _add_line(screen, 0, x, title, width, theme.attr(STYLE_HEADER))
+    x += len(title)
+    for badge in model.header_badges:
+        text = f" {badge.text} "
+        if x >= width - 1:
+            break
+        _add_line(screen, 0, x, text, max(1, width - x), theme.badge_attr(badge.value))
+        x += len(text) + 1
+    _add_line(
+        screen,
+        1,
+        0,
+        f"output: {model.output_path}",
+        width,
+        theme.attr(STYLE_MUTED),
+    )
 
 
 def _confirm_quit(screen: Any) -> bool:
@@ -570,205 +650,86 @@ def _confirm_quit(screen: Any) -> bool:
     return key in (ord("y"), ord("Y"))
 
 
-def _panel(
+def _draw_panel(
     screen: Any,
-    y: int,
-    x: int,
-    height: int,
-    width: int,
-    title: str,
-    lines: list[str],
-    scroll_offset: int = 0,
-) -> int:
-    if y >= screen.getmaxyx()[0] - 2:
-        return y
-    actual_height = max(3, min(height, screen.getmaxyx()[0] - y - 1))
-    right = x + width - 1
-    bottom = y + actual_height - 1
-    if width >= 4 and actual_height >= 3:
-        _add_line(screen, y, x, "+" + "-" * (width - 2) + "+", width)
-        _add_line(screen, y, x + 2, f" {title} ", max(1, width - 4))
-        for row in range(y + 1, bottom):
-            _add_line(screen, row, x, "|", width)
-            if right < screen.getmaxyx()[1]:
-                _add_line(screen, row, right, "|", 1)
-        _add_line(screen, bottom, x, "+" + "-" * (width - 2) + "+", width)
+    rect: Rect,
+    panel: PanelModel,
+    *,
+    focused: bool,
+    scroll_offset: int,
+    theme: TuiTheme,
+) -> None:
+    if rect.y >= screen.getmaxyx()[0] - 1:
+        return
+    actual_height = max(1, min(rect.height, screen.getmaxyx()[0] - rect.y - 1))
+    width = max(1, min(rect.width, screen.getmaxyx()[1] - rect.x))
+    if actual_height < 2 or width < 4:
+        return
+    border_attr = theme.attr(STYLE_ACTIVE_BORDER if focused else STYLE_INACTIVE_BORDER)
+    title_attr = theme.attr(STYLE_ACCENT if focused else STYLE_MUTED)
+    borders = theme.borders
+    right = rect.x + width - 1
+    bottom = rect.y + actual_height - 1
+    title = f" {panel.title} "
+    title_limit = max(0, width - 4)
+    title = title[:title_limit]
+    top = (
+        borders.top_left
+        + borders.horizontal * max(0, width - 2)
+        + borders.top_right
+    )
+    bottom_line = (
+        borders.bottom_left
+        + borders.horizontal * max(0, width - 2)
+        + borders.bottom_right
+    )
+    _add_line(screen, rect.y, rect.x, top, width, border_attr)
+    _add_line(screen, rect.y, rect.x + 2, title, max(1, width - 4), title_attr)
+    for row in range(rect.y + 1, bottom):
+        _add_line(screen, row, rect.x, borders.vertical, 1, border_attr)
+        if right < screen.getmaxyx()[1]:
+            _add_line(screen, row, right, borders.vertical, 1, border_attr)
+    _add_line(screen, bottom, rect.x, bottom_line, width, border_attr)
     content_width = max(1, width - 4)
-    wrapped = wrap_panel_lines(lines, content_width)
-    window = visible_panel_lines(
-        wrapped,
-        max(0, actual_height - 2),
+    content_height = max(0, actual_height - 2)
+    window = render_panel_model(
+        panel,
+        content_width=content_width,
+        content_height=content_height,
         scroll_offset=scroll_offset,
     )
     for index, line in enumerate(window.lines, start=1):
-        _add_line(screen, y + index, x + 2, line, max(1, width - 4))
-    return y + actual_height
+        _add_line(screen, rect.y + index, rect.x + 2, line, content_width)
 
 
 def _add_line(screen: Any, y: int, x: int, text: str, width: int, attr: int = 0) -> None:
+    safe_text = text[: max(0, width)]
     try:
-        screen.addnstr(y, x, text, max(0, width - 1), attr)
+        screen.addnstr(y, x, safe_text, len(safe_text), attr)
     except Exception:
         return
 
 
-def _event_lines(events: list[ConsoleEvent], *, limit: int) -> list[str]:
-    if not events:
-        return ["pending"]
-    return [event.display_message for event in events[-limit:]]
-
-
-def _wrapped_lines(text: str, width: int) -> list[str]:
-    return textwrap.wrap(text, width=max(width, 20)) or [""]
-
-
-def wrap_panel_lines(lines: list[str], width: int) -> list[str]:
-    wrapped: list[str] = []
-    safe_width = max(10, width)
-    for line in lines:
-        if not line:
-            wrapped.append("")
-            continue
-        indent = len(line) - len(line.lstrip(" "))
-        subsequent_indent = " " * min(indent, max(0, safe_width - 1))
-        wrapped.extend(
-            textwrap.wrap(
-                line,
-                width=safe_width,
-                replace_whitespace=False,
-                drop_whitespace=True,
-                subsequent_indent=subsequent_indent,
-            )
-            or [""]
-        )
-    return wrapped
-
-
-def visible_panel_lines(
-    lines: list[str],
-    height: int,
-    *,
-    scroll_offset: int = 0,
-) -> PanelWindow:
-    if height <= 0:
-        return PanelWindow([], 0, len(lines))
-    if len(lines) <= height:
-        return PanelWindow(lines, 0, 0)
-    max_offset = max(0, len(lines) - height)
-    offset = min(max(scroll_offset, 0), max_offset)
-    hidden_before = offset
-    hidden_after = max(0, len(lines) - offset - height)
-    visible = list(lines[offset : offset + height])
-    if hidden_before and visible:
-        visible[0] = f"... {hidden_before} earlier lines. Use Home/PgUp/Up."
-    if hidden_after and visible:
-        visible[-1] = f"... {hidden_after} more lines. Use Down/PgDn/End."
-    return PanelWindow(visible, hidden_before, hidden_after)
-
-
 def _state_body_lines(state: ConsoleState, *, watch_only: bool) -> list[str]:
-    del watch_only
-    output_state = ", ".join(
-        f"{name}={'yes' if present else 'no'}"
-        for name, present in sorted(state.required_outputs_present.items())
-    )
-    lines = [
-        "Prompt / analyst request",
-        state.prompt or "Watch-only mode. No prompt will be launched.",
-        "",
-        "Live rationale",
-        *_event_lines(state.rationale_events, limit=8),
-        "",
-        "Policy gate",
-        *_event_lines(state.policy_events, limit=8),
-        f"raw policy events: {state.raw_policy_event_count}",
-        "",
-        "Self-correction",
-        _self_correction_line(state),
-        "",
-        "Run status / validation",
-        f"findings: {_format_counts(state.finding_counts) or 'none'}",
-        f"case questions: {_format_counts(state.case_question_counts) or 'none'}",
-        "normalized events: "
-        f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
-        f"required outputs: {output_state}",
-        "",
-        "Final summary / claim boundary",
-        state.final_summary or "Pending generated Elenchos summary.",
-        f"Claim boundary: {state.claim_boundary}",
-    ]
-    if state.errors:
-        lines.extend(["", "Warnings / failures"])
-        lines.extend(state.errors[-8:])
-    if state.openclaw_log_tail:
-        lines.extend(["", "OpenClaw log tail"])
-        lines.extend(state.openclaw_log_tail)
-    return lines
+    return state_body_lines(state, watch_only=watch_only)
 
 
 def _self_correction_line(state: ConsoleState) -> str:
-    if not state.self_correction_count:
-        return "Self-correction: pending/not observed in this run"
-    suffix = (
-        f"; corrected status: {state.latest_corrected_claim_status}"
-        if state.latest_corrected_claim_status
-        else ""
-    )
-    return (
-        f"Self-correction: observed ({state.self_correction_count} event(s)); "
-        f"latest: {state.latest_self_correction or 'not summarized'}{suffix}"
-    )
+    for line in state_body_lines(state, watch_only=True):
+        if line.startswith("OBSERVED:") or line.startswith("NONE:"):
+            return line
+    return "NONE: no self-correction artifact events observed."
 
 
 def _status_badges(state: ConsoleState, *, openclaw_status: str) -> list[str]:
-    policy = "PENDING"
-    if state.policy_events:
-        latest_policy = state.policy_events[-1].message.lower()
-        if "rejected" in latest_policy:
-            policy = "REJECTED"
-        elif "allowed" in latest_policy:
-            policy = "ALLOWED"
     return [
-        f"OpenClaw {openclaw_status_label(openclaw_status)}",
-        f"Job {(state.job_status or 'pending').upper()}",
-        f"Validation {validation_status_label(state.validation_status)}",
-        f"Policy {policy}",
-        f"Self-correction {self_correction_status_label(state.self_correction_status)}",
+        badge.text for badge in build_tui_model(
+            state,
+            openclaw_status=openclaw_status,
+            watch_only=True,
+            width=120,
+        ).header_badges
     ]
-
-
-def openclaw_status_label(status: str) -> str:
-    lower = status.lower()
-    if "blocked" in lower:
-        return "BLOCKED"
-    if "failed" in lower or "rc=1" in lower or "rc=2" in lower:
-        return "FAILED"
-    if "running" in lower:
-        return "RUNNING"
-    if "exited" in lower:
-        return "EXITED"
-    if "watch" in lower:
-        return "WATCH"
-    return "READY"
-
-
-def validation_status_label(status: str | None) -> str:
-    if status is None:
-        return "PENDING"
-    lower = status.lower()
-    if lower in {"pass", "passed", "completed", "valid"}:
-        return "PASS"
-    if lower in {"fail", "failed", "invalid", "rejected"}:
-        return "FAIL"
-    return lower.upper()
-
-
-def self_correction_status_label(status: str) -> str:
-    if status == "observed":
-        return "OBSERVED"
-    if status == "required":
-        return "REQUIRED"
-    return "NONE"
 
 
 def _format_counts(counts: dict[str, int]) -> str:
