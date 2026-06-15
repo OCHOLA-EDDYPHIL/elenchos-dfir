@@ -15,6 +15,7 @@ from elenchos.tui.layout import (
     ScreenLayout,
 )
 from elenchos.tui.state import ConsoleEvent, ConsoleState
+from elenchos.tui.text import sanitize_display_text
 from elenchos.tui.theme import badge_text, normalize_label
 
 PAGE_SCROLL_LINES = 8
@@ -107,25 +108,30 @@ def set_focused_scroll(focus: FocusState, offset: int) -> int:
 def wrap_panel_lines(lines: list[str], width: int) -> list[str]:
     wrapped: list[str] = []
     safe_width = max(10, width)
-    for line in lines:
-        if not line:
-            wrapped.append("")
-            continue
-        indent = len(line) - len(line.lstrip(" "))
-        subsequent_indent = " " * min(indent, max(0, safe_width - 1))
-        wrapped.extend(
-            textwrap.wrap(
-                line,
-                width=safe_width,
-                replace_whitespace=False,
-                drop_whitespace=True,
-                break_long_words=True,
-                break_on_hyphens=False,
-                subsequent_indent=subsequent_indent,
-            )
-            or [""]
-        )
+    for raw_line in lines:
+        split_lines = sanitize_display_text(raw_line).splitlines() or [""]
+        for line in split_lines:
+            wrapped.extend(_wrap_single_panel_line(line, safe_width))
     return wrapped
+
+
+def _wrap_single_panel_line(line: str, safe_width: int) -> list[str]:
+    if not line:
+        return [""]
+    indent = len(line) - len(line.lstrip(" "))
+    subsequent_indent = " " * min(indent, max(0, safe_width - 1))
+    return (
+        textwrap.wrap(
+            line,
+            width=safe_width,
+            replace_whitespace=False,
+            drop_whitespace=True,
+            break_long_words=True,
+            break_on_hyphens=False,
+            subsequent_indent=subsequent_indent,
+        )
+        or [""]
+    )
 
 
 def visible_panel_lines(
@@ -209,13 +215,21 @@ def build_panel_models(state: ConsoleState, *, watch_only: bool) -> tuple[PanelM
         PanelModel(
             RATIONALE_PANEL,
             "Live Rationale",
-            _event_lines(state.rationale_events, limit=8),
+            _event_lines(
+                state.rationale_events,
+                limit=8,
+                empty_message="waiting for OpenClaw/Elenchos rationale events...",
+            ),
         ),
         PanelModel(
             POLICY_PANEL,
             "Policy Gate",
             [
-                *_event_lines(state.policy_events, limit=8),
+                *_event_lines(
+                    state.policy_events,
+                    limit=8,
+                    empty_message="waiting for policy decisions...",
+                ),
                 f"raw policy events: {state.raw_policy_event_count}",
             ],
         ),
@@ -231,13 +245,17 @@ def build_panel_models(state: ConsoleState, *, watch_only: bool) -> tuple[PanelM
                 f"job: {(state.job_status or 'pending').upper()}",
                 f"return code: {state.returncode if state.returncode is not None else 'pending'}",
                 f"validation: {validation_status_label(state.validation_status)}",
-                f"findings: {_format_counts(state.finding_counts) or 'none'}",
-                f"case questions: {_format_counts(state.case_question_counts) or 'none'}",
+                f"findings: {_format_counts(state.finding_counts) or 'none yet'}",
+                f"case questions: {_format_counts(state.case_question_counts) or 'none yet'}",
                 "normalized events: "
                 f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
                 f"required outputs: {output_state or 'pending'}",
                 "",
-                *_event_lines(state.progress_events, limit=8),
+                *_event_lines(
+                    state.progress_events,
+                    limit=8,
+                    empty_message="waiting for run progress events...",
+                ),
             ],
         ),
         PanelModel(
@@ -347,14 +365,21 @@ def findings_status_label(counts: dict[str, int]) -> str:
     )
 
 
-def _event_lines(events: list[ConsoleEvent], *, limit: int) -> list[str]:
+def _event_lines(
+    events: list[ConsoleEvent],
+    *,
+    limit: int,
+    empty_message: str,
+) -> list[str]:
     if not events:
-        return ["pending"]
+        return [empty_message]
     return [event.display_message for event in events[-limit:]]
 
 
 def _self_correction_line(state: ConsoleState) -> str:
     if not state.self_correction_count:
+        if self_correction_status_label(state.self_correction_status) == "PENDING":
+            return "PENDING: waiting for self-correction artifact check..."
         return "NONE: no self-correction artifact events observed."
     suffix = (
         f"; corrected status: {state.latest_corrected_claim_status}"

@@ -192,7 +192,10 @@ def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
         "\n".join(
             [
                 "line 1",
-                'Missing required option "-m, --message <text>".',
+                "\x1b[35m[plugins]\x1b[39m \x1b[33mplugins.allow is empty; "
+                "discovered non-bundled plugins may auto-load: codex (...)\x1b[39m",
+                "^[[35m[plugins]^[[39m ^[[33mplugins.allow is empty; "
+                "discovered non-bundled plugins may auto-load: codex (...)^[[39m",
                 "Try: openclaw agent --help",
             ]
         )
@@ -202,18 +205,36 @@ def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
 
     state = read_console_state(tmp_path)
 
-    assert 'Missing required option "-m, --message <text>".' in state.openclaw_log_tail
+    assert (
+        "[plugins] plugins.allow is empty; discovered non-bundled plugins may "
+        "auto-load: codex (...)"
+    ) in state.openclaw_log_tail
+    assert "\x1b" not in "\n".join(state.openclaw_log_tail)
+    assert "^[" not in "\n".join(state.openclaw_log_tail)
 
 
-def test_read_console_state_reports_no_self_correction_when_absent(tmp_path: Path):
+def test_read_console_state_reports_pending_self_correction_when_absent(tmp_path: Path):
     state = read_console_state(tmp_path)
 
     assert state.self_correction_count == 0
-    assert state.self_correction_status == "none"
+    assert state.self_correction_status == "pending"
     assert state.latest_self_correction is None
 
 
-def test_read_console_state_reports_empty_self_correction_artifact(tmp_path: Path):
+def test_read_console_state_reports_pending_self_correction_for_active_run(tmp_path: Path):
+    _write_json(tmp_path / "run_job.json", {"status": "running", "returncode": None})
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 0
+    assert state.self_correction_status == "pending"
+
+
+def test_read_console_state_reports_empty_self_correction_artifact_after_completion(
+    tmp_path: Path,
+):
+    _write_json(tmp_path / "run_job.json", {"status": "completed", "returncode": 0})
+    _write_json(tmp_path / "validation_summary.json", {"validation_status": "pass"})
     _write_json(tmp_path / "self_correction_events.json", [])
 
     state = read_console_state(tmp_path)
@@ -221,6 +242,18 @@ def test_read_console_state_reports_empty_self_correction_artifact(tmp_path: Pat
     assert state.self_correction_count == 0
     assert state.self_correction_status == "none"
     assert state.errors == []
+
+
+def test_read_console_state_keeps_empty_self_correction_pending_until_validation(
+    tmp_path: Path,
+):
+    _write_json(tmp_path / "run_job.json", {"status": "completed", "returncode": 0})
+    _write_json(tmp_path / "self_correction_events.json", [])
+
+    state = read_console_state(tmp_path)
+
+    assert state.self_correction_count == 0
+    assert state.self_correction_status == "pending"
 
 
 def test_read_console_state_reads_self_correction_events_json(tmp_path: Path):

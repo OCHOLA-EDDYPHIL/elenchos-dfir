@@ -77,6 +77,13 @@ Use one-shot text mode for non-interactive checks:
 elenchos tui --watch-only --output-dir runs/<case> --once
 ```
 
+Before recording a final OpenClaw demo, configure an explicit plugin allowlist
+through `plugins.allow`. Disable or explicitly exclude non-required
+non-bundled plugins, including `codex`, unless they are part of the submitted
+runtime path. The submitted runtime path should use bounded Elenchos tools only.
+`scripts/demo_elenchos_preflight.py` reports this as a non-fatal warning so the
+operator can remediate local OpenClaw configuration before recording.
+
 The prompt editor is designed for immediate analyst input. The
 `--refresh-seconds` option controls how often the console rereads generated
 Elenchos artifacts; it does not control typing latency. Typing uses a short
@@ -112,8 +119,10 @@ TUI-visible rationale and policy stream and is not forensic evidence.
 The policy gate pane may collapse adjacent repeated visible policy messages for
 readability. The raw `policy_decisions.jsonl` audit file is not deduplicated or
 rewritten. Self-correction is shown only when generated self-correction
-artifacts exist; absence of those artifacts is displayed conservatively as no
-self-correction observed.
+artifacts contain events. While a run or validation is still pending, or before
+the self-correction artifacts have been checked, the console displays
+`PENDING`. It displays `NONE` only after the run and validation are complete and
+the checked self-correction artifacts contain no events.
 
 `prepare_case` may take time on large evidence sets. It does not use a short
 artificial adapter timeout by default; set

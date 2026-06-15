@@ -10,13 +10,16 @@ from elenchos.tui.rendering import (
     focus_next,
     focus_previous,
     policy_status_label,
+    render_panel_model,
     scroll_focused_panel,
     self_correction_status_label,
     set_focused_scroll,
     shorten_path,
     validation_status_label,
+    wrap_panel_lines,
 )
 from elenchos.tui.state import ConsoleEvent, ConsoleState
+from elenchos.tui.text import sanitize_display_text
 from elenchos.tui.theme import (
     ASCII_BORDERS,
     ELENCHOS_TUI_ASCII,
@@ -153,6 +156,26 @@ def test_policy_panel_keeps_raw_event_count_visible(tmp_path: Path):
     assert "raw policy events: 4" in policy_panel.lines
 
 
+def test_empty_panels_show_intentional_waiting_copy(tmp_path: Path):
+    state = _state(tmp_path, self_correction_status="pending")
+    panels = {
+        panel.panel_id: panel
+        for panel in build_panel_models(state, watch_only=True)
+    }
+
+    assert panels["rationale"].lines == [
+        "waiting for OpenClaw/Elenchos rationale events..."
+    ]
+    assert panels["policy"].lines == [
+        "waiting for policy decisions...",
+        "raw policy events: 0",
+    ]
+    assert "findings: none yet" in panels["run_status"].lines
+    assert "PENDING: waiting for self-correction artifact check..." in panels[
+        "self_correction"
+    ].lines
+
+
 def test_self_correction_panel_reflects_generated_artifact_state(tmp_path: Path):
     state = _state(
         tmp_path,
@@ -177,3 +200,59 @@ def test_shorten_path_preserves_leaf_name():
 
     assert shortened.startswith("...")
     assert shortened.endswith("rocba-standard-20260615-120000")
+
+
+def test_sanitize_display_text_removes_actual_ansi_sgr_sequences():
+    raw = "\x1b[35m[plugins]\x1b[39m \x1b[33mplugins.allow is empty\x1b[39m"
+
+    assert sanitize_display_text(raw) == "[plugins] plugins.allow is empty"
+
+
+def test_sanitize_display_text_removes_caret_rendered_sgr_sequences():
+    raw = "^[[35m[plugins]^[[39m ^[[33mplugins.allow is empty^[[39m"
+
+    assert sanitize_display_text(raw) == "[plugins] plugins.allow is empty"
+
+
+def test_sanitize_display_text_preserves_normal_log_text_and_forensic_identifiers():
+    raw = (
+        "[warning] case_id=rocba-standard finding_id=finding-001 "
+        "path=/mnt/evidence/rocba/Users/Alice/NTUSER.DAT"
+    )
+
+    assert sanitize_display_text(raw) == raw
+
+
+def test_wrap_panel_lines_measures_width_after_sanitization():
+    raw = "\x1b[35m[plugins]\x1b[39m \x1b[33mplugins.allow is empty\x1b[39m"
+
+    wrapped = wrap_panel_lines([raw], width=30)
+
+    assert "\x1b" not in "\n".join(wrapped)
+    assert wrapped == ["[plugins] plugins.allow is", "empty"]
+    assert all(len(line) <= 30 for line in wrapped)
+
+
+def test_prompt_panel_wraps_output_path_and_reports_overflow(tmp_path: Path):
+    state = _state(
+        tmp_path
+        / "runs"
+        / "rocba-standard-20260615-120000-with-a-long-generated-output-directory"
+    )
+    panel = next(
+        panel
+        for panel in build_panel_models(state, watch_only=True)
+        if panel.panel_id == "prompt"
+    )
+
+    window = render_panel_model(
+        panel,
+        content_width=34,
+        content_height=2,
+        scroll_offset=0,
+    )
+    visible = "\n".join(window.lines)
+
+    assert "Triage this case." in visible
+    assert window.hidden_after > 0
+    assert window.lines[-1].startswith("... ")

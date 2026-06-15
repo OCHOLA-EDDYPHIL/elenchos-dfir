@@ -163,6 +163,12 @@ The preflight confirms that OpenClaw points at the current repository, that the
 MCP server exposes the bounded Elenchos tools, and that the local SIFT /
 Zimmerman commands needed by the deterministic workflow are available. If it
 reports a stale path, re-run the `openclaw mcp set elenchos ...` command above.
+For final demo recording, configure an explicit plugin allowlist through
+`plugins.allow`. Disable or explicitly exclude non-required
+non-bundled plugins, including `codex`, unless they are part of the submitted
+runtime path. The submitted runtime path should use bounded Elenchos tools only.
+The preflight emits a non-fatal warning when the local plugin allowlist is empty
+or unavailable; remediate that local OpenClaw configuration before recording.
 `AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
 boundary is the typed MCP adapter plus Elenchos' path validation, deterministic
 CLI calls, generated-output validation, and claim-boundary files.

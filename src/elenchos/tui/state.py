@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Mapping
 
+from elenchos.tui.text import sanitize_display_text
+
 DEFAULT_EVENT_LIMIT = 20
 SAFE_FALLBACK_CLAIM_BOUNDARY = (
     "No confirmed theft, exfiltration, compromise, memory, malware, or "
@@ -19,6 +21,23 @@ REQUIRED_OUTPUTS = (
     "gap_analysis.json",
     "validation_summary.json",
 )
+TERMINAL_JOB_STATUSES = {
+    "completed",
+    "completed_unknown_exit",
+    "failed",
+    "rejected",
+    "not_found",
+}
+TERMINAL_VALIDATION_STATUSES = {
+    "pass",
+    "passed",
+    "completed",
+    "valid",
+    "fail",
+    "failed",
+    "invalid",
+    "rejected",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,12 +129,17 @@ def read_console_state(
     normalized = _first_json(candidates, "normalized_events.json", errors)
     gap_analysis = _first_json(candidates, "gap_analysis.json", errors)
     self_correction = _first_self_correction_json_object(candidates, errors)
-    self_correction_summary = _self_correction_summary(candidates, errors)
     report = _first_text(candidates, "report.md", errors)
     openclaw_log_tail = _first_text_tail(candidates, "openclaw-console.log", errors)
 
     job_status, returncode = _job_status(job)
     validation_status = _string_value(validation, ("validation_status", "status"))
+    self_correction_summary = _self_correction_summary(
+        candidates,
+        errors,
+        job_status=job_status,
+        validation_status=validation_status,
+    )
     finding_counts = _finding_status_counts(findings)
     case_question_counts = _case_question_status_counts(questions)
     normalized_events = _normalized_event_count(normalized)
@@ -271,7 +295,12 @@ def _first_text_tail(
         except OSError as exc:
             errors.append(f"{path.name}: {exc}")
             return []
-        return [row for row in rows[-limit:] if row.strip()]
+        tail: list[str] = []
+        for row in rows[-limit:]:
+            sanitized = sanitize_display_text(row).strip()
+            if sanitized:
+                tail.append(sanitized)
+        return tail
     return []
 
 
@@ -509,26 +538,45 @@ def _claim_boundary(
 def _self_correction_summary(
     candidates: Iterable[Path],
     errors: list[str],
+    *,
+    job_status: str | None,
+    validation_status: str | None,
 ) -> dict[str, Any]:
     events: list[dict[str, Any]] = []
+    checked = False
     for candidate in candidates:
-        payload = _safe_json_any(candidate / "self_correction_events.json", errors)
+        json_path = candidate / "self_correction_events.json"
+        jsonl_path = candidate / "self_correction_events.jsonl"
+        agent_run_path = candidate / "agent_run.json"
+        if json_path.is_file():
+            checked = True
+        payload = _safe_json_any(json_path, errors)
         if isinstance(payload, dict):
             events.extend(_rows(payload, "events"))
         elif isinstance(payload, list):
             events.extend(row for row in payload if isinstance(row, dict))
         elif payload is not None:
             errors.append("self_correction_events.json: JSON root is not an object or list")
-        events.extend(_jsonl_rows(candidate / "self_correction_events.jsonl", errors))
-        agent_run = _safe_json(candidate / "agent_run.json", errors)
+        if jsonl_path.is_file():
+            checked = True
+        events.extend(_jsonl_rows(jsonl_path, errors))
+        agent_run = _safe_json(agent_run_path, errors)
         if agent_run is not None:
+            checked = checked or "corrections" in agent_run
             events.extend(_rows(agent_run, "corrections"))
 
     deduped = _dedupe_mapping_rows(events)
     if not deduped:
+        status = (
+            "none"
+            if checked
+            and _is_terminal_job_status(job_status)
+            and _is_terminal_validation_status(validation_status)
+            else "pending"
+        )
         return {
             "count": 0,
-            "status": "none",
+            "status": status,
             "latest": None,
             "corrected_status": None,
         }
@@ -549,6 +597,14 @@ def _self_correction_summary(
         "latest": _self_correction_message(latest),
         "corrected_status": _self_correction_status(latest),
     }
+
+
+def _is_terminal_job_status(status: str | None) -> bool:
+    return status is not None and status.lower() in TERMINAL_JOB_STATUSES
+
+
+def _is_terminal_validation_status(status: str | None) -> bool:
+    return status is not None and status.lower() in TERMINAL_VALIDATION_STATUSES
 
 
 def _dedupe_mapping_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -642,12 +698,12 @@ def render_text_snapshot(state: ConsoleState) -> str:
     ]
     lines.extend(f"- {event.message}" for event in state.rationale_events[-8:])
     if not state.rationale_events:
-        lines.append("- pending")
+        lines.append("- waiting for OpenClaw/Elenchos rationale events...")
     lines.append("")
     lines.append("Policy gate")
     lines.extend(f"- {event.display_message}" for event in state.policy_events[-8:])
     if not state.policy_events:
-        lines.append("- pending")
+        lines.append("- waiting for policy decisions...")
     lines.append(f"Raw policy events: {state.raw_policy_event_count}")
     lines.append("")
     lines.append("Self-correction")
@@ -658,13 +714,15 @@ def render_text_snapshot(state: ConsoleState) -> str:
         )
         if state.latest_corrected_claim_status:
             lines.append(f"- corrected status: {state.latest_corrected_claim_status}")
+    elif state.self_correction_status == "none":
+        lines.append("- none: no self-correction artifact events observed")
     else:
-        lines.append("- pending/not observed in this run")
+        lines.append("- pending: waiting for self-correction artifact check")
     lines.append("")
     lines.append("Run status")
     lines.extend(f"- {event.message}" for event in state.progress_events[-8:])
     if not state.progress_events:
-        lines.append("- pending")
+        lines.append("- waiting for run progress events...")
     lines.append("")
     lines.append("Final summary")
     lines.append(state.final_summary or "Pending generated Elenchos summary.")

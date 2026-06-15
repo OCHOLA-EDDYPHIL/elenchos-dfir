@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from scripts.demo_elenchos_preflight import _openclaw_plugin_allowlist_status
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -279,3 +281,33 @@ def test_openclaw_live_autonomy_docs_cover_rationale_and_policy_files():
     assert "model_rationale.jsonl" in combined
     assert "policy_decisions.jsonl" in combined
     assert "model rationale is not forensic evidence" in combined.casefold()
+
+
+def test_openclaw_demo_docs_cover_plugin_allowlist_preflight():
+    root = repo_root()
+    combined = "\n".join(
+        [
+            (root / "docs" / "openclaw-mcp-workflow.md").read_text(encoding="utf-8"),
+            (root / "docs" / "tui.md").read_text(encoding="utf-8"),
+        ]
+    ).casefold()
+
+    assert "plugins.allow" in combined
+    assert "explicit plugin allowlist" in combined
+    assert "codex" in combined
+    assert "bounded elenchos tools only" in combined
+
+
+def test_demo_preflight_warns_on_empty_openclaw_plugin_allowlist():
+    ok, detail = _openclaw_plugin_allowlist_status({"allow": []})
+
+    assert ok is False
+    assert "plugins.allow is empty" in detail
+    assert "final demo" in detail
+
+
+def test_demo_preflight_accepts_explicit_openclaw_plugin_allowlist():
+    ok, detail = _openclaw_plugin_allowlist_status({"allow": ["elenchos"]})
+
+    assert ok is True
+    assert detail == "plugins.allow=elenchos"
