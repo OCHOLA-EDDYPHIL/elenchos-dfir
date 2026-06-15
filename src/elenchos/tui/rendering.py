@@ -214,7 +214,7 @@ def build_panel_models(state: ConsoleState, *, watch_only: bool) -> tuple[PanelM
         ),
         PanelModel(
             RATIONALE_PANEL,
-            "Live Rationale",
+            "Rationale History" if state.validation_status == "pass" else "Live Rationale",
             _event_lines(
                 state.rationale_events,
                 limit=8,
@@ -249,6 +249,7 @@ def build_panel_models(state: ConsoleState, *, watch_only: bool) -> tuple[PanelM
                 f"case questions: {_format_counts(state.case_question_counts) or 'none yet'}",
                 "normalized events: "
                 f"{state.normalized_events if state.normalized_events is not None else 'pending'}",
+                f"finalized: {'yes' if state.finalized else 'no'}",
                 f"required outputs: {output_state or 'pending'}",
                 "",
                 *_event_lines(
@@ -297,6 +298,8 @@ def _badge(label: str, value: str) -> Badge:
 
 def openclaw_status_label(status: str) -> str:
     lower = status.lower()
+    if "done" in lower or "finalized" in lower:
+        return "DONE"
     if "blocked" in lower:
         return "BLOCKED"
     if "failed" in lower or "rc=1" in lower or "rc=2" in lower:

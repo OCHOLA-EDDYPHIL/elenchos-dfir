@@ -5,6 +5,18 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Mapping
 
+from elenchos.integrations.finalization import (
+    MAX_POST_VALIDATION_ACTIONS,
+    ORCHESTRATION_FINALIZATION_FILENAME,
+    POST_VALIDATION_ALLOWED_ACTIONS,
+    is_finalized,
+    post_validation_action_count,
+    read_finalization,
+    terminal_state,
+)
+from elenchos.integrations.finalization import (
+    claim_boundary_required as finalization_claim_boundary_required,
+)
 from elenchos.integrations.prepared_manifest import (
     resolve_prepared_manifest_path,
     validate_prepared_manifest_for_run,
@@ -41,6 +53,7 @@ GENERATED_STATE_FILES = (
     RUN_JOB_FILENAME,
     "model_rationale.jsonl",
     "policy_decisions.jsonl",
+    ORCHESTRATION_FINALIZATION_FILENAME,
 )
 
 UNSUPPORTED_BOUNDARY_TERMS = (
@@ -75,7 +88,11 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
     validation_status = _validation_status(agent_run_dir)
     active_job = _active_job(agent_run_dir / RUN_JOB_FILENAME)
     prepared_manifest_path, prepared_manifest_validation = _prepared_manifest_state(agent_run_dir)
-    claim_boundary_required = _claim_boundary_required(agent_run_dir)
+    claim_boundary_required = finalization_claim_boundary_required(agent_run_dir)
+    finalization = read_finalization(agent_run_dir)
+    terminal = terminal_state(agent_run_dir)
+    finalized = is_finalized(agent_run_dir)
+    post_validation_count = post_validation_action_count(agent_run_dir)
     recommended = _recommended_actions(
         agent_run_dir=agent_run_dir,
         required_outputs_present=present,
@@ -83,6 +100,15 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
         validation_status=validation_status,
         claim_boundary_required=claim_boundary_required,
         prepared_manifest_path=prepared_manifest_path,
+        terminal_condition_met=bool(terminal["terminal_condition_met"]),
+        finalized=finalized,
+    )
+    allowed_actions = (
+        sorted({"stop"})
+        if finalized or terminal["terminal_condition_met"]
+        else sorted(POST_VALIDATION_ALLOWED_ACTIONS)
+        if validation_status == "pass"
+        else sorted(ALLOWED_ACTIONS)
     )
     return RunStateSummary(
         case_id=case_id,
@@ -96,11 +122,28 @@ def inspect_run_state(output_dir: Path) -> RunStateSummary:
         validation_status=validation_status,
         active_job=active_job,
         recommended_next_actions=recommended,
-        allowed_actions=sorted(ALLOWED_ACTIONS),
+        allowed_actions=allowed_actions,
         claim_boundary_required=claim_boundary_required,
         basis_files=basis_files,
         prepared_manifest_path=prepared_manifest_path,
         prepared_manifest_validation=prepared_manifest_validation,
+        orchestration_status=(
+            "DONE"
+            if finalized or terminal["terminal_condition_met"]
+            else "POST_VALIDATION"
+            if validation_status == "pass"
+            else "PENDING"
+        ),
+        finalized=finalized,
+        finalization_reason=(
+            str(finalization.get("reason"))
+            if finalization is not None and finalization.get("reason") is not None
+            else str(terminal["reason"])
+            if terminal["terminal_condition_met"]
+            else None
+        ),
+        post_validation_action_count=post_validation_count,
+        max_post_validation_actions=MAX_POST_VALIDATION_ACTIONS,
     )
 
 
@@ -285,7 +328,12 @@ def _recommended_actions(
     validation_status: str | None,
     claim_boundary_required: bool,
     prepared_manifest_path: str | None,
+    terminal_condition_met: bool,
+    finalized: bool,
 ) -> list[str]:
+    if finalized or terminal_condition_met:
+        return ["stop"]
+
     if active_job is not None:
         return ["poll_case_run"]
 
@@ -304,6 +352,12 @@ def _recommended_actions(
 
     if validation_status is None:
         return ["validate_run_outputs"]
+
+    if (
+        validation_status == "pass"
+        and post_validation_action_count(agent_run_dir) >= MAX_POST_VALIDATION_ACTIONS
+    ):
+        return ["stop"]
 
     if claim_boundary_required:
         return ["emit_claim_boundary"]

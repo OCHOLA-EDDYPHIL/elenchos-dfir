@@ -68,6 +68,7 @@ start_case_run
 poll_case_run
 finish_case_run
 emit_claim_boundary
+stop
 ```
 
 These tools invoke deterministic Elenchos workflows and return structured outputs. The agent should coordinate the workflow; Elenchos should produce the forensic evidence records, findings, reports, audit logs, progress telemetry, and validation outputs.

@@ -82,6 +82,8 @@ The adapter exposes deterministic workflow tools plus a live autonomy layer:
   manifest, not a case-prep manifest.
 - `emit_claim_boundary`: returns deterministic generated claim-boundary wording
   or conservative fallback wording without changing findings.
+- `stop`: marks generated orchestration complete after deterministic outputs
+  reach terminal validation and claim-boundary conditions.
 
 Run the stdio MCP server:
 
@@ -234,8 +236,8 @@ For live OpenClaw agent runs, use an observe/rationale/policy/execute loop:
 6. Execute only if policy returns `allowed`.
 7. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live run
    progress is desired.
-8. End with `summarize_run`, `validate_run_outputs`, and
-   `emit_claim_boundary` when unsupported claim boundaries remain.
+8. End with `summarize_run`, `validate_run_outputs`,
+   `emit_claim_boundary` when unsupported claim boundaries remain, and `stop`.
 
 The case-prep handoff is explicit. `prepare_case` produces a prepared manifest
 and returns it as `prepared_manifest_path`; `inspect_run_state` reports the same

@@ -188,6 +188,7 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
         "poll_case_run",
         "finish_case_run",
         "emit_claim_boundary",
+        "stop",
     ):
         assert tool_name in prompt
     assert "bounded Elenchos MCP/tool-adapter surface" in prompt

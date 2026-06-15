@@ -1,10 +1,26 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from elenchos.integrations.rationale_policy import evaluate_action_policy
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _append_jsonl(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True))
+        handle.write("\n")
 
 
 def _write_valid_case_prep(path: Path) -> None:
@@ -148,3 +164,53 @@ def test_policy_allows_prepare_case_source_root_as_bounded_tool_input(tmp_path: 
 
     assert result["decision"] == "allowed"
     assert result["safety_checks"]["no_model_supplied_evidence_paths"] is True
+
+
+def test_policy_rejects_start_case_run_after_validation_pass(tmp_path: Path):
+    output_dir = tmp_path / "runs" / "case" / "agent-run"
+    _write_json(output_dir / "validation_summary.json", {"validation_status": "pass"})
+    _write_json(output_dir / "run_job.json", {"status": "completed", "returncode": 0})
+
+    result = evaluate_action_policy(
+        output_dir=output_dir,
+        proposed_action="start_case_run",
+    )
+
+    assert result["decision"] == "rejected"
+    assert result["reason"] == "run already completed and validation passed"
+    assert "run already completed and validation passed" in (
+        output_dir / "policy_decisions.jsonl"
+    ).read_text(encoding="utf-8")
+
+
+def test_post_validation_action_cap_forces_stop(tmp_path: Path):
+    output_dir = tmp_path / "runs" / "case" / "agent-run"
+    _write_json(output_dir / "validation_summary.json", {"validation_status": "pass"})
+    for index, action in enumerate(
+        ["summarize_run", "emit_claim_boundary", "summarize_run"],
+        start=1,
+    ):
+        _append_jsonl(
+            output_dir / "policy_decisions.jsonl",
+            {
+                "policy_decision_id": f"policy_{index:06d}",
+                "timestamp_utc": f"2026-01-01T00:00:0{index}Z",
+                "proposed_action": action,
+                "decision": "allowed",
+                "reason": "post validation",
+                "safety_checks": {},
+                "rejected_fields": [],
+                "normalized_action": action,
+            },
+        )
+
+    result = evaluate_action_policy(
+        output_dir=output_dir,
+        proposed_action="summarize_run",
+    )
+
+    assert result["decision"] == "rejected"
+    assert "max_post_validation_actions" in str(result["reason"])
+    finalization = output_dir / "orchestration_finalization.json"
+    assert finalization.is_file()
+    assert '"status": "DONE"' in finalization.read_text(encoding="utf-8")

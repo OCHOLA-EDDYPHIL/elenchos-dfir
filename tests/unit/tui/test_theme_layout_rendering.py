@@ -42,6 +42,8 @@ def _state(
     self_correction_status: str = "none",
     self_correction_count: int = 0,
     latest_self_correction: str | None = None,
+    finalized: bool = False,
+    orchestration_status: str = "PENDING",
 ) -> ConsoleState:
     return ConsoleState(
         output_dir=tmp_path,
@@ -66,6 +68,8 @@ def _state(
         openclaw_log_tail=[],
         errors=[],
         required_outputs_present={},
+        finalized=finalized,
+        orchestration_status=orchestration_status,
     )
 
 
@@ -191,6 +195,34 @@ def test_self_correction_panel_reflects_generated_artifact_state(tmp_path: Path)
     )
 
     assert panel.lines == ["OBSERVED: 2 event(s); latest: Rejected unsupported claim path."]
+
+
+def test_finalized_state_renders_done_and_finalized_status(tmp_path: Path):
+    state = _state(
+        tmp_path,
+        validation_status="pass",
+        job_status="completed",
+        finding_counts={"confirmed": 1, "needs_review": 393},
+        finalized=True,
+        orchestration_status="DONE",
+    )
+
+    badges = [badge.text for badge in build_status_badges(state, openclaw_status="done")]
+    run_panel = next(
+        panel
+        for panel in build_panel_models(state, watch_only=True)
+        if panel.panel_id == "run_status"
+    )
+    rationale_panel = next(
+        panel
+        for panel in build_panel_models(state, watch_only=True)
+        if panel.panel_id == "rationale"
+    )
+
+    assert "OpenClaw DONE" in badges
+    assert "Validation PASS" in badges
+    assert "finalized: yes" in run_panel.lines
+    assert rationale_panel.title == "Rationale History"
 
 
 def test_shorten_path_preserves_leaf_name():

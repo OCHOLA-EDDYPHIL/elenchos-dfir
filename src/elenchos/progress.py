@@ -15,6 +15,7 @@ ALLOWED_PROGRESS_PHASES = {
     "report",
     "summarize_run",
     "validate_run_outputs",
+    "emit_claim_boundary",
 }
 ALLOWED_PROGRESS_STATUSES = {
     "started",

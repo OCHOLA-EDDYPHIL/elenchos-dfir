@@ -227,6 +227,11 @@ class RunStateSummary:
     basis_files: list[str]
     prepared_manifest_path: str | None = None
     prepared_manifest_validation: dict[str, JSONValue] | None = None
+    orchestration_status: str = "PENDING"
+    finalized: bool = False
+    finalization_reason: str | None = None
+    post_validation_action_count: int = 0
+    max_post_validation_actions: int = 3
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "case_id", _optional_string("case_id", self.case_id))
@@ -285,6 +290,18 @@ class RunStateSummary:
                     self.prepared_manifest_validation,
                 ),
             )
+        object.__setattr__(
+            self,
+            "orchestration_status",
+            _required_string("orchestration_status", self.orchestration_status),
+        )
+        object.__setattr__(
+            self,
+            "finalization_reason",
+            _optional_string("finalization_reason", self.finalization_reason),
+        )
+        if self.post_validation_action_count < 0 or self.max_post_validation_actions < 1:
+            raise ValueError("post-validation action counts must be valid")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -308,6 +325,11 @@ class RunStateSummary:
                 if self.prepared_manifest_validation is None
                 else dict(self.prepared_manifest_validation)
             ),
+            "orchestration_status": self.orchestration_status,
+            "finalized": self.finalized,
+            "finalization_reason": self.finalization_reason,
+            "post_validation_action_count": self.post_validation_action_count,
+            "max_post_validation_actions": self.max_post_validation_actions,
         }
 
 

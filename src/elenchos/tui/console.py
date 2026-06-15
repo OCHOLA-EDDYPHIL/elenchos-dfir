@@ -11,6 +11,12 @@ from elenchos.config.runtime import (
     DEFAULT_TUI_REFRESH_SECONDS,
     MIN_TUI_REFRESH_SECONDS,
 )
+from elenchos.integrations.finalization import (
+    force_finalize_orchestration,
+    maybe_finalize_orchestration,
+    post_validation_cap_reached,
+)
+from elenchos.integrations.rationale_trace import agent_run_dir_from_output_dir
 from elenchos.policy.paths import (
     MOUNTED_EVIDENCE_ROOT,
     is_generated_output_path,
@@ -341,6 +347,7 @@ def _run_curses(
         )
         now = time.monotonic()
         if last_state is None or refresh_clock.should_refresh(now, forced=force_state_refresh):
+            _finalize_generated_run_if_ready(active_output_dir)
             state = read_console_state(active_output_dir, prompt=wrapped_preview)
             _mirror_visible_transcript(active_output_dir, state)
             if launch_error:
@@ -360,6 +367,24 @@ def _run_curses(
                 theme=theme,
             )
             needs_redraw = False
+
+        if (
+            last_state is not None
+            and last_state.finalized
+            and process is not None
+            and process.poll() is None
+        ):
+            _stop_openclaw_after_finalization(process)
+            completed_process_returncode = 0
+            openclaw_status = "done"
+            complete_active_run(
+                runs_root=runs_root,
+                pid=int(process.pid),
+                returncode=0,
+            )
+            force_state_refresh = True
+            needs_redraw = True
+            continue
 
         key = screen.getch()
         if key == KEY_CTRL_C:
@@ -496,6 +521,35 @@ def _launch_from_prompt(
     return None, process, f"running pid={process.pid}"
 
 
+def _finalize_generated_run_if_ready(output_dir: Path) -> None:
+    try:
+        agent_run_dir = agent_run_dir_from_output_dir(output_dir)
+        if post_validation_cap_reached(agent_run_dir):
+            force_finalize_orchestration(
+                agent_run_dir,
+                reason=(
+                    "validation already passed and max_post_validation_actions was reached; "
+                    "workflow is complete"
+                ),
+            )
+            return
+        maybe_finalize_orchestration(agent_run_dir)
+    except ValueError:
+        return
+
+
+def _stop_openclaw_after_finalization(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            return
+
+
 def _state_with_error(state: ConsoleState, error: str) -> ConsoleState:
     return ConsoleState(
         output_dir=state.output_dir,
@@ -520,6 +574,11 @@ def _state_with_error(state: ConsoleState, error: str) -> ConsoleState:
         openclaw_log_tail=state.openclaw_log_tail,
         errors=[*state.errors, error],
         required_outputs_present=state.required_outputs_present,
+        orchestration_status=state.orchestration_status,
+        finalized=state.finalized,
+        finalization_reason=state.finalization_reason,
+        post_validation_action_count=state.post_validation_action_count,
+        max_post_validation_actions=state.max_post_validation_actions,
     )
 
 

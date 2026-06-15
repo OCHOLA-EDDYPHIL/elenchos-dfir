@@ -21,6 +21,7 @@ REQUIRED_OUTPUTS = (
     "gap_analysis.json",
     "validation_summary.json",
 )
+ORCHESTRATION_FINALIZATION_FILENAME = "orchestration_finalization.json"
 TERMINAL_JOB_STATUSES = {
     "completed",
     "completed_unknown_exit",
@@ -79,6 +80,11 @@ class ConsoleState:
     openclaw_log_tail: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     required_outputs_present: dict[str, bool] = field(default_factory=dict)
+    orchestration_status: str = "PENDING"
+    finalized: bool = False
+    finalization_reason: str | None = None
+    post_validation_action_count: int = 0
+    max_post_validation_actions: int = 3
 
 
 def read_console_state(
@@ -128,6 +134,7 @@ def read_console_state(
     questions = _first_json(candidates, "case_questions.json", errors)
     normalized = _first_json(candidates, "normalized_events.json", errors)
     gap_analysis = _first_json(candidates, "gap_analysis.json", errors)
+    finalization = _first_json(candidates, ORCHESTRATION_FINALIZATION_FILENAME, errors)
     self_correction = _first_self_correction_json_object(candidates, errors)
     report = _first_text(candidates, "report.md", errors)
     openclaw_log_tail = _first_text_tail(candidates, "openclaw-console.log", errors)
@@ -182,6 +189,14 @@ def read_console_state(
             name: any((candidate / name).is_file() for candidate in candidates)
             for name in REQUIRED_OUTPUTS
         },
+        orchestration_status=_orchestration_status(
+            finalization=finalization,
+            validation_status=validation_status,
+        ),
+        finalized=_finalized(finalization),
+        finalization_reason=_finalization_reason(finalization),
+        post_validation_action_count=_int_value(finalization, "post_validation_action_count", 0),
+        max_post_validation_actions=_int_value(finalization, "max_post_validation_actions", 3),
     )
 
 
@@ -459,6 +474,36 @@ def _string_value(payload: Mapping[str, Any] | None, keys: tuple[str, ...]) -> s
     return None
 
 
+def _int_value(payload: Mapping[str, Any] | None, key: str, default: int) -> int:
+    if payload is None:
+        return default
+    value = payload.get(key)
+    return value if isinstance(value, int) else default
+
+
+def _orchestration_status(
+    *,
+    finalization: Mapping[str, Any] | None,
+    validation_status: str | None,
+) -> str:
+    if _finalized(finalization):
+        return "DONE"
+    if validation_status == "pass":
+        return "POST_VALIDATION"
+    return "PENDING"
+
+
+def _finalized(finalization: Mapping[str, Any] | None) -> bool:
+    return finalization is not None and finalization.get("status") == "DONE"
+
+
+def _finalization_reason(finalization: Mapping[str, Any] | None) -> str | None:
+    if finalization is None:
+        return None
+    reason = finalization.get("reason")
+    return reason if isinstance(reason, str) and reason else None
+
+
 def _rows(payload: Mapping[str, Any] | None, key: str) -> list[dict[str, Any]]:
     if payload is None:
         return []
@@ -689,6 +734,8 @@ def render_text_snapshot(state: ConsoleState) -> str:
         f"Job status: {state.job_status or 'pending'}",
         f"Return code: {state.returncode if state.returncode is not None else 'pending'}",
         f"Validation: {state.validation_status or 'pending'}",
+        f"Orchestration: {state.orchestration_status}",
+        f"Finalized: {'yes' if state.finalized else 'no'}",
         f"Findings: {_format_counts(state.finding_counts) or 'none'}",
         f"Case questions: {_format_counts(state.case_question_counts) or 'none'}",
         "Normalized events: "

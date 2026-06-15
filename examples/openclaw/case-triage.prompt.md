@@ -33,9 +33,9 @@ Use Elenchos's live autonomy protocol:
 7. Re-inspect generated state between actions.
 8. Use the prepared_manifest_path returned by prepare_case or inspect_run_state when starting deterministic triage. Do not use run_integrity_manifest.json as a prepared manifest.
 9. Use start_case_run, poll_case_run, and finish_case_run when live progress is desired. Use run_case only when blocking execution is acceptable.
-10. End with summarize_run, validate_run_outputs, emit_claim_boundary when needed, and trace paths.
+10. End with summarize_run, validate_run_outputs, emit_claim_boundary when needed, stop, and trace paths.
 
-Available bounded tools include prepare_case, run_case, summarize_run, validate_run_outputs, inspect_run_state, record_model_rationale, evaluate_action_policy, start_case_run, poll_case_run, finish_case_run, and emit_claim_boundary.
+Available bounded tools include prepare_case, run_case, summarize_run, validate_run_outputs, inspect_run_state, record_model_rationale, evaluate_action_policy, start_case_run, poll_case_run, finish_case_run, emit_claim_boundary, and stop.
 
 If no case-specific JSON casebook is available and the evidence is a Windows disk image, use docs/casebooks/generic-windows-disk-triage.json. Separate supported findings from unsupported case allegations. If Elenchos emits claim-boundary events in self_correction_events, gap_analysis, or summary output, repeat the generated final_wording and scope_boundary exactly. Do not replace those fields with model wording.
 

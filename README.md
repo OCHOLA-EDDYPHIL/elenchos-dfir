@@ -385,7 +385,7 @@ Live OpenClaw autonomy adds:
 ```text
 inspect_run_state -> [model-rationale] -> record_model_rationale
   -> evaluate_action_policy -> [policy] -> execute allowed bounded action
-  -> poll progress -> validate outputs -> emit_claim_boundary
+  -> poll progress -> validate outputs -> emit_claim_boundary -> stop
 ```
 
 `model_rationale.jsonl` records model-generated operational rationale, not

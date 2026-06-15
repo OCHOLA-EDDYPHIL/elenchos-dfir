@@ -5,6 +5,14 @@ from pathlib import Path
 from typing import Literal, cast
 
 from elenchos.audit.execution_ledger import utc_now
+from elenchos.integrations.finalization import (
+    POST_VALIDATION_ALLOWED_ACTIONS,
+    force_finalize_orchestration,
+    maybe_finalize_orchestration,
+    post_validation_cap_reached,
+    terminal_state,
+    validation_passed,
+)
 from elenchos.integrations.prepared_manifest import (
     resolve_prepared_manifest_path,
     validate_prepared_manifest_for_run,
@@ -189,6 +197,25 @@ def evaluate_action_policy(
         output_dir=candidate_output_dir_resolved,
         action_args=action_args,
     )
+    validation_is_passed = validation_passed(agent_run_dir)
+    terminal = terminal_state(agent_run_dir)
+    terminal_condition_met = bool(terminal["terminal_condition_met"])
+    if terminal_condition_met:
+        maybe_finalize_orchestration(agent_run_dir)
+    cap_reached = post_validation_cap_reached(agent_run_dir)
+    if cap_reached:
+        force_finalize_orchestration(
+            agent_run_dir,
+            reason=(
+                "validation already passed and max_post_validation_actions was reached; "
+                "workflow is complete"
+            ),
+        )
+    post_validation_action_allowed = (
+        not validation_is_passed
+        or action in POST_VALIDATION_ALLOWED_ACTIONS
+    )
+    terminal_action_allowed = not (terminal_condition_met or cap_reached) or action == "stop"
 
     safety_checks = {
         "action_allowlisted": action in ALLOWED_ACTIONS,
@@ -208,6 +235,8 @@ def evaluate_action_policy(
         "prepared_manifest_valid": prepared_manifest_valid,
         "generated_read_only_action": action not in GENERATED_READ_ONLY_ACTIONS
         or is_generated_output_path(candidate_output_dir_resolved),
+        "post_validation_action_allowed": post_validation_action_allowed,
+        "terminal_action_allowed": terminal_action_allowed,
     }
     allowed = all(safety_checks.values())
 
@@ -227,8 +256,24 @@ def evaluate_action_policy(
         reason = "an active run job is already recorded"
     elif not prepared_manifest_valid:
         reason = "prepared_manifest_path is not a valid prepared case manifest"
+    elif validation_is_passed and action == "start_case_run":
+        reason = "run already completed and validation passed"
+    elif cap_reached and action != "stop":
+        reason = (
+            "validation already passed and max_post_validation_actions was reached; "
+            "workflow is complete"
+        )
+    elif terminal_condition_met and action != "stop":
+        reason = "run already completed and validation passed"
+    elif validation_is_passed and not post_validation_action_allowed:
+        reason = (
+            "validation already passed; only summarize_run, emit_claim_boundary, "
+            "and stop are allowed"
+        )
     elif action in GENERATED_READ_ONLY_ACTIONS:
         reason = "action is allowlisted and reads generated outputs only"
+    elif action == "stop":
+        reason = "workflow is complete and may stop"
     elif action == "start_case_run":
         reason = "bounded action, generated output directory, read-only evidence"
     elif action == "record_model_rationale":
@@ -245,7 +290,13 @@ def evaluate_action_policy(
         safety_checks=safety_checks,
         rejected_fields=rejected_fields,
         normalized_action=normalized,
-        next_allowed_tools=sorted(ALLOWED_ACTIONS),
+        next_allowed_tools=(
+            ["stop"]
+            if terminal_condition_met or cap_reached
+            else sorted(POST_VALIDATION_ALLOWED_ACTIONS)
+            if validation_is_passed
+            else sorted(ALLOWED_ACTIONS)
+        ),
         visible_policy_message=visible,
     )
 

@@ -39,6 +39,8 @@ For live progress, use:
 - `poll_case_run` to read `run_job.json`, `progress.jsonl`, and generated
   outputs only.
 - `finish_case_run` to confirm terminal job state without killing processes.
+- `stop` to mark generated orchestration complete after validation and any
+  required claim-boundary emission.
 
 The live handoff from preparation to execution uses one manifest contract.
 `prepare_case` creates the prepared case manifest and returns

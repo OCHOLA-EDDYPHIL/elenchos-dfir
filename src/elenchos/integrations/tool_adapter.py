@@ -18,6 +18,14 @@ from elenchos.config.runtime import (
     DEFAULT_PREPARE_CASE_TIMEOUT_SECONDS,
     get_prepare_case_timeout_seconds,
 )
+from elenchos.integrations.finalization import (
+    MAX_POST_VALIDATION_ACTIONS,
+    force_finalize_orchestration,
+    mark_claim_boundary_emitted,
+    maybe_finalize_orchestration,
+    post_validation_cap_reached,
+    terminal_state,
+)
 from elenchos.integrations.job_runner import (
     finish_case_run as finish_case_run_job,
 )
@@ -116,6 +124,7 @@ SELF_POLICY_GATED_TOOLS = {
     "poll_case_run",
     "finish_case_run",
     "emit_claim_boundary",
+    "stop",
 }
 
 
@@ -485,6 +494,22 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
         },
         "outputSchema": {"type": "object", "additionalProperties": True},
         "annotations": {"readOnlyHint": True},
+    },
+    "stop": {
+        "name": "stop",
+        "title": "Stop Orchestration",
+        "description": (
+            "Mark the generated Elenchos orchestration complete when deterministic "
+            "outputs are terminal. This reads and writes generated run metadata only."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {"output_dir": _string_schema("Generated run output directory.")},
+            "required": ["output_dir"],
+        },
+        "outputSchema": {"type": "object", "additionalProperties": True},
+        "annotations": {"readOnlyHint": False},
     },
 }
 
@@ -1544,11 +1569,51 @@ def emit_claim_boundary(request: Mapping[str, object]) -> dict[str, object]:
                 "source": "conservative_fallback",
             }
         ]
+    progress_path = progress_path_for_output_dir(agent_run_dir)
+    if agent_run_dir.exists():
+        append_progress_event(
+            progress_path,
+            case_id=_summary_case_id(agent_run_dir),
+            phase="emit_claim_boundary",
+            status="completed",
+            message="emit_claim_boundary completed",
+        )
+    mark_claim_boundary_emitted(agent_run_dir)
+    finalization = maybe_finalize_orchestration(agent_run_dir)
     return {
         "status": "completed",
         "output_dir": display_path(agent_run_dir),
         "claim_boundaries": wording,
         "status_upgrade_performed": False,
+        "orchestration_finalization": finalization,
+    }
+
+
+def stop_orchestration(request: Mapping[str, object]) -> dict[str, object]:
+    output_dir = validate_generated_read_dir(_required_string(request, "output_dir"))
+    agent_run_dir = agent_run_dir_from_output_dir(output_dir)
+    finalization: dict[str, Any] | None
+    if post_validation_cap_reached(agent_run_dir):
+        finalization = force_finalize_orchestration(
+            agent_run_dir,
+            reason=(
+                "validation already passed and max_post_validation_actions was reached; "
+                "workflow is complete"
+            ),
+        )
+    else:
+        finalization = maybe_finalize_orchestration(agent_run_dir)
+    state = terminal_state(agent_run_dir)
+    return {
+        "status": "completed" if finalization is not None else "not_finalized",
+        "output_dir": display_path(agent_run_dir),
+        "orchestration_status": (
+            finalization.get("status") if finalization is not None else "PENDING"
+        ),
+        "finalized": finalization is not None,
+        "finalization": finalization,
+        "terminal_state": state,
+        "max_post_validation_actions": MAX_POST_VALIDATION_ACTIONS,
     }
 
 
@@ -1613,6 +1678,8 @@ def dispatch_tool(
         return _attach_policy(finish_case_run(request), policy)
     if name == "emit_claim_boundary":
         return _attach_policy(emit_claim_boundary(request), policy)
+    if name == "stop":
+        return _attach_policy(stop_orchestration(request), policy)
     raise ValueError(f"unknown Elenchos integration operation: {name}")
 
 
@@ -1664,6 +1731,7 @@ def build_parser() -> argparse.ArgumentParser:
         "poll-case-run",
         "finish-case-run",
         "emit-claim-boundary",
+        "stop",
     ):
         command_parser = subparsers.add_parser(command)
         command_parser.add_argument(
@@ -1692,6 +1760,7 @@ def main(argv: list[str] | None = None) -> int:
             "poll-case-run": "poll_case_run",
             "finish-case-run": "finish_case_run",
             "emit-claim-boundary": "emit_claim_boundary",
+            "stop": "stop",
         }
         if args.command in command_to_tool:
             request = _load_json_input(args.json_input)

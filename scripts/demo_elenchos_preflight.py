@@ -17,6 +17,7 @@ EXPECTED_TOOLS = {
     "prepare_case",
     "record_model_rationale",
     "run_case",
+    "stop",
     "summarize_run",
     "start_case_run",
     "validate_run_outputs",

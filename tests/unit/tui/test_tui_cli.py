@@ -12,8 +12,9 @@ from elenchos.tui import console
 
 
 class FakeScreen:
-    def __init__(self, keys: list[int]) -> None:
+    def __init__(self, keys: list[int], *, size: tuple[int, int] = (30, 120)) -> None:
         self.keys = list(keys)
+        self.size = size
         self.timeouts: list[int] = []
         self.drawn: list[str] = []
 
@@ -29,13 +30,85 @@ class FakeScreen:
         return None
 
     def getmaxyx(self) -> tuple[int, int]:
-        return (30, 120)
+        return self.size
 
     def addnstr(self, _y: int, _x: int, text: str, _width: int, _attr: int = 0) -> None:
         self.drawn.append(text)
 
     def refresh(self) -> None:
         return None
+
+
+class FinalizedFakeProcess:
+    pid = 999123
+
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode or 0
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _append_jsonl(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True))
+        handle.write("\n")
+
+
+def _write_terminal_generated_run(output_dir: Path) -> None:
+    _write_json(output_dir / "agent_run.json", {"case_id": "case", "status": "completed"})
+    _write_json(output_dir / "run_job.json", {"status": "completed", "returncode": 0})
+    _write_json(output_dir / "findings.json", {"findings": [{"status": "confirmed"}]})
+    _write_json(
+        output_dir / "case_questions.json",
+        {"status_counts": {"confirmed": 1}, "questions": []},
+    )
+    _write_json(output_dir / "normalized_events.json", {"event_count": 5000})
+    _write_json(
+        output_dir / "gap_analysis.json",
+        {"claim_boundaries": [{"final_wording": "Generated boundary wording."}]},
+    )
+    _write_json(output_dir / "validation_summary.json", {"validation_status": "pass"})
+    (output_dir / "report.md").write_text("# Report\n\nGenerated summary.\n", encoding="utf-8")
+    _append_jsonl(
+        output_dir / "progress.jsonl",
+        {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "case_id": "case",
+            "phase": "summarize_run",
+            "status": "completed",
+            "message": "summarize_run completed",
+        },
+    )
+    _append_jsonl(
+        output_dir / "progress.jsonl",
+        {
+            "timestamp": "2026-01-01T00:00:01Z",
+            "case_id": "case",
+            "phase": "emit_claim_boundary",
+            "status": "completed",
+            "message": "emit_claim_boundary completed",
+        },
+    )
 
 
 def test_cli_help_includes_tui(capsys):
@@ -294,6 +367,52 @@ def test_watch_mode_reads_state_on_cadence_and_r_forces_refresh(
 
     assert exit_code == 130
     assert len(reads) == 2
+
+
+def test_finalized_run_stops_openclaw_without_manual_termination_prompt(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([10, -1, -1, -1, -1, -1, -1], size=(42, 120))
+    runs_root = tmp_path / "runs"
+    output_dir = runs_root / "case"
+    fake_process = FinalizedFakeProcess()
+    times = iter(float(index) for index in range(20))
+
+    def fake_launch(_agent: str, _prompt: str, log_path: Path) -> FinalizedFakeProcess:
+        _write_terminal_generated_run(output_dir)
+        log_path.write_text(
+            "EMBEDDED FALLBACK: Gateway agent timed out\n"
+            "GatewayTransportError: gateway timeout after 630000ms\n",
+            encoding="utf-8",
+        )
+        return fake_process
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(console.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(console, "launch_openclaw", fake_launch)
+    monkeypatch.setattr(console, "process_is_alive", lambda _pid: False, raising=False)
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt="Triage this case.",
+        case_id="case",
+        runs_root=runs_root,
+        source_root=None,
+        watch_only=False,
+        refresh_seconds=0.1,
+    )
+
+    drawn = "\n".join(screen.drawn)
+    assert exit_code == 0
+    assert fake_process.terminated is True
+    assert "OpenClaw is still running" not in drawn
+    assert "OpenClaw DONE" in drawn
+    assert "finalized: yes" in drawn
+    assert "GatewayTransportError: gateway timeout after 630000ms" in drawn
 
 
 def test_wrap_panel_lines_wraps_long_policy_and_rationale_lines():

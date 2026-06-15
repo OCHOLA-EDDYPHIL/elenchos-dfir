@@ -859,6 +859,7 @@ def test_mcp_server_exposes_tools_and_calls_summary(tmp_path: Path):
         "prepare_case",
         "record_model_rationale",
         "run_case",
+        "stop",
         "summarize_run",
         "start_case_run",
         "validate_run_outputs",
