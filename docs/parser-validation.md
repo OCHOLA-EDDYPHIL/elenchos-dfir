@@ -15,10 +15,9 @@ Related workflow documentation:
 
 ## Validation Environment
 
-Validation was run locally inside the SIFT Workstation VM against staged copies
-from provided hackathon Windows evidence sources. The source E01 images were
-exposed through EWF and mounted as direct NTFS volumes in read-only mode; no
-partition offset was used.
+Validation runs locally inside the SIFT Workstation VM against staged Windows
+disk-artifact evidence. Source E01 images are exposed through EWF and mounted
+as direct NTFS volumes in read-only mode; no partition offset is used.
 
 - MFT and Registry date checked: 2026-05-25T20:37:16Z
 - Amcache date checked: 2026-05-26T12:07:14Z
@@ -44,10 +43,10 @@ redacted or replaced with placeholders in committed documentation.
 Set local paths through environment variables:
 
 ```bash
-export SIFTGUARD_VALIDATION_EVIDENCE_ROOT="<LOCAL_EVIDENCE_ROOT>"
-export SIFTGUARD_VALIDATION_MFT_PATH="<LOCAL_EVIDENCE_ROOT>/.../$MFT"
-export SIFTGUARD_VALIDATION_REGISTRY_HIVE_PATHS="<LOCAL_EVIDENCE_ROOT>/.../NTUSER.DAT:<LOCAL_EVIDENCE_ROOT>/.../SOFTWARE"
-export SIFTGUARD_VALIDATION_AMCACHE_PATH="<LOCAL_EVIDENCE_ROOT>/.../Amcache.hve"
+export ELENCHOS_VALIDATION_EVIDENCE_ROOT="<LOCAL_EVIDENCE_ROOT>"
+export ELENCHOS_VALIDATION_MFT_PATH="<LOCAL_EVIDENCE_ROOT>/.../$MFT"
+export ELENCHOS_VALIDATION_REGISTRY_HIVE_PATHS="<LOCAL_EVIDENCE_ROOT>/.../NTUSER.DAT:<LOCAL_EVIDENCE_ROOT>/.../SOFTWARE"
+export ELENCHOS_VALIDATION_AMCACHE_PATH="<LOCAL_EVIDENCE_ROOT>/.../Amcache.hve"
 ```
 
 Then run:
@@ -65,10 +64,9 @@ The `.local/` directory is ignored and must remain local-only.
 ## Results
 
 Validation ran with staged artifacts under `<LOCAL_EVIDENCE_ROOT>`. The selected
-user profile hive is redacted as `<REDACTED_USER_PROFILE>`. PR #45 validated
-the MFT and Registry Run Key wrappers. This follow-up validation staged
-`Amcache.hve` from a separate provided hackathon Windows evidence source and
-completed the remaining Amcache validation gap.
+user profile hive is redacted as `<REDACTED_USER_PROFILE>`. The MFT, Registry
+Run Key, and Amcache wrappers are validated with local SIFT tooling and
+sanitized results.
 
 | Artifact | Staged input | Status |
 | --- | --- | --- |

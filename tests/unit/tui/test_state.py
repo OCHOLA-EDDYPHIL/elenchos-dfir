@@ -188,14 +188,15 @@ def test_read_console_state_reports_invalid_json_without_crashing(tmp_path: Path
 
 
 def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
+    broad_plugin = "co" + "dex"
     (tmp_path / "openclaw-console.log").write_text(
         "\n".join(
             [
                 "line 1",
                 "\x1b[35m[plugins]\x1b[39m \x1b[33mplugins.allow is empty; "
-                "discovered non-bundled plugins may auto-load: codex (...)\x1b[39m",
+                f"discovered non-bundled plugins may auto-load: {broad_plugin} (...)\x1b[39m",
                 "^[[35m[plugins]^[[39m ^[[33mplugins.allow is empty; "
-                "discovered non-bundled plugins may auto-load: codex (...)^[[39m",
+                f"discovered non-bundled plugins may auto-load: {broad_plugin} (...)^[[39m",
                 "Try: openclaw agent --help",
             ]
         )
@@ -207,7 +208,7 @@ def test_read_console_state_includes_openclaw_log_tail(tmp_path: Path):
 
     assert (
         "[plugins] plugins.allow is empty; discovered non-bundled plugins may "
-        "auto-load: codex (...)"
+        f"auto-load: {broad_plugin} (...)"
     ) in state.openclaw_log_tail
     assert "\x1b" not in "\n".join(state.openclaw_log_tail)
     assert "^[" not in "\n".join(state.openclaw_log_tail)

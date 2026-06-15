@@ -8,9 +8,9 @@ SHELL_FORBIDDEN_TOKENS = (";", "&", "|", ">", "<", "`", "$", "\n", "\r")
 ARG_FORBIDDEN_TOKENS = SHELL_FORBIDDEN_TOKENS + ("\x00",)
 
 PARSER_ENV_OVERRIDES = {
-    "mftecmd": "SIFTGUARD_MFT_PARSER",
-    "recmd": "SIFTGUARD_REGISTRY_PARSER",
-    "amcacheparser": "SIFTGUARD_AMCACHE_PARSER",
+    "mftecmd": "ELENCHOS_MFT_PARSER",
+    "recmd": "ELENCHOS_REGISTRY_PARSER",
+    "amcacheparser": "ELENCHOS_AMCACHE_PARSER",
 }
 
 

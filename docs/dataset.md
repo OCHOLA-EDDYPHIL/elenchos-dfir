@@ -3,14 +3,14 @@
 ## Purpose
 
 This document explains the supported evidence inputs, local staging layout,
-validation scope, expected demo observations, and evidence safety rules for the
-submission-ready Elenchos workflow. It does not publish raw evidence,
-private local paths, or private evidence hashes.
+validation scope, expected observations, and evidence safety rules for the
+Elenchos workflow. It does not publish raw evidence, private local paths, or
+private evidence hashes.
 
 ## Supported Dataset Scope
 
-Elenchos is scoped to Windows disk-artifact triage. The final supported
-artifact classes are:
+Elenchos is scoped to Windows disk-artifact triage. The supported artifact
+classes are:
 
 - `$MFT` for filesystem metadata and file timeline observations.
 - Registry `Run` and `RunOnce` keys from `NTUSER.DAT` and `SOFTWARE` for
@@ -73,9 +73,9 @@ The same JSON source manifest can be reused later:
 ```
 
 The generated `case_prep.json` is the prepared artifact manifest for downstream
-workflows. The final submission scope remains disk-first: memory images are
-inventoried as staged but out of scope, and Amcache is searched from the disk
-path `Windows/AppCompat/Programs/Amcache.hve`.
+workflows. The current scope remains disk-first: memory images are inventoried
+as staged but out of scope, and Amcache is searched from the disk path
+`Windows/AppCompat/Programs/Amcache.hve`.
 
 ## Local Config
 
@@ -86,20 +86,20 @@ file. These variable names match `scripts/validate_sift_parsers.py`.
 mkdir -p .local/sift-validation
 
 cat > .local/sift-validation/paths.env <<'EOF'
-SIFTGUARD_VALIDATION_EVIDENCE_ROOT=<LOCAL_EVIDENCE_ROOT>
-SIFTGUARD_VALIDATION_MFT_PATH=<LOCAL_EVIDENCE_ROOT>/mft/$MFT
-SIFTGUARD_VALIDATION_REGISTRY_HIVE_PATHS=<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT:<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE
-SIFTGUARD_VALIDATION_AMCACHE_PATH=<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve
+ELENCHOS_VALIDATION_EVIDENCE_ROOT=<LOCAL_EVIDENCE_ROOT>
+ELENCHOS_VALIDATION_MFT_PATH=<LOCAL_EVIDENCE_ROOT>/mft/$MFT
+ELENCHOS_VALIDATION_REGISTRY_HIVE_PATHS=<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT:<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE
+ELENCHOS_VALIDATION_AMCACHE_PATH=<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve
 EOF
 ```
 
 Do not commit `.local/`. Machine-specific evidence paths, mounted volume paths,
 case names, hostnames, usernames, and private source locations must remain local.
 
-## Demo Dataset
+## Example Dataset
 
-The final demo should use locally staged artifacts matching the supported layout.
-The repository documents the artifact classes and workflow, not private local
+Example runs use locally staged artifacts matching the supported layout. The
+repository documents the artifact classes and workflow, not private local
 evidence.
 
 The demo case should contain enough activity to show:
@@ -115,10 +115,9 @@ is backed by committed sanitized fixtures or reviewed public documentation.
 
 ## Secondary Validation
 
-If suitable evidence is available before final submission, run one additional
-compatible artifact set through the same workflow. Keep the validation scope to
-the same artifact classes: `$MFT`, Registry `Run`/`RunOnce` keys, and
-`Amcache.hve`.
+When suitable evidence is available, run one additional compatible artifact set
+through the same workflow. Keep the validation scope to the same artifact
+classes: `$MFT`, Registry `Run`/`RunOnce` keys, and `Amcache.hve`.
 
 The purpose is reproducibility checking: confirm parser behavior, correlation
 behavior, output structure, and traceability outside the primary demo case. This
@@ -188,9 +187,9 @@ Examples of forbidden repository content:
 
 ## Unsupported Evidence Types
 
-The final submission scope does not include:
+The current scope does not include:
 
-- Memory images, unless separately documented in a future scope.
+- Memory images unless a dedicated parser workflow is implemented.
 - Packet captures or network traffic analysis.
 - Cloud logs or cloud incident response.
 - Remote endpoint triage.

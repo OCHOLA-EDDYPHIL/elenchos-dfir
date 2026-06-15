@@ -8,7 +8,7 @@ from typing import Any
 
 from elenchos.agent.models import BLOCKED_EXECUTION_KEYS
 
-CASEBOOK_YAML_REJECTION = "YAML casebooks are not supported in the final sprint; use JSON."
+CASEBOOK_YAML_REJECTION = "YAML casebooks are not supported; use JSON."
 CASEBOOK_CLAIM_BOUNDARY_STATUSES = {
     "confirmed",
     "inferred",

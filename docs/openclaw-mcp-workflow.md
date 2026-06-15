@@ -9,14 +9,13 @@ that OpenClaw can call, while Elenchos Python code performs case preparation,
 parser execution, validation, self-correction, reporting, and audit logging.
 
 The preferred integration path is the bounded MCP/tool adapter. Elenchos
-remains model-agnostic. It does not require Claude Code, does not select an
-OpenClaw provider or model, and does not treat model output as forensic
-evidence.
+remains model-agnostic. It does not select an OpenClaw provider or model, and
+does not treat model output as forensic evidence.
 
 ### Agent orchestration guidance
 
-This repository includes [`AGENTS.md`](../AGENTS.md) for OpenClaw, Claude Code,
-and other agentic CLI hosts. It instructs agents to use Elenchos as a bounded
+This repository includes [`AGENTS.md`](../AGENTS.md) for OpenClaw and
+compatible agentic CLI hosts. It instructs agents to use Elenchos as a bounded
 forensic orchestration layer, preserve read-only evidence handling, summarize
 progress telemetry, validate outputs, and avoid unsupported claims.
 
@@ -155,7 +154,8 @@ The project does not require a committed OpenClaw config file. If a shell needs
 OpenClaw-specific `PATH` setup, keep that in local shell configuration rather
 than repository files.
 
-Before recording a demo, run the preflight from the current checkout:
+Before recording or demonstrating a run, execute the preflight from the current
+checkout:
 
 ```bash
 .venv/bin/python scripts/demo_elenchos_preflight.py
@@ -165,10 +165,10 @@ The preflight confirms that OpenClaw points at the current repository, that the
 MCP server exposes the bounded Elenchos tools, and that the local SIFT /
 Zimmerman commands needed by the deterministic workflow are available. If it
 reports a stale path, re-run the `openclaw mcp set elenchos ...` command above.
-For final demo recording, configure an explicit plugin allowlist through
-`plugins.allow`. Disable or explicitly exclude non-required
-non-bundled plugins, including `codex`, unless they are part of the submitted
-runtime path. The submitted runtime path should use bounded Elenchos tools only.
+For recorded runs, configure an explicit plugin allowlist through
+`plugins.allow`. Disable or explicitly exclude non-required non-bundled plugins
+unless they are part of the active runtime path. The runtime path should use
+bounded Elenchos tools only.
 The preflight emits a non-fatal warning when the local plugin allowlist is empty
 or unavailable; remediate that local OpenClaw configuration before recording.
 `AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
@@ -195,7 +195,7 @@ operation:
 
 ## Casebook Selection
 
-Use `docs/casebooks/rocba-standard.json` for the ROCBA final validation/demo.
+Use `docs/casebooks/rocba-standard.json` for ROCBA validation.
 Use `docs/casebooks/generic-windows-disk-triage.json` when the operator only
 has a Windows forensic image and no case-specific story. The generic casebook
 is marked `reusable_template: true`, so it can be used with arbitrary prepared
@@ -314,12 +314,11 @@ Trace distinction:
 - `trace_map.json` or existing evidence refs: finding-to-evidence traceability
   when emitted by deterministic Elenchos outputs.
 
-Post-PR SIFT/OpenClaw validation should register the MCP server from this
-branch, run `scripts/demo_elenchos_preflight.py`, then run a live OpenClaw
-agent prompt against the SIFT Workstation evidence environment. That validation
-must confirm visible `[model-rationale]` and `[policy]` lines, live polling,
-generated rationale/policy JSONL files, and unchanged deterministic claim
-boundaries before merge.
+SIFT/OpenClaw validation registers the MCP server from the current checkout,
+runs `scripts/demo_elenchos_preflight.py`, then runs a live OpenClaw agent
+prompt against the SIFT Workstation evidence environment. That validation
+confirms visible `[model-rationale]` and `[policy]` lines, live polling,
+generated rationale/policy JSONL files, and deterministic claim boundaries.
 
 Expected generated outputs include:
 
@@ -346,9 +345,9 @@ as a reusable operator prompt.
 
 OpenClaw controls provider and model selection through local operator
 configuration. Elenchos itself does not call a model during forensic
-validation, does not require a Claude Code subscription, and does not store or
-ship model API keys. Natural-language orchestration can request Elenchos
-tools, but Elenchos deterministic code performs the evidence-backed work.
+validation and does not store or ship model API keys. Natural-language
+orchestration can request Elenchos tools, but Elenchos deterministic code
+performs the evidence-backed work.
 
 ## Limitations
 

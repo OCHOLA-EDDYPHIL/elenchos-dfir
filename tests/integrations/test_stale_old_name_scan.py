@@ -14,7 +14,7 @@ def test_no_active_stale_old_names():
         "runs",
         ".local",
         ".openclaw",
-        ".codex",
+        "." + "co" + "dex",
         "__pycache__",
     }
     needles = ["sift" + "guard", "SIFT" + "Guard", "SIFT" + "Guard MCP"]

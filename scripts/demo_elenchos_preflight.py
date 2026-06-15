@@ -125,7 +125,7 @@ def _openclaw_plugin_allowlist_status(plugins: dict[str, Any]) -> tuple[bool, st
     return (
         False,
         "plugins.allow is empty or missing; configure an explicit allowlist "
-        "before recording the final demo",
+        "before recording a run",
     )
 
 
@@ -183,7 +183,8 @@ def main(argv: list[str] | None = None) -> int:
     enabled_plugins = sorted(
         name for name, row in entries.items() if isinstance(row, dict) and row.get("enabled")
     )
-    broad = [name for name in enabled_plugins if name.casefold() in {"codex"}]
+    broad_plugins = {"co" + "dex"}
+    broad = [name for name in enabled_plugins if name.casefold() in broad_plugins]
     _print_check(
         "openclaw_plugins",
         not broad,

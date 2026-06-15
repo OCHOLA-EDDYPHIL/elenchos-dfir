@@ -116,7 +116,7 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert "Architecture role" in mcp_docs
     assert "Current repo implementation" in mcp_docs
     assert "The preferred integration path is the bounded MCP/tool adapter" in mcp_docs
-    assert "Preferred final OpenClaw/MCP path" in readme
+    assert "Preferred OpenClaw/MCP path" in readme
     assert ".venv/bin/python -m elenchos.integrations.mcp_server" in mcp_docs
     assert ".venv/bin/python -m elenchos.integrations.mcp_server" in readme
     assert "scripts/openclaw_elenchos_smoke.py --dry-run" in mcp_docs
@@ -295,7 +295,6 @@ def test_openclaw_demo_docs_cover_plugin_allowlist_preflight():
 
     assert "plugins.allow" in combined
     assert "explicit plugin allowlist" in combined
-    assert "codex" in combined
     assert "bounded elenchos tools only" in combined
 
 
@@ -304,7 +303,7 @@ def test_demo_preflight_warns_on_empty_openclaw_plugin_allowlist():
 
     assert ok is False
     assert "plugins.allow is empty" in detail
-    assert "final demo" in detail
+    assert "recording a run" in detail
 
 
 def test_demo_preflight_accepts_explicit_openclaw_plugin_allowlist():

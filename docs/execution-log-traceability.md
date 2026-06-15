@@ -7,8 +7,8 @@ practitioner can trace generated findings back to workflow steps, tool
 executions, normalized records, and manifest artifacts. Raw private logs,
 private paths, raw evidence, and generated parser outputs are not committed.
 
-This document describes the log fields, traceability chain, regeneration
-commands, and sanitized run summaries used for final evaluation.
+This document describes log fields, the traceability chain, regeneration
+commands, and sanitized run summaries.
 
 ## Generated Files
 
@@ -237,9 +237,8 @@ emits a supportable finding when a coherent chain is present.
 
 The verifier fixture is synthetic and introduces an unsupported proposed
 `inferred` claim. It remains useful for regression testing verifier downgrade
-behavior, but it is not the final OpenClaw self-correction path. The bounded
-OpenClaw workflow uses casebook-defined claim-boundary posture revisions
-recorded by Elenchos outputs.
+behavior. The bounded OpenClaw workflow uses casebook-defined claim-boundary
+posture revisions recorded by Elenchos outputs.
 
 | Item | Value |
 | --- | --- |
@@ -286,11 +285,11 @@ Adapter trace outputs:
 
 ## Real-Gap OpenClaw Self-Correction Path
 
-The final OpenClaw demo self-correction is not an induced error. OpenClaw calls
-the bounded Elenchos tools, reads generated outputs only, and discovers that
-the configured claim-boundary questions remain unsupported by the submitted
+Real-gap OpenClaw self-correction is not an induced error. OpenClaw calls the
+bounded Elenchos tools, reads generated outputs only, and observes that the
+configured claim-boundary questions remain unsupported by the submitted
 artifact scope. Elenchos records this as `self_correction_events.json` from
-casebook metadata so OpenClaw can revise its final investigative posture without
+casebook metadata so OpenClaw can revise its investigative posture without
 treating model output as evidence.
 
 Sanitized summary:
@@ -354,14 +353,10 @@ Self-correction event:
 }
 ```
 
-## Closure Notes
+## Documentation Notes
 
-Issue #90 can be closed when this document is committed with validation output:
-
-- It documents generated execution-log fields and regeneration commands.
-- It records a full successful synthetic investigation path.
-- It records the bounded OpenClaw/MCP adapter path and real-gap posture sidecar.
-- It records the incomplete primary staged-evidence attempt honestly.
-
-Issue #89 should remain open until false positives, missed artifacts,
-unsupported claims, and final accuracy status are reviewed.
+This document records generated execution-log fields, regeneration commands,
+synthetic validation paths, the bounded OpenClaw/MCP adapter path, real-gap
+posture sidecars, and sanitized primary-run limits. Accuracy review should
+continue to distinguish false positives, missed artifacts, unsupported claims,
+and validated findings.

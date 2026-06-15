@@ -45,17 +45,17 @@ Parser integration tests are local-only and skipped by default. Enable them only
 when SIFT parser tools and local staged evidence artifacts are available:
 
 ```bash
-export SIFTGUARD_RUN_SIFT_INTEGRATION=1
-export SIFTGUARD_TEST_MFT_PATH="<LOCAL_EVIDENCE_ROOT>/mft/$MFT"
-export SIFTGUARD_TEST_NTUSER_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT"
-export SIFTGUARD_TEST_SOFTWARE_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE"
-export SIFTGUARD_TEST_AMCACHE_PATH="<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve"
+export ELENCHOS_RUN_SIFT_INTEGRATION=1
+export ELENCHOS_TEST_MFT_PATH="<LOCAL_EVIDENCE_ROOT>/mft/$MFT"
+export ELENCHOS_TEST_NTUSER_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/NTUSER.DAT"
+export ELENCHOS_TEST_SOFTWARE_HIVE="<LOCAL_EVIDENCE_ROOT>/registry/SOFTWARE"
+export ELENCHOS_TEST_AMCACHE_PATH="<LOCAL_EVIDENCE_ROOT>/amcache/Amcache.hve"
 
 .venv/bin/python -m pytest tests/integration
 ```
 
 When the gate is enabled, missing environment variables fail with clear
-messages. The tests write generated parser output to pytest temporary
+messages. The tests write generated parser output to pytest scratch
 directories and do not require or commit evidence artifacts.
 
 ## Parser Failure Visibility

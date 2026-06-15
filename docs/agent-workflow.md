@@ -57,8 +57,8 @@ The constrained entrypoint is:
 It consumes the Elenchos-generated `case_prep.json`, adapts available
 parser-eligible artifacts into the deterministic agent workflow, preserves
 source provenance, and carries case-prep coverage gaps forward. The casebook is
-optional for now and must be JSON when provided; YAML casebooks are rejected.
-Memory sources from `case_prep.json` remain inventoried/not assessed for final
+optional and must be JSON when provided; YAML casebooks are rejected. Memory
+sources from `case_prep.json` remain inventoried/not assessed for the current
 scope, and Amcache remains disk-first from the prepared artifact set.
 
 When a JSON casebook is provided, `agent run-case` maps normalized MFT,
@@ -76,10 +76,9 @@ intentionally strict:
 - `not_assessed`: the question requires unsupported artifacts or staged memory.
 - `rejected`: a proposed claim was contradicted or failed validation.
 
-`not_assessed` is deliberate, not a workflow failure. Under the current final
-scope, memory, theft contents, transfer destination, and exfiltration method
-questions remain `not_assessed` unless future supported parsers produce direct
-evidence.
+`not_assessed` is deliberate, not a workflow failure. Under the current scope,
+memory, theft contents, transfer destination, and exfiltration method questions
+remain `not_assessed` unless supported parsers produce direct evidence.
 
 Casebooks may include an optional `triage_profile` with `keywords`,
 `sensitive_paths`, and `file_extensions` to prioritize file-candidate review.

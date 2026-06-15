@@ -35,7 +35,7 @@ they cannot alone establish execution, user action, or maliciousness.
   `partial_success`.
 - Parser warnings should be preserved, not hidden.
 - Large raw artifacts can exceed available VM memory if every normalized event
-  is loaded for one run. The documented final demo path uses
+  is loaded for one run. The documented bounded triage path uses
   `--max-normalized-events` with `--event-selection-profile forensic-triage`;
   bounded outputs are reproducible but are not exhaustive full-artifact
   analysis.
@@ -48,12 +48,12 @@ they cannot alone establish execution, user action, or maliciousness.
   present. They do not prove real-world prevalence in local evidence.
 - Controlled self-correction fixtures prove downgrade and audit behavior for an
   induced unsupported claim. They are separate from primary evidence accuracy
-  results and are not the final OpenClaw demo self-correction story.
-- The final OpenClaw workflow can expose real evidence-gap posture revisions
+  results and from real evidence-gap posture revisions.
+- The OpenClaw workflow can expose real evidence-gap posture revisions
   from casebook-defined claim boundaries; for ROCBA, the submitted artifact
   scope does not support a theft/exfiltration conclusion.
 - The real staged primary run did not emit confirmed or inferred compromise
-  findings. Its final result remains bounded `needs_review` triage with no
+  findings. Its result remains bounded `needs_review` triage with no
   MFT-only findings.
 - Ordinary single-source MFT timelines remain timeline and coverage evidence.
   They are not findings unless correlation or validation rules create a

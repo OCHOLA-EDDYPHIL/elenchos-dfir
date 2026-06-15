@@ -30,11 +30,11 @@ are intentionally omitted.
 
 | Artifact | Parser target | Selected tool | Verified command/path | Runtime | Version/help evidence | Input artifact | Output format | Output location convention | Failure behavior | Parser workflow decision |
 |---|---|---|---|---|---|---|---|---|---|---|
-| `$MFT` | NTFS master file table | MFTECmd | `/usr/local/bin/MFTECmd` -> `dotnet /opt/zimmermantools/MFTECmd.dll` | .NET | `--version` returned `1.3.0+5eb8a7e63b5c2058be18d2784741f92cd1978879`; help reports `MFTECmd version 1.3.0.0` | `$MFT` file via `-f` | CSV selected; JSON and bodyfile are also supported | `runs/<case_id>/parsers/mft/` | Missing and invalid input returned exit code `0` with error text on stdout | Use MFTECmd for issue #22 |
-| Registry Run Keys from `SOFTWARE` | `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` and `RunOnce` | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | `--version` returned `2.1.0+b9838adf98fae6c96dd617101f0323199b1574be`; help reports `RECmd version 2.1.0.0` | `SOFTWARE` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parsers/registry_runkeys/software/` | Missing and invalid input returned exit code `0` with error text on stdout | Use RECmd direct key lookups for issue #24 |
-| Registry Run Keys from `NTUSER.DAT` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and `RunOnce` | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | Same verified RECmd version/help evidence as above | `NTUSER.DAT` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parsers/registry_runkeys/ntuser/` | Missing and invalid input returned exit code `0` with error text on stdout | Use RECmd direct key lookups for issue #24 |
-| Registry user activity from `NTUSER.DAT` | UserAssist, RecentDocs, OpenSavePidlMRU, LastVisitedPidlMRU, TypedPaths | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | Same verified RECmd version/help evidence as above | `NTUSER.DAT` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parser_outputs/<artifact_id>/recmd/` | Missing keys and unavailable parser become structured coverage gaps | Use RECmd direct key lookups for issue #125 |
-| `Amcache.hve` | Windows Amcache hive | AmcacheParser | `/usr/local/bin/AmcacheParser` -> `dotnet /opt/zimmermantools/AmcacheParser.dll` | .NET | `--version` returned `1.5.2+41484591de04144e1569eaad23e65cd719f8e154`; help reports `AmcacheParser version 1.5.2.0` | `Amcache.hve` via `-f` | CSV selected; installed help does not advertise JSON output | `runs/<case_id>/parsers/amcache/` | Missing and invalid input returned exit code `0` with error text on stdout | Use AmcacheParser for issue #26 |
+| `$MFT` | NTFS master file table | MFTECmd | `/usr/local/bin/MFTECmd` -> `dotnet /opt/zimmermantools/MFTECmd.dll` | .NET | `--version` returned `1.3.0+5eb8a7e63b5c2058be18d2784741f92cd1978879`; help reports `MFTECmd version 1.3.0.0` | `$MFT` file via `-f` | CSV selected; JSON and bodyfile are also supported | `runs/<case_id>/parsers/mft/` | Missing and invalid input returned exit code `0` with error text on stdout | Use MFTECmd |
+| Registry Run Keys from `SOFTWARE` | `HKLM\Software\Microsoft\Windows\CurrentVersion\Run` and `RunOnce` | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | `--version` returned `2.1.0+b9838adf98fae6c96dd617101f0323199b1574be`; help reports `RECmd version 2.1.0.0` | `SOFTWARE` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parsers/registry_runkeys/software/` | Missing and invalid input returned exit code `0` with error text on stdout | Use RECmd direct key lookups |
+| Registry Run Keys from `NTUSER.DAT` | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` and `RunOnce` | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | Same verified RECmd version/help evidence as above | `NTUSER.DAT` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parsers/registry_runkeys/ntuser/` | Missing and invalid input returned exit code `0` with error text on stdout | Use RECmd direct key lookups |
+| Registry user activity from `NTUSER.DAT` | UserAssist, RecentDocs, OpenSavePidlMRU, LastVisitedPidlMRU, TypedPaths | RECmd | `/usr/local/bin/RECmd` -> `dotnet /opt/zimmermantools/RECmd/RECmd.dll` | .NET | Same verified RECmd version/help evidence as above | `NTUSER.DAT` hive via `-f` | CSV selected; JSON supported for `--kn` | `runs/<case_id>/parser_outputs/<artifact_id>/recmd/` | Missing keys and unavailable parser become structured coverage gaps | Use RECmd direct user-activity lookups |
+| `Amcache.hve` | Windows Amcache hive | AmcacheParser | `/usr/local/bin/AmcacheParser` -> `dotnet /opt/zimmermantools/AmcacheParser.dll` | .NET | `--version` returned `1.5.2+41484591de04144e1569eaad23e65cd719f8e154`; help reports `AmcacheParser version 1.5.2.0` | `Amcache.hve` via `-f` | CSV selected; installed help does not advertise JSON output | `runs/<case_id>/parsers/amcache/` | Missing and invalid input returned exit code `0` with error text on stdout | Use AmcacheParser |
 
 ## `$MFT` Parser Tooling
 
@@ -70,15 +70,13 @@ Failure behavior:
 - Missing output directory with invalid input: exit code `0`; the invalid input
   failed before output creation, and the missing directory was not created.
 
-Limitations:
+Limits:
 
-- No real evidence was parsed during this research PR.
-- Valid `$MFT` output columns and file creation behavior must be confirmed with
-  later synthetic fixtures during wrapper testing.
+- Tool discovery did not parse private evidence.
 - Wrappers must create the output directory before invocation and must not rely
   on exit code alone.
 
-Recommended approach for issue #22:
+Wrapper decision:
 
 - Resolve `MFTECmd` through configuration or environment override, defaulting to
   `PATH`.
@@ -153,15 +151,15 @@ Failure behavior:
 - Missing output directory with invalid input: exit code `0`; the invalid input
   failed before output creation, and the missing directory was not created.
 
-Limitations:
+Limits:
 
-- No real registry hive was parsed during this research PR.
-- Exact RECmd CSV columns and generated file naming must be confirmed with later
-  synthetic fixtures.
-- Transaction log handling policy should be finalized during wrapper contract
-  work.
+- Tool discovery did not parse private registry hives.
+- RECmd CSV columns and generated filenames depend on the installed tool
+  version and input hive quality.
+- Dirty-hive transaction log behavior remains visible through parser warnings
+  and coverage gaps.
 
-Recommended approach for issue #24:
+Wrapper decision:
 
 - Use RECmd direct `--kn` lookups for the four Run/RunOnce targets.
 - Run one command per hive/key target so audit entries remain narrow and
@@ -206,15 +204,15 @@ Failure behavior:
 - Missing output directory with invalid input: exit code `0`; the invalid input
   failed before output creation, and the missing directory was not created.
 
-Limitations:
+Limits:
 
-- No real `Amcache.hve` was parsed during this research PR.
-- Exact CSV columns and generated file naming must be confirmed with later
-  synthetic fixtures.
+- Tool discovery did not parse private Amcache hives.
+- CSV columns and generated filenames depend on the installed tool version and
+  input hive quality.
 - Wrappers must create the output directory before invocation and must not rely
   on exit code alone.
 
-Recommended approach for issue #26:
+Wrapper decision:
 
 - Resolve `AmcacheParser` through configuration or environment override,
   defaulting to `PATH`.
@@ -238,8 +236,8 @@ Recommended approach for issue #26:
   parser wrappers for the selected artifacts.
 - `fiwalk`: installed filesystem metadata extraction support, not selected for
   the narrow parser wrappers.
-- `EvtxECmd`: installed at `/usr/local/bin/EvtxECmd`, but EVTX parsing is future
-  reference only and outside this parser workflow scope.
+- `EvtxECmd`: installed at `/usr/local/bin/EvtxECmd`, but EVTX parsing is
+  reference material and outside this parser workflow scope.
 - `regipy`: not found as a command or importable Python package in this VM.
 - `mono`: not found on `PATH`; not required for the selected .NET wrapper scripts.
 
@@ -252,7 +250,7 @@ Recommended approach for issue #26:
 | AmcacheParser | stdout says file not found | stdout says bad Registry hive signature and emits stack trace text | Not created when invalid input failed first | Returned `0` for tested failures | Errors were on stdout; stderr empty in tested failures | Parse stdout and expected output files; treat stack traces as parser failure |
 | RegRipper `rip.pl` | Plugin banner on stdout and plugin error on stderr | Plugin banner on stdout and plugin error on stderr | Not applicable; stdout-oriented tool | Returned `0` for tested failures | stderr contained plugin errors | Keep as fallback/reference; selected wrappers should prefer RECmd/AmcacheParser |
 
-Future parser wrappers must map nonzero exits to failed parser results. Absent
+Additional parser wrappers must map nonzero exits to failed parser results. Absent
 parser commands must become skipped or failed parser results with clear reasons.
 Malformed or absent parser output must produce warnings or failure status,
 depending on the parser contract. stdout/stderr paths must be preserved under
@@ -272,17 +270,16 @@ stdout/stderr paths, and hashes where applicable.
   - `runs/<case_id>/logs/`
   - `runs/<case_id>/normalized/`
 
-## Open Assumptions
+## Boundaries
 
-- This PR did not parse real evidence or generated fixture hives.
-- Exact output columns and generated filenames remain pending synthetic fixture
-  tests during wrapper testing.
-- Missing-output-directory behavior with valid artifacts remains pending fixture
-  tests; wrappers should create output directories before invoking tools.
+- Tool discovery did not parse private evidence or generated fixture hives.
+- Installed-tool output columns and generated filenames remain tied to the
+  local MFTECmd, RECmd, and AmcacheParser versions.
+- Wrappers create output directories before invoking tools.
 - RECmd batch/plugin selection remains direct `--kn` by default; broader RECmd
-  batch examples are future reference only.
-- Transaction log policy for dirty registry hives should be finalized during
-  parser contract work.
+  batch examples remain reference material.
+- Dirty registry hive transaction-log behavior remains visible through parser
+  warnings and coverage gaps.
 
 ## Evidence Safety
 

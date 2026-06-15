@@ -13,8 +13,7 @@ from elenchos.case_prep.models import (
 )
 
 YAML_REJECTION = (
-    "YAML source manifests are not supported in the final sprint; use JSON or "
-    "source-root discovery."
+    "YAML source manifests are not supported; use JSON or source-root discovery."
 )
 
 
