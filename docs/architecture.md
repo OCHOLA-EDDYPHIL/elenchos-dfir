@@ -12,10 +12,10 @@
 
 ## System Overview
 
-Elenchos is a local-first, analyst-assist triage workflow. A human analyst
-starts a constrained run, the agent plans supported workflow steps, typed CLI and
+Elenchos is a bounded autonomous DFIR triage workflow. A human analyst starts a
+constrained run, the model proposes supported workflow steps, typed CLI and
 MCP-compatible schemas constrain execution, parser wrappers call deterministic
-SIFT tools, and validation controls which findings can appear in final outputs.
+SIFT tools, and validation controls which findings can appear in reports.
 
 ```mermaid
 flowchart TD
@@ -63,13 +63,13 @@ flowchart TD
   Ledger --> Reports
   Ledger --> JsonOutputs
 
-  Reports --> Sanitized["Sanitized Submission Artifacts<br/>(reviewed examples only)"]
+  Reports --> Sanitized["Sanitized Public Artifacts<br/>(reviewed examples only)"]
   JsonOutputs --> Sanitized
 ```
 
 Raw evidence flows into the system only as read-only input. Generated parser
 outputs, logs, reports, JSON files, and agent records flow to `runs/` or another
-ignored generated-output root. Any committed submission artifact should be a
+ignored generated-output root. Any committed public artifact should be a
 reviewed and sanitized example, not raw evidence or private run output.
 
 ## How To Read This Diagram
@@ -129,15 +129,15 @@ validation.
 
 ## Supported Scope
 
-The submission-ready scope is Windows disk-artifact triage focused on:
+The current scope is Windows disk-artifact triage focused on:
 
 - MFT records parsed through `MFTECmd`.
 - Registry `Run` and `RunOnce` persistence keys parsed through `RECmd`.
 - Amcache execution evidence parsed through `AmcacheParser`.
 - Drop, persistence, and execution correlation from normalized events.
 
-The final submission scope does not include memory forensics, packet or network
-analysis, cloud incident response, remote endpoint triage, offensive operations,
+The current scope does not include memory forensics, packet or network
+analysis, browser/cloud analysis, remote endpoint triage, offensive operations,
 legal evidence certification, or broad SIFT automation.
 
 ## Components

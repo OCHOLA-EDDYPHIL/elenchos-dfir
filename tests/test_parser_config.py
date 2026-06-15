@@ -20,7 +20,7 @@ def test_default_parser_command_config_returns_argv_tuples():
 
 def test_parser_command_config_supports_safe_env_override():
     config = default_parser_command_config(
-        environ={"SIFTGUARD_MFT_PARSER": "/usr/local/bin/MFTECmd"}
+        environ={"ELENCHOS_MFT_PARSER": "/usr/local/bin/MFTECmd"}
     )
 
     assert resolve_parser_command("mftecmd", config) == ("/usr/local/bin/MFTECmd",)
@@ -29,7 +29,7 @@ def test_parser_command_config_supports_safe_env_override():
 def test_parser_command_config_rejects_malicious_env_override():
     with pytest.raises(ValueError, match="forbidden shell token"):
         default_parser_command_config(
-            environ={"SIFTGUARD_MFT_PARSER": "MFTECmd; rm -rf ..."}
+            environ={"ELENCHOS_MFT_PARSER": "MFTECmd; rm -rf ..."}
         )
 
 

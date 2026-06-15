@@ -47,8 +47,9 @@ to workflow execution and correction decisions.
 ## Secrets And Runtime State
 
 Do not commit credentials, provider tokens, API keys, browser/device-code
-values, account identifiers, OpenClaw auth state, Codex auth state, gateway
-logs, transcripts, shell history, or `.codex` / `.openclaw` contents.
+values, account identifiers, OpenClaw auth state, local agent auth state,
+gateway logs, transcripts, shell history, or local agent configuration
+directories.
 
 Do not paste raw evidence, secrets, local case paths, private hostnames, or
 usernames into OpenClaw prompts or committed documentation.

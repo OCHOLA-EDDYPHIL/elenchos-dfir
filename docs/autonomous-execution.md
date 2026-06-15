@@ -60,11 +60,10 @@ Generated autonomy logs:
 - `run_job.json`: bounded async job metadata.
 - `progress.jsonl`: runtime telemetry.
 
-Local Codex-machine tests use synthetic generated outputs and fake or harmless
+Local adapter tests use synthetic generated outputs and fake or harmless
 job runners. They do not require OpenClaw credentials, ROCBA evidence, SIFT
 parser tools, or real forensic runs.
 
-Pre-merge validation on the SIFT Workstation should run this branch with a live
-OpenClaw agent, confirm visible `[model-rationale]` and `[policy]` lines, verify
-start/poll/finish behavior, and ensure deterministic validation still controls
-claim boundaries.
+SIFT Workstation validation uses a live OpenClaw agent to confirm visible
+`[model-rationale]` and `[policy]` lines, verify start/poll/finish behavior,
+and ensure deterministic validation controls claim boundaries.

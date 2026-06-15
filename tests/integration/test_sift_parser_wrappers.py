@@ -11,8 +11,8 @@ from elenchos.parser.mft import parse_mft
 from elenchos.parser.registry_runkeys import parse_registry_runkeys
 
 pytestmark = pytest.mark.skipif(
-    os.getenv("SIFTGUARD_RUN_SIFT_INTEGRATION") != "1",
-    reason="set SIFTGUARD_RUN_SIFT_INTEGRATION=1 to run local SIFT parser tests",
+    os.getenv("ELENCHOS_RUN_SIFT_INTEGRATION") != "1",
+    reason="set ELENCHOS_RUN_SIFT_INTEGRATION=1 to run local SIFT parser tests",
 )
 
 
@@ -20,7 +20,7 @@ def require_env_path(name: str) -> Path:
     value = os.getenv(name)
     if not value:
         pytest.fail(
-            f"{name} is required when SIFTGUARD_RUN_SIFT_INTEGRATION=1",
+            f"{name} is required when ELENCHOS_RUN_SIFT_INTEGRATION=1",
             pytrace=False,
         )
     path = Path(value)
@@ -51,7 +51,7 @@ def assert_audit_written(ledger_path: Path) -> None:
 
 
 def test_mft_wrapper_runs_with_local_sift_artifact(tmp_path: Path) -> None:
-    mft_path = require_env_path("SIFTGUARD_TEST_MFT_PATH")
+    mft_path = require_env_path("ELENCHOS_TEST_MFT_PATH")
     runs_root = tmp_path / "runs"
     ledger_path = runs_root / "CASE-INTEGRATION" / "audit.jsonl"
 
@@ -74,8 +74,8 @@ def test_mft_wrapper_runs_with_local_sift_artifact(tmp_path: Path) -> None:
 
 def test_registry_runkey_wrapper_runs_with_local_sift_artifacts(tmp_path: Path) -> None:
     hive_paths = (
-        ("EV-REG-NTUSER-INTEGRATION", require_env_path("SIFTGUARD_TEST_NTUSER_HIVE")),
-        ("EV-REG-SOFTWARE-INTEGRATION", require_env_path("SIFTGUARD_TEST_SOFTWARE_HIVE")),
+        ("EV-REG-NTUSER-INTEGRATION", require_env_path("ELENCHOS_TEST_NTUSER_HIVE")),
+        ("EV-REG-SOFTWARE-INTEGRATION", require_env_path("ELENCHOS_TEST_SOFTWARE_HIVE")),
     )
     runs_root = tmp_path / "runs"
     ledger_path = runs_root / "CASE-INTEGRATION" / "audit.jsonl"
@@ -102,7 +102,7 @@ def test_registry_runkey_wrapper_runs_with_local_sift_artifacts(tmp_path: Path) 
 
 
 def test_amcache_wrapper_runs_with_local_sift_artifact(tmp_path: Path) -> None:
-    amcache_path = require_env_path("SIFTGUARD_TEST_AMCACHE_PATH")
+    amcache_path = require_env_path("ELENCHOS_TEST_AMCACHE_PATH")
     runs_root = tmp_path / "runs"
     ledger_path = runs_root / "CASE-INTEGRATION" / "audit.jsonl"
 

@@ -77,10 +77,10 @@ Use one-shot text mode for non-interactive checks:
 elenchos tui --watch-only --output-dir runs/<case> --once
 ```
 
-Before recording a final OpenClaw demo, configure an explicit plugin allowlist
-through `plugins.allow`. Disable or explicitly exclude non-required
-non-bundled plugins, including `codex`, unless they are part of the submitted
-runtime path. The submitted runtime path should use bounded Elenchos tools only.
+Before recording or demonstrating an OpenClaw run, configure an explicit plugin
+allowlist through `plugins.allow`. Disable or explicitly exclude non-required
+non-bundled plugins unless they are part of the active runtime path. The runtime
+path should use bounded Elenchos tools only.
 `scripts/demo_elenchos_preflight.py` reports this as a non-fatal warning so the
 operator can remediate local OpenClaw configuration before recording.
 
@@ -88,7 +88,7 @@ The prompt editor is designed for immediate analyst input. The
 `--refresh-seconds` option controls how often the console rereads generated
 Elenchos artifacts; it does not control typing latency. Typing uses a short
 input poll interval and does not reread generated files, create the output
-directory, or write `run_context.json` before prompt submission.
+directory, or write `run_context.json` until the prompt is submitted.
 
 Elenchos wraps the analyst prompt with runtime constraints: use only bounded
 Elenchos tools, keep raw evidence read-only, use the exact generated output

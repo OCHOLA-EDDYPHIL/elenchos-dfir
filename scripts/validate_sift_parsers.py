@@ -82,21 +82,21 @@ def load_validation_defaults(
         return env.get(name) or local_values.get(name)
 
     defaults: dict[str, Any] = {}
-    evidence_root = get_value("SIFTGUARD_VALIDATION_EVIDENCE_ROOT")
+    evidence_root = get_value("ELENCHOS_VALIDATION_EVIDENCE_ROOT")
     if evidence_root:
         defaults["evidence_root"] = Path(evidence_root)
 
-    mft_path = get_value("SIFTGUARD_VALIDATION_MFT_PATH")
+    mft_path = get_value("ELENCHOS_VALIDATION_MFT_PATH")
     if mft_path:
         defaults["mft_path"] = Path(mft_path)
 
     registry_paths = split_registry_hive_paths(
-        get_value("SIFTGUARD_VALIDATION_REGISTRY_HIVE_PATHS")
+        get_value("ELENCHOS_VALIDATION_REGISTRY_HIVE_PATHS")
     )
     if registry_paths:
         defaults["registry_hive_paths"] = registry_paths
 
-    amcache_path = get_value("SIFTGUARD_VALIDATION_AMCACHE_PATH")
+    amcache_path = get_value("ELENCHOS_VALIDATION_AMCACHE_PATH")
     if amcache_path:
         defaults["amcache_path"] = Path(amcache_path)
 

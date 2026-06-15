@@ -56,9 +56,9 @@ Default parser command names are:
 
 Local executable overrides may be supplied through:
 
-- `SIFTGUARD_MFT_PARSER`
-- `SIFTGUARD_REGISTRY_PARSER`
-- `SIFTGUARD_AMCACHE_PARSER`
+- `ELENCHOS_MFT_PARSER`
+- `ELENCHOS_REGISTRY_PARSER`
+- `ELENCHOS_AMCACHE_PARSER`
 
 Overrides are validated as a single executable argv element. Shell metacharacters
 such as `;`, `&`, `|`, redirection, backticks, and `$` are rejected.
