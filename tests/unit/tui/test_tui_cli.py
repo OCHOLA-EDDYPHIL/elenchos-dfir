@@ -1,0 +1,487 @@
+from __future__ import annotations
+
+import curses
+import json
+from pathlib import Path
+
+import pytest
+
+from elenchos.cli import main
+from elenchos.config.runtime import DEFAULT_TUI_REFRESH_SECONDS
+from elenchos.tui import console
+
+
+class FakeScreen:
+    def __init__(self, keys: list[int], *, size: tuple[int, int] = (30, 120)) -> None:
+        self.keys = list(keys)
+        self.size = size
+        self.timeouts: list[int] = []
+        self.drawn: list[str] = []
+
+    def timeout(self, value: int) -> None:
+        self.timeouts.append(value)
+
+    def getch(self) -> int:
+        if self.keys:
+            return self.keys.pop(0)
+        return -1
+
+    def erase(self) -> None:
+        return None
+
+    def getmaxyx(self) -> tuple[int, int]:
+        return self.size
+
+    def addnstr(self, _y: int, _x: int, text: str, _width: int, _attr: int = 0) -> None:
+        self.drawn.append(text)
+
+    def refresh(self) -> None:
+        return None
+
+
+class FinalizedFakeProcess:
+    pid = 999123
+
+    def __init__(self) -> None:
+        self.returncode: int | None = None
+        self.terminated = False
+        self.killed = False
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+        self.returncode = 0
+
+    def kill(self) -> None:
+        self.killed = True
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self.returncode or 0
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _append_jsonl(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload, sort_keys=True))
+        handle.write("\n")
+
+
+def _write_terminal_generated_run(output_dir: Path) -> None:
+    _write_json(output_dir / "agent_run.json", {"case_id": "case", "status": "completed"})
+    _write_json(output_dir / "run_job.json", {"status": "completed", "returncode": 0})
+    _write_json(output_dir / "findings.json", {"findings": [{"status": "confirmed"}]})
+    _write_json(
+        output_dir / "case_questions.json",
+        {"status_counts": {"confirmed": 1}, "questions": []},
+    )
+    _write_json(output_dir / "normalized_events.json", {"event_count": 5000})
+    _write_json(
+        output_dir / "gap_analysis.json",
+        {"claim_boundaries": [{"final_wording": "Generated boundary wording."}]},
+    )
+    _write_json(output_dir / "validation_summary.json", {"validation_status": "pass"})
+    (output_dir / "report.md").write_text("# Report\n\nGenerated summary.\n", encoding="utf-8")
+    _append_jsonl(
+        output_dir / "progress.jsonl",
+        {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "case_id": "case",
+            "phase": "summarize_run",
+            "status": "completed",
+            "message": "summarize_run completed",
+        },
+    )
+    _append_jsonl(
+        output_dir / "progress.jsonl",
+        {
+            "timestamp": "2026-01-01T00:00:01Z",
+            "case_id": "case",
+            "phase": "emit_claim_boundary",
+            "status": "completed",
+            "message": "emit_claim_boundary completed",
+        },
+    )
+
+
+def test_cli_help_includes_tui(capsys):
+    with pytest.raises(SystemExit):
+        main(["--help"])
+
+    assert "tui" in capsys.readouterr().out
+
+
+def test_cli_tui_help_works_without_openclaw(capsys):
+    with pytest.raises(SystemExit):
+        main(["tui", "--help"])
+
+    output = capsys.readouterr().out
+    assert "Elenchos analyst case console" in output
+    assert "--watch-only" in output
+    assert "--once" in output
+
+
+def test_cli_tui_watch_once_prints_snapshot_without_curses_or_openclaw(
+    tmp_path: Path,
+    capsys,
+):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (tmp_path / "model_rationale.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-06-14T00:00:00Z",
+                "visible_message": "[model-rationale] Test rationale.",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "policy_decisions.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-06-14T00:00:01Z",
+                "visible_policy_message": (
+                    "[policy] proposed inspect_run_state -> allowed: generated outputs only."
+                ),
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (run_dir / "run_job.json").write_text(
+        json.dumps({"status": "completed", "returncode": 0}) + "\n",
+        encoding="utf-8",
+    )
+
+    exit_code = main(["tui", "--watch-only", "--output-dir", str(tmp_path), "--once"])
+
+    output = capsys.readouterr().out
+    assert exit_code == 0
+    assert "Elenchos Case Console" in output
+    assert "[model-rationale] Test rationale." in output
+    assert "[policy] proposed inspect_run_state -> allowed" in output
+
+
+def test_cli_tui_watch_only_without_output_dir_fails_clearly(capsys):
+    exit_code = main(["tui", "--watch-only", "--once"])
+
+    assert exit_code == 2
+    assert "output_dir is required with --watch-only" in capsys.readouterr().out
+
+
+def test_no_arg_tui_prompt_resolution_does_not_require_source_root():
+    assert console._resolve_analyst_prompt(  # noqa: SLF001
+        prompt=None,
+        prompt_file=None,
+        watch_only=False,
+    ) is None
+
+
+def test_initial_output_dir_planning_does_not_create_run_dir(tmp_path: Path):
+    runs_root = tmp_path / "runs"
+
+    output_dir = console._resolve_initial_output_dir(  # noqa: SLF001
+        output_dir=None,
+        case_id="case",
+        runs_root=runs_root,
+        watch_only=False,
+    )
+
+    assert output_dir is not None
+    assert output_dir.parent == runs_root.resolve()
+    assert not output_dir.exists()
+
+
+def test_output_dir_under_mnt_evidence_is_rejected():
+    with pytest.raises(ValueError, match="must not be under /mnt/evidence"):
+        console._resolve_initial_output_dir(  # noqa: SLF001
+            output_dir=Path("/mnt/evidence/elenchos-tui-test"),
+            case_id=None,
+            runs_root=Path("runs"),
+            watch_only=False,
+        )
+
+
+def test_launch_from_prompt_writes_context_and_lock(tmp_path: Path, monkeypatch):
+    class FakeProcess:
+        pid = 123456
+
+        def poll(self):
+            return None
+
+    def fake_launch(agent: str, prompt: str, log_path: Path):
+        assert agent == "main"
+        assert "--message" not in prompt
+        log_path.write_text("started\n", encoding="utf-8")
+        return FakeProcess()
+
+    monkeypatch.setattr(console, "launch_openclaw", fake_launch)
+    monkeypatch.setattr(console, "process_is_alive", lambda pid: False, raising=False)
+    runs_root = tmp_path / "runs"
+    output_dir = runs_root / "case"
+
+    error, process, status = console._launch_from_prompt(  # noqa: SLF001
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt="Triage this case.",
+        case_id="case",
+        runs_root=runs_root,
+        source_root=None,
+    )
+
+    assert error is None
+    assert process is not None
+    assert status == "running pid=123456"
+    context = json.loads((output_dir / "run_context.json").read_text(encoding="utf-8"))
+    assert context["analyst_prompt"] == "Triage this case."
+    lock = json.loads((runs_root / ".elenchos-active-run.json").read_text(encoding="utf-8"))
+    assert lock["status"] == "running"
+    assert lock["output_dir"] == str(output_dir)
+
+
+def test_transcript_mirror_is_constrained_to_generated_roots(tmp_path: Path):
+    non_generated = tmp_path / "case"
+    non_generated.mkdir()
+    generated = tmp_path / "runs" / "case"
+    generated.mkdir(parents=True)
+    (generated / "model_rationale.jsonl").write_text(
+        json.dumps(
+            {
+                "timestamp_utc": "2026-06-14T00:00:00Z",
+                "visible_message": "[model-rationale] Test rationale.",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    non_generated_state = console.read_console_state(non_generated)
+    generated_state = console.read_console_state(generated)
+
+    console._mirror_visible_transcript(non_generated, non_generated_state)  # noqa: SLF001
+    console._mirror_visible_transcript(generated, generated_state)  # noqa: SLF001
+
+    assert not (non_generated / "case_console_transcript.md").exists()
+    assert (generated / "case_console_transcript.md").is_file()
+
+
+def test_prompt_input_buffer_handles_keys_without_refresh_side_effects():
+    buffer = console.PromptInputBuffer()
+
+    assert buffer.handle_key(ord("r"), backspace_keys=(127,)).changed is True
+    assert buffer.text == "r"
+    assert buffer.handle_key(ord("a"), backspace_keys=(127,)).changed is True
+    assert buffer.text == "ra"
+    assert buffer.handle_key(127, backspace_keys=(127,)).changed is True
+    assert buffer.text == "r"
+    result = buffer.handle_key(10, backspace_keys=(127,))
+    assert result.submitted_prompt == "r"
+
+
+def test_refresh_clock_respects_cadence_and_forced_refresh():
+    clock = console.RefreshClock(DEFAULT_TUI_REFRESH_SECONDS)
+
+    assert clock.should_refresh(0.0) is True
+    clock.mark_refreshed(0.0)
+    assert clock.should_refresh(0.5) is False
+    assert clock.should_refresh(0.5, forced=True) is True
+    assert clock.should_refresh(DEFAULT_TUI_REFRESH_SECONDS) is True
+
+
+def test_prompt_entry_loop_does_not_sleep_read_state_or_create_output_dir(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([ord("a"), ord("b"), 127, ord("c"), 3])
+    output_dir = tmp_path / "runs" / "case"
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(
+        console.time,
+        "sleep",
+        lambda _seconds: (_ for _ in ()).throw(AssertionError("sleep called")),
+    )
+    monkeypatch.setattr(
+        console,
+        "read_console_state",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("state read")),
+    )
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt=None,
+        case_id="case",
+        runs_root=tmp_path / "runs",
+        source_root=None,
+        watch_only=False,
+        refresh_seconds=99.0,
+    )
+
+    assert exit_code == 130
+    assert not output_dir.exists()
+    assert screen.timeouts[0] == console.INPUT_TIMEOUT_MS
+
+
+def test_watch_mode_reads_state_on_cadence_and_r_forces_refresh(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([-1, -1, ord("r"), 3])
+    output_dir = tmp_path / "runs" / "case"
+    output_dir.mkdir(parents=True)
+    reads: list[float] = []
+    times = iter([0.0, 0.2, 0.4, 0.6])
+    original_read = console.read_console_state
+
+    def counted_state(path: Path, *, prompt: str | None = None):
+        reads.append(float(len(reads)))
+        return original_read(path, prompt=prompt)
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(console.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(console, "read_console_state", counted_state)
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt=None,
+        case_id=None,
+        runs_root=tmp_path / "runs",
+        source_root=None,
+        watch_only=True,
+        refresh_seconds=DEFAULT_TUI_REFRESH_SECONDS,
+    )
+
+    assert exit_code == 130
+    assert len(reads) == 2
+
+
+def test_finalized_run_stops_openclaw_without_manual_termination_prompt(
+    tmp_path: Path,
+    monkeypatch,
+):
+    screen = FakeScreen([10, -1, -1, -1, -1, -1, -1], size=(42, 120))
+    runs_root = tmp_path / "runs"
+    output_dir = runs_root / "case"
+    fake_process = FinalizedFakeProcess()
+    times = iter(float(index) for index in range(20))
+
+    def fake_launch(_agent: str, _prompt: str, log_path: Path) -> FinalizedFakeProcess:
+        _write_terminal_generated_run(output_dir)
+        log_path.write_text(
+            "EMBEDDED FALLBACK: Gateway agent timed out\n"
+            "GatewayTransportError: gateway timeout after 630000ms\n",
+            encoding="utf-8",
+        )
+        return fake_process
+
+    monkeypatch.setattr(curses, "curs_set", lambda _value: None)
+    monkeypatch.setattr(curses, "has_colors", lambda: False)
+    monkeypatch.setattr(console.time, "monotonic", lambda: next(times))
+    monkeypatch.setattr(console, "launch_openclaw", fake_launch)
+    monkeypatch.setattr(console, "process_is_alive", lambda _pid: False, raising=False)
+
+    exit_code = console._run_curses(  # noqa: SLF001
+        stdscr=screen,
+        output_dir=output_dir,
+        agent="main",
+        analyst_prompt="Triage this case.",
+        case_id="case",
+        runs_root=runs_root,
+        source_root=None,
+        watch_only=False,
+        refresh_seconds=0.1,
+    )
+
+    drawn = "\n".join(screen.drawn)
+    assert exit_code == 0
+    assert fake_process.terminated is True
+    assert "OpenClaw is still running" not in drawn
+    assert "OpenClaw DONE" in drawn
+    assert "finalized: yes" in drawn
+    assert "GatewayTransportError: gateway timeout after 630000ms" in drawn
+
+
+def test_wrap_panel_lines_wraps_long_policy_and_rationale_lines():
+    long_line = (
+        "[policy] validate_run_outputs -> allowed: generated-output read only "
+        "with a very long explanatory reason that must remain visible"
+    )
+
+    wrapped = console.wrap_panel_lines([long_line], width=42)
+
+    assert len(wrapped) > 1
+    assert all(len(line) <= 42 for line in wrapped)
+    assert "visible" in " ".join(wrapped)
+
+
+def test_visible_panel_lines_reports_overflow_indicator():
+    lines = [f"line {index}" for index in range(8)]
+
+    window = console.visible_panel_lines(lines, height=3, scroll_offset=0)
+
+    assert len(window.lines) == 3
+    assert window.hidden_after == 5
+    assert window.lines[-1].startswith("... 5 more lines")
+
+
+def test_visible_panel_lines_reports_scrolled_overflow_indicator():
+    lines = [f"line {index}" for index in range(8)]
+
+    window = console.visible_panel_lines(lines, height=3, scroll_offset=4)
+
+    assert window.hidden_before == 4
+    assert window.lines[0].startswith("... 4 earlier lines")
+
+
+def test_state_body_lines_include_self_correction_and_log_tail(tmp_path: Path):
+    (tmp_path / "openclaw-console.log").write_text(
+        "OpenClaw exited rc=1\n"
+        'Missing required option "-m, --message <text>". This is a deliberately long line.\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "self_correction_events.json").write_text(
+        json.dumps(
+            {
+                "events": [
+                    {
+                        "correction": "Downgraded unsupported claim.",
+                        "status": "needs_review",
+                    }
+                ]
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    state = console.read_console_state(tmp_path)
+
+    lines = console._state_body_lines(state, watch_only=True)  # noqa: SLF001
+    wrapped = console.wrap_panel_lines(lines, width=50)
+    joined = "\n".join(wrapped)
+
+    assert "OBSERVED: 1 event" in joined
+    assert "Downgraded" in joined
+    assert "unsupported claim" in joined
+    assert 'Missing required option "-m, --message <text>".' in joined
+
+
+def test_status_label_helpers_are_demo_readable():
+    assert console.openclaw_status_label("running pid=123") == "RUNNING"
+    assert console.openclaw_status_label("blocked") == "BLOCKED"
+    assert console.validation_status_label("pass") == "PASS"
+    assert console.validation_status_label("failed") == "FAIL"
+    assert console.self_correction_status_label("observed") == "OBSERVED"

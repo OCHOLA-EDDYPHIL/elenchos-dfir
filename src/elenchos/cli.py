@@ -11,6 +11,10 @@ from elenchos.agent.run_case import run_case_output_summary, run_case_workflow
 from elenchos.agent.runner import run_agent_fixture_workflow, run_agent_workflow
 from elenchos.audit.execution_ledger import read_events
 from elenchos.case_prep.prepare import prepare_case
+from elenchos.config.runtime import (
+    DEFAULT_PARSER_TIMEOUT_SECONDS,
+    DEFAULT_TUI_REFRESH_SECONDS,
+)
 from elenchos.evidence.hashing import sha256_file
 from elenchos.evidence.manifest import build_manifest, write_manifest
 from elenchos.parser.result import ParserResult
@@ -36,7 +40,7 @@ def _add_parser_result_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=900,
+        default=DEFAULT_PARSER_TIMEOUT_SECONDS,
         help="Parser timeout in seconds",
     )
 
@@ -143,6 +147,48 @@ def _build_parser() -> argparse.ArgumentParser:
 
     audit_read_parser = subparsers.add_parser("audit-read", help="Read audit JSONL ledger")
     audit_read_parser.add_argument("ledger_path", type=Path, help="Path to audit ledger JSONL")
+
+    tui_parser = subparsers.add_parser(
+        "tui",
+        help="Run the Elenchos analyst case console.",
+        description=(
+            "Run the Elenchos analyst case console. The console can launch "
+            "OpenClaw with a bounded case prompt or watch an existing generated "
+            "run directory."
+        ),
+    )
+    tui_parser.add_argument("--source-root", help="Read-only evidence source root for the prompt")
+    tui_parser.add_argument("--case-id", help="Case identifier for generated run directory names")
+    tui_parser.add_argument("--output-dir", type=Path, help="Generated Elenchos output directory")
+    tui_parser.add_argument(
+        "--runs-root",
+        type=Path,
+        default=Path("runs"),
+        help="Generated runs root for new console runs",
+    )
+    tui_parser.add_argument(
+        "--agent",
+        default="main",
+        help="OpenClaw agent name to launch",
+    )
+    tui_parser.add_argument("--prompt", help="High-level OpenClaw prompt text")
+    tui_parser.add_argument("--prompt-file", type=Path, help="Read high-level prompt from a file")
+    tui_parser.add_argument(
+        "--watch-only",
+        action="store_true",
+        help="Watch an existing generated run directory without launching OpenClaw",
+    )
+    tui_parser.add_argument(
+        "--refresh-seconds",
+        type=float,
+        default=DEFAULT_TUI_REFRESH_SECONDS,
+        help="Console refresh interval in seconds",
+    )
+    tui_parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Print one non-interactive console snapshot and exit",
+    )
 
     case_parser = subparsers.add_parser(
         "case",
@@ -417,6 +463,22 @@ def main(argv: list[str] | None = None) -> int:
                 f"tool={event.get('tool_name')} exit_code={event.get('exit_code')}"
             )
         return 0
+
+    if args.command == "tui":
+        from elenchos.tui.console import run_tui
+
+        return run_tui(
+            source_root=args.source_root,
+            case_id=args.case_id,
+            output_dir=args.output_dir,
+            runs_root=args.runs_root,
+            agent=args.agent,
+            prompt=args.prompt,
+            prompt_file=args.prompt_file,
+            watch_only=args.watch_only,
+            refresh_seconds=args.refresh_seconds,
+            once=args.once,
+        )
 
     if args.command == "case":
         if args.case_command != "prepare":

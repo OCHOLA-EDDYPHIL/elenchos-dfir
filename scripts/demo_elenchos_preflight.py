@@ -9,9 +9,17 @@ from pathlib import Path
 from typing import Any
 
 EXPECTED_TOOLS = {
+    "emit_claim_boundary",
+    "evaluate_action_policy",
+    "finish_case_run",
+    "inspect_run_state",
+    "poll_case_run",
     "prepare_case",
+    "record_model_rationale",
     "run_case",
+    "stop",
     "summarize_run",
+    "start_case_run",
     "validate_run_outputs",
 }
 EXPECTED_LOCAL_TOOLS = (
@@ -109,6 +117,18 @@ def _openclaw_plugins() -> dict[str, Any]:
     return plugins if isinstance(plugins, dict) else {}
 
 
+def _openclaw_plugin_allowlist_status(plugins: dict[str, Any]) -> tuple[bool, str]:
+    allowlist = plugins.get("allow")
+    if isinstance(allowlist, list) and allowlist:
+        allowed = ", ".join(str(name) for name in allowlist)
+        return True, f"plugins.allow={allowed}"
+    return (
+        False,
+        "plugins.allow is empty or missing; configure an explicit allowlist "
+        "before recording the final demo",
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Check that the Elenchos demo uses the bounded MCP path."
@@ -156,6 +176,9 @@ def main(argv: list[str] | None = None) -> int:
     failures += 0 if local_ok else 1
 
     plugins = _openclaw_plugins()
+    allowlist_ok, allowlist_detail = _openclaw_plugin_allowlist_status(plugins)
+    _print_check("openclaw_plugin_allowlist", allowlist_ok, allowlist_detail)
+
     entries = plugins.get("entries") if isinstance(plugins.get("entries"), dict) else {}
     enabled_plugins = sorted(
         name for name, row in entries.items() if isinstance(row, dict) and row.get("enabled")

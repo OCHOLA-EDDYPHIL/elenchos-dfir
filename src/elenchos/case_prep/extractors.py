@@ -13,6 +13,7 @@ from elenchos.case_prep.models import (
     ExtractionOutcome,
     SourceRecord,
 )
+from elenchos.config.runtime import DEFAULT_PARSER_TIMEOUT_SECONDS
 from elenchos.policy.paths import is_relative_to
 from elenchos.runner.subprocess_runner import run_command
 
@@ -260,7 +261,7 @@ class SiftEwfExtractor:
                 ["fls", "-r", "-p", "-o", str(offset), str(image_path)],
                 stdout_path=fls_path,
                 stderr_path=logs_dir / f"fls_recursive_{offset}.stderr.txt",
-                timeout_seconds=900,
+                timeout_seconds=DEFAULT_PARSER_TIMEOUT_SECONDS,
                 ledger_path=context.audit_path,
                 case_id=context.case_id,
                 tool_name="fls",
@@ -418,7 +419,7 @@ class SiftEwfExtractor:
                 ["icat", "-o", str(offset), str(image_path), inode],
                 stdout_path=destination,
                 stderr_path=logs_dir / f"icat_{sidecar_id}.stderr.txt",
-                timeout_seconds=900,
+                timeout_seconds=DEFAULT_PARSER_TIMEOUT_SECONDS,
                 ledger_path=context.audit_path,
                 case_id=context.case_id,
                 tool_name="icat",
@@ -460,7 +461,7 @@ class SiftEwfExtractor:
             ["icat", "-o", str(offset), str(image_path), inode],
             stdout_path=destination,
             stderr_path=logs_dir / f"{log_slug}.stderr.txt",
-            timeout_seconds=900,
+            timeout_seconds=DEFAULT_PARSER_TIMEOUT_SECONDS,
             ledger_path=context.audit_path,
             case_id=context.case_id,
             tool_name="icat",

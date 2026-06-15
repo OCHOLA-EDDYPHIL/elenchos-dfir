@@ -19,6 +19,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from elenchos.audit.execution_ledger import read_events
+from elenchos.config.runtime import DEFAULT_PARSER_TIMEOUT_SECONDS
 from elenchos.parser.amcache import parse_amcache
 from elenchos.parser.mft import parse_mft
 from elenchos.parser.registry_runkeys import parse_registry_runkeys
@@ -148,7 +149,7 @@ def build_arg_parser(defaults: dict[str, Any] | None = None) -> argparse.Argumen
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=900,
+        default=DEFAULT_PARSER_TIMEOUT_SECONDS,
         help="Parser timeout in seconds",
     )
     return parser

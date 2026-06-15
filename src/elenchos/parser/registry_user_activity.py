@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from elenchos.config.runtime import DEFAULT_PARSER_TIMEOUT_SECONDS
 from elenchos.correlation.event_schema import JSON_SCALAR, ParserEvent, RawRecordRef
 from elenchos.evidence.hashing import sha256_file
 from elenchos.evidence.manifest import EvidenceArtifact
@@ -862,7 +863,7 @@ def parse_registry_user_activity(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     artifact_type: str = "registry_hive",
     source_id: str | None = None,
@@ -1142,7 +1143,7 @@ def parse_registry_user_activity_artifact(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     max_events: int | None = None,
 ) -> ParserResult:

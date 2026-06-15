@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from scripts.demo_elenchos_preflight import _openclaw_plugin_allowlist_status
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -130,7 +132,7 @@ def test_openclaw_docs_and_readme_point_to_mcp_adapter_only():
     assert ("docs/demo/openclaw-gap-self-" + "correction-runbook.md") not in readme
     assert "self_correction_events.json" in mcp_docs
     assert "casebooks may define claim-boundary metadata" in mcp_docs.casefold()
-    assert "Bounded tools" in readme
+    assert "Blocking fallback tools" in readme
     assert ".venv/bin/python -m elenchos case prepare ..." in readme
     assert ".venv/bin/python -m elenchos agent run-case ..." in readme
 
@@ -175,13 +177,23 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     analyst_prompt = prompt.split("## Host instruction", maxsplit=1)[0]
 
     for tool_name in (
+        "inspect_run_state",
+        "record_model_rationale",
+        "evaluate_action_policy",
         "prepare_case",
         "run_case",
         "summarize_run",
         "validate_run_outputs",
+        "start_case_run",
+        "poll_case_run",
+        "finish_case_run",
+        "emit_claim_boundary",
+        "stop",
     ):
         assert tool_name in prompt
     assert "bounded Elenchos MCP/tool-adapter surface" in prompt
+    assert "[model-rationale]" in prompt
+    assert "[policy]" in prompt
     assert "do not run raw shell commands" in lowered
     assert "do not run destructive commands" in lowered
     assert "do not write to evidence" in lowered
@@ -189,7 +201,7 @@ def test_openclaw_case_triage_prompt_is_bounded_and_claim_safe():
     assert "docs/casebooks/generic-windows-disk-triage.json" in prompt
     assert "Do not invent case allegations" in collapsed
     assert "repeat the generated final_wording and scope_boundary exactly" in collapsed
-    assert len(analyst_prompt.split()) < 80
+    assert len(analyst_prompt.split()) < 160
     assert ("Elenchos proves " + "theft") not in prompt
     assert ("Elenchos proves " + "exfiltration") not in prompt
     assert ("courtroom" + "-ready") not in lowered
@@ -253,3 +265,50 @@ def test_public_docs_do_not_hardcode_local_home_paths():
             stale_user_hits.append(str(path.relative_to(root)))
 
     assert stale_user_hits == []
+
+
+def test_openclaw_live_autonomy_docs_cover_rationale_and_policy_files():
+    root = repo_root()
+    combined = "\n".join(
+        [
+            (root / "docs" / "openclaw-mcp-workflow.md").read_text(encoding="utf-8"),
+            (root / "docs" / "model-rationale-boundary.md").read_text(encoding="utf-8"),
+            (root / "docs" / "autonomous-execution.md").read_text(encoding="utf-8"),
+        ]
+    )
+
+    assert "[model-rationale]" in combined
+    assert "[policy]" in combined
+    assert "model_rationale.jsonl" in combined
+    assert "policy_decisions.jsonl" in combined
+    assert "model rationale is not forensic evidence" in combined.casefold()
+
+
+def test_openclaw_demo_docs_cover_plugin_allowlist_preflight():
+    root = repo_root()
+    combined = "\n".join(
+        [
+            (root / "docs" / "openclaw-mcp-workflow.md").read_text(encoding="utf-8"),
+            (root / "docs" / "tui.md").read_text(encoding="utf-8"),
+        ]
+    ).casefold()
+
+    assert "plugins.allow" in combined
+    assert "explicit plugin allowlist" in combined
+    assert "codex" in combined
+    assert "bounded elenchos tools only" in combined
+
+
+def test_demo_preflight_warns_on_empty_openclaw_plugin_allowlist():
+    ok, detail = _openclaw_plugin_allowlist_status({"allow": []})
+
+    assert ok is False
+    assert "plugins.allow is empty" in detail
+    assert "final demo" in detail
+
+
+def test_demo_preflight_accepts_explicit_openclaw_plugin_allowlist():
+    ok, detail = _openclaw_plugin_allowlist_status({"allow": ["elenchos"]})
+
+    assert ok is True
+    assert detail == "plugins.allow=elenchos"

@@ -52,17 +52,38 @@ Analyst natural-language prompt
 
 ## Tool Boundary
 
-The adapter exposes four operations only:
+The adapter exposes deterministic workflow tools plus a live autonomy layer:
 
 - `prepare_case`: validates paths, rejects unsafe output locations, and runs
   `.venv/bin/python -m elenchos case prepare ...` through argv subprocesses.
+  Its response includes `prepared_manifest_path`, the stable handoff path to
+  the generated `case_prep.json`.
 - `run_case`: validates a prepared `case_prep.json`, rejects unsafe output
   locations, and runs `.venv/bin/python -m elenchos agent run-case ...`.
+  Blocking runs should use the same `prepared_manifest_path` returned by
+  `prepare_case` or surfaced by `inspect_run_state`.
 - `summarize_run`: reads generated JSON/report outputs only and returns concise
   finding counts, case-question statuses, parser coverage, event-family counts,
   unsupported areas, limitations, and traceability paths.
 - `validate_run_outputs`: checks required generated outputs, forbidden overclaim
   wording, and unsupported theft/exfiltration/memory question safety.
+- `inspect_run_state`: reads generated outputs only and recommends next bounded
+  actions.
+- `record_model_rationale`: records model-generated operational rationale in
+  `model_rationale.jsonl`; model rationale is not forensic evidence.
+- `evaluate_action_policy`: records deterministic allow/reject decisions in
+  `policy_decisions.jsonl`. The adapter also self-gates bounded tool calls
+  through the same policy layer so missing explicit policy calls still leave a
+  deterministic policy trace and rejected unsafe actions do not execute.
+- `start_case_run`, `poll_case_run`, `finish_case_run`: support live
+  deterministic run progress without arbitrary shell access. `start_case_run`
+  must receive `prepared_manifest_path` from `prepare_case` or
+  `inspect_run_state`; `run_integrity_manifest.json` is an output integrity
+  manifest, not a case-prep manifest.
+- `emit_claim_boundary`: returns deterministic generated claim-boundary wording
+  or conservative fallback wording without changing findings.
+- `stop`: marks generated orchestration complete after deterministic outputs
+  reach terminal validation and claim-boundary conditions.
 
 Run the stdio MCP server:
 
@@ -141,9 +162,15 @@ Before recording a demo, run the preflight from the current checkout:
 ```
 
 The preflight confirms that OpenClaw points at the current repository, that the
-MCP server exposes exactly the four Elenchos tools, and that the local SIFT /
+MCP server exposes the bounded Elenchos tools, and that the local SIFT /
 Zimmerman commands needed by the deterministic workflow are available. If it
 reports a stale path, re-run the `openclaw mcp set elenchos ...` command above.
+For final demo recording, configure an explicit plugin allowlist through
+`plugins.allow`. Disable or explicitly exclude non-required
+non-bundled plugins, including `codex`, unless they are part of the submitted
+runtime path. The submitted runtime path should use bounded Elenchos tools only.
+The preflight emits a non-fatal warning when the local plugin allowlist is empty
+or unavailable; remediate that local OpenClaw configuration before recording.
 `AGENTS.md` is orchestration guidance for compatible agent hosts; the enforced
 boundary is the typed MCP adapter plus Elenchos' path validation, deterministic
 CLI calls, generated-output validation, and claim-boundary files.
@@ -190,12 +217,109 @@ unsupported gaps, and trace paths. Do not inspect raw evidence directly.
 Use only the Elenchos tools.
 ```
 
-Canonical tool sequence:
+Blocking fallback tool sequence:
 
 1. `prepare_case`
 2. `run_case`
 3. `summarize_run`
 4. `validate_run_outputs`
+
+### Live policy-gated autonomy
+
+For live OpenClaw agent runs, use an observe/rationale/policy/execute loop:
+
+1. `inspect_run_state`
+2. Print one `[model-rationale]` line explaining the next bounded action.
+3. `record_model_rationale`
+4. `evaluate_action_policy`
+5. Print the returned `[policy]` line.
+6. Execute only if policy returns `allowed`.
+7. Use `start_case_run`, `poll_case_run`, and `finish_case_run` when live run
+   progress is desired.
+8. End with `summarize_run`, `validate_run_outputs`,
+   `emit_claim_boundary` when unsupported claim boundaries remain, and `stop`.
+
+The case-prep handoff is explicit. `prepare_case` produces a prepared manifest
+and returns it as `prepared_manifest_path`; `inspect_run_state` reports the same
+field when it can locate and validate the prepared manifest. Pass that exact
+field to `start_case_run` or the blocking `run_case` fallback. Do not pass
+`run_integrity_manifest.json`, `validation_summary.json`,
+`orchestration_trace.json`, `model_rationale.jsonl`, `policy_decisions.jsonl`,
+or any file found by wildcard manifest search.
+
+### Using the Elenchos Case Console
+
+`elenchos tui` is the analyst-facing terminal console for this workflow. The
+normal analyst workflow is to launch it with no flags, type a natural-language
+case request in the console, and let Elenchos create the generated run directory
+under `runs/`. The TUI wraps the analyst prompt with safety/output constraints,
+launches OpenClaw, watches the exact generated output directory, and displays
+live rationale, policy gate decisions, run status, validation, and
+claim-boundary summary from generated Elenchos artifacts.
+It collapses adjacent duplicate policy-gate messages for readability only; the
+raw `policy_decisions.jsonl` audit record is not rewritten. It also displays
+self-correction when deterministic Elenchos artifacts record unsupported claim
+or tool-path downgrades. Model rationale and TUI output remain non-evidence.
+
+```bash
+elenchos tui
+```
+
+For post-run review or split-pane demos:
+
+```bash
+elenchos tui --watch-only --output-dir runs/<case>
+```
+
+The console does not inspect raw evidence. Its transcript is a generated
+display mirror only and is not forensic evidence.
+
+`prepare_case` can take longer than ordinary agent-tool calls on large evidence
+sets. It does not use a short artificial adapter timeout by default. Set
+`ELENCHOS_PREPARE_TIMEOUT_SECONDS` in constrained environments when a prepare
+runtime cap is required. The adapter writes `prepare_case` progress records;
+parser execution and deterministic triage keep their bounded workflow controls.
+
+Example visible UI lines:
+
+```text
+[model-rationale] The case is prepared and supported disk artifacts were found. The next safe bounded action is to start the forensic-triage run.
+[policy] proposed start_case_run -> allowed: bounded action, generated output directory, read-only evidence.
+
+[model-rationale] The run is still active. I will poll progress instead of starting a duplicate run.
+[policy] proposed poll_case_run -> allowed: action is allowlisted and reads generated outputs only.
+
+[model-rationale] All findings are needs_review and theft/exfiltration questions remain not_assessed. The next safe step is output validation and claim-boundary finalization.
+[policy] proposed validate_run_outputs -> allowed: action is allowlisted and reads generated outputs only.
+```
+
+Generated live-autonomy files:
+
+- `model_rationale.jsonl`: model-generated operational rationale, not evidence.
+- `policy_decisions.jsonl`: deterministic allow/reject decisions for proposed
+  model actions.
+- `orchestration_trace.json`: non-evidence adapter trace for rationale, policy,
+  and job lifecycle events.
+- `run_job.json`: bounded async job metadata for live start/poll/finish.
+- `progress.jsonl`: runtime telemetry emitted by deterministic workflow phases.
+
+Trace distinction:
+
+- `decision_trace.json`: deterministic pipeline decisions.
+- `model_rationale.jsonl`: model-generated operational rationale, not forensic
+  evidence.
+- `policy_decisions.jsonl`: deterministic allow/reject decisions for proposed
+  model actions.
+- `progress.jsonl`: runtime telemetry.
+- `trace_map.json` or existing evidence refs: finding-to-evidence traceability
+  when emitted by deterministic Elenchos outputs.
+
+Post-PR SIFT/OpenClaw validation should register the MCP server from this
+branch, run `scripts/demo_elenchos_preflight.py`, then run a live OpenClaw
+agent prompt against the SIFT Workstation evidence environment. That validation
+must confirm visible `[model-rationale]` and `[policy]` lines, live polling,
+generated rationale/policy JSONL files, and unchanged deterministic claim
+boundaries before merge.
 
 Expected generated outputs include:
 

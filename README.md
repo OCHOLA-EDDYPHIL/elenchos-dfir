@@ -335,6 +335,28 @@ Generated run outputs include a SHA-256 `run_integrity_manifest.json` so
 validation can detect tampering in the run directory without claiming that
 hashes prove an investigative conclusion.
 
+### Elenchos Case Console
+
+`elenchos tui` provides the analyst-facing terminal console for a case run. The
+normal workflow is to start the console with no flags, type a natural-language
+case request, and let Elenchos create the generated run directory under `runs/`.
+The TUI wraps the analyst prompt with runtime safety/output constraints,
+launches OpenClaw, and renders live rationale, policy-gate decisions, run
+status, validation status, and final claim-boundary summary from generated
+Elenchos artifacts.
+For readability it collapses adjacent duplicate visible policy-gate messages in
+the display only; raw JSONL audit records remain complete. It also surfaces
+self-correction artifacts when deterministic workflows generate them.
+`prepare_case` has no short artificial adapter timeout by default; set
+`ELENCHOS_PREPARE_TIMEOUT_SECONDS` only when an operator needs a constrained
+prepare runtime cap. Parser execution remains separately bounded.
+
+```bash
+elenchos tui
+```
+
+See [docs/tui.md](docs/tui.md).
+
 ### Agent orchestration guidance
 
 This repository includes [`AGENTS.md`](AGENTS.md) for OpenClaw, Claude Code,
@@ -352,11 +374,23 @@ Preferred final OpenClaw/MCP path:
 .venv/bin/python -m elenchos.integrations.mcp_server
 ```
 
-Bounded tools:
+Blocking fallback tools:
 
 ```text
 prepare_case -> run_case -> summarize_run -> validate_run_outputs
 ```
+
+Live OpenClaw autonomy adds:
+
+```text
+inspect_run_state -> [model-rationale] -> record_model_rationale
+  -> evaluate_action_policy -> [policy] -> execute allowed bounded action
+  -> poll progress -> validate outputs -> emit_claim_boundary -> stop
+```
+
+`model_rationale.jsonl` records model-generated operational rationale, not
+forensic evidence. `policy_decisions.jsonl` records deterministic allow/reject
+decisions for proposed model actions.
 
 Smoke the preferred MCP/tool-adapter boundary without ROCBA evidence or provider
 keys:
@@ -436,6 +470,9 @@ events while downgrading the final status to `needs_review`.
 | Parser validation notes | `docs/parser-validation.md` |
 | Agent workflow | `docs/agent-workflow.md` |
 | OpenClaw/MCP analyst workflow | `docs/openclaw-mcp-workflow.md` |
+| Elenchos Case Console | `docs/tui.md` |
+| Model rationale boundary | `docs/model-rationale-boundary.md` |
+| Autonomous execution | `docs/autonomous-execution.md` |
 | MCP/parser contracts | `docs/parser-contracts.md` |
 
 ## License

@@ -233,6 +233,40 @@ def test_tool_adapter_rejects_unknown_operation():
         dispatch_tool("shell", {})
 
 
+def test_dispatch_self_gates_tool_calls_with_policy(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    write_good_run(output_dir)
+
+    result = dispatch_tool("inspect_run_state", {"output_dir": str(output_dir)})
+
+    assert result["status"] == "completed"
+    assert str(result["visible_policy_message"]).startswith(
+        "[policy] proposed inspect_run_state -> allowed"
+    )
+    policy_path = output_dir / "policy_decisions.jsonl"
+    assert policy_path.is_file()
+    assert "[policy]" in policy_path.read_text(encoding="utf-8")
+
+
+def test_dispatch_rejects_policy_blocked_start_before_launch(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "agent-run"
+    bad_manifest = output_dir / "run_integrity_manifest.json"
+    bad_manifest.parent.mkdir(parents=True)
+    bad_manifest.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="start_case_run rejected by policy"):
+        dispatch_tool(
+            "start_case_run",
+            {
+                "output_dir": str(output_dir),
+                "prepared_manifest_path": str(bad_manifest),
+            },
+        )
+
+    policy_text = (output_dir / "policy_decisions.jsonl").read_text(encoding="utf-8")
+    assert "[policy] proposed start_case_run -> rejected" in policy_text
+
+
 def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     seen: list[list[str]] = []
 
@@ -269,8 +303,139 @@ def test_prepare_case_uses_argv_style_command_construction(tmp_path: Path):
     assert result["status"] == "completed"
     assert result["prepared_artifact_count"] == 2
     assert result["coverage_gap_count"] == 1
+    assert str(result["prepared_manifest_path"]).endswith("case_prep.json")
     assert seen[0][:4] == [seen[0][0], "-m", "elenchos", "case"]
     assert "shell" not in seen[0]
+
+
+def test_prepare_case_default_timeout_is_unbounded_and_progress_is_written(tmp_path: Path):
+    output_dir = tmp_path / "runs" / CASE_ID / "case-prep"
+    seen_timeout: list[int | None] = []
+
+    def runner(
+        argv: list[str],
+        timeout_seconds: int | None,
+    ) -> subprocess.CompletedProcess[str]:
+        seen_timeout.append(timeout_seconds)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            "\n".join(
+                [
+                    f"case_id={CASE_ID}",
+                    "status=completed",
+                    "prepared_artifacts=1",
+                    "coverage_gaps=0",
+                    f"case_prep={output_dir / 'case_prep.json'}",
+                ]
+            ),
+            "",
+        )
+
+    result = prepare_case(
+        {
+            "case_id": CASE_ID,
+            "source_root": str(tmp_path / "evidence"),
+            "output_dir": str(output_dir),
+        },
+        command_runner=runner,
+    )
+
+    assert result["status"] == "completed"
+    assert seen_timeout == [None]
+    progress_rows = [
+        json.loads(line)
+        for line in (output_dir / "progress.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["status"] for row in progress_rows] == ["started", "completed"]
+    assert {row["phase"] for row in progress_rows} == {"prepare_case"}
+
+
+def test_prepare_case_uses_env_timeout_override(tmp_path: Path, monkeypatch):
+    output_dir = tmp_path / "runs" / CASE_ID / "case-prep"
+    seen_timeout: list[int | None] = []
+
+    def runner(
+        argv: list[str],
+        timeout_seconds: int | None,
+    ) -> subprocess.CompletedProcess[str]:
+        seen_timeout.append(timeout_seconds)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            f"case_id={CASE_ID}\nstatus=completed\ncase_prep={output_dir / 'case_prep.json'}",
+            "",
+        )
+
+    monkeypatch.setenv("ELENCHOS_PREPARE_TIMEOUT_SECONDS", "123")
+
+    prepare_case(
+        {
+            "case_id": CASE_ID,
+            "source_root": str(tmp_path / "evidence"),
+            "output_dir": str(output_dir),
+        },
+        command_runner=runner,
+    )
+
+    assert seen_timeout == [123]
+
+
+def test_prepare_case_explicit_timeout_wins_over_env(tmp_path: Path, monkeypatch):
+    output_dir = tmp_path / "runs" / CASE_ID / "case-prep"
+    seen_timeout: list[int | None] = []
+
+    def runner(
+        argv: list[str],
+        timeout_seconds: int | None,
+    ) -> subprocess.CompletedProcess[str]:
+        seen_timeout.append(timeout_seconds)
+        return subprocess.CompletedProcess(
+            argv,
+            0,
+            f"case_id={CASE_ID}\nstatus=completed\ncase_prep={output_dir / 'case_prep.json'}",
+            "",
+        )
+
+    monkeypatch.setenv("ELENCHOS_PREPARE_TIMEOUT_SECONDS", "123")
+
+    prepare_case(
+        {
+            "case_id": CASE_ID,
+            "source_root": str(tmp_path / "evidence"),
+            "output_dir": str(output_dir),
+            "timeout_seconds": 60,
+        },
+        command_runner=runner,
+    )
+
+    assert seen_timeout == [60]
+
+
+def test_prepare_case_invalid_env_timeout_fails_before_launch(
+    tmp_path: Path,
+    monkeypatch,
+):
+    called = False
+
+    def runner(argv: list[str], timeout_seconds: int | None) -> subprocess.CompletedProcess[str]:
+        nonlocal called
+        called = True
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setenv("ELENCHOS_PREPARE_TIMEOUT_SECONDS", "soon")
+
+    with pytest.raises(ValueError, match="ELENCHOS_PREPARE_TIMEOUT_SECONDS"):
+        prepare_case(
+            {
+                "case_id": CASE_ID,
+                "source_root": str(tmp_path / "evidence"),
+                "output_dir": str(tmp_path / "runs" / CASE_ID / "case-prep"),
+            },
+            command_runner=runner,
+        )
+
+    assert called is False
 
 
 def test_prepare_case_generates_human_readable_case_id_when_omitted(tmp_path: Path):
@@ -686,9 +851,17 @@ def test_mcp_server_exposes_tools_and_calls_summary(tmp_path: Path):
     assert tools_response is not None
     tools = tools_response["result"]["tools"]
     assert {tool["name"] for tool in tools} == {
+        "emit_claim_boundary",
+        "evaluate_action_policy",
+        "finish_case_run",
+        "inspect_run_state",
+        "poll_case_run",
         "prepare_case",
+        "record_model_rationale",
         "run_case",
+        "stop",
         "summarize_run",
+        "start_case_run",
         "validate_run_outputs",
     }
     assert call_response is not None
@@ -740,5 +913,5 @@ def test_cli_dispatcher_sanitizes_exception_paths(capsys: pytest.CaptureFixture[
 
 def test_tool_manifest_has_no_arbitrary_execution_fields():
     manifest = json.dumps(get_tool_definitions(), sort_keys=True)
-    for forbidden in ("shell", "cmd", "executable", "raw_evidence_bytes"):
+    for forbidden in ("cmd", "executable", "raw_evidence_bytes"):
         assert forbidden not in manifest

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from elenchos.config.runtime import DEFAULT_PARSER_TIMEOUT_SECONDS
 from elenchos.correlation.event_schema import JSON_SCALAR, ParserEvent, RawRecordRef
 from elenchos.evidence.hashing import sha256_file
 from elenchos.evidence.manifest import EvidenceArtifact
@@ -552,7 +553,7 @@ def parse_mft(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     artifact_type: str = EXPECTED_ARTIFACT_TYPE,
     max_events: int | None = None,
@@ -687,7 +688,7 @@ def parse_mft_for_triage(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     artifact_type: str = EXPECTED_ARTIFACT_TYPE,
     max_events: int | None = None,
@@ -843,7 +844,7 @@ def parse_mft_artifact(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     max_events: int | None = None,
 ) -> ParserResult:
@@ -874,7 +875,7 @@ def parse_mft_artifact_for_triage(
     evidence_root: Path | None = None,
     ledger_path: Path | None = None,
     command_config: ParserCommandConfig | None = None,
-    timeout_seconds: int = 900,
+    timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS,
     runner: Runner | None = None,
     max_events: int | None = None,
     anchors: TriageAnchors | None = None,
