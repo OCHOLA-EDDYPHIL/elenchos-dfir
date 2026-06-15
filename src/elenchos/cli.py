@@ -11,6 +11,10 @@ from elenchos.agent.run_case import run_case_output_summary, run_case_workflow
 from elenchos.agent.runner import run_agent_fixture_workflow, run_agent_workflow
 from elenchos.audit.execution_ledger import read_events
 from elenchos.case_prep.prepare import prepare_case
+from elenchos.config.runtime import (
+    DEFAULT_PARSER_TIMEOUT_SECONDS,
+    DEFAULT_TUI_REFRESH_SECONDS,
+)
 from elenchos.evidence.hashing import sha256_file
 from elenchos.evidence.manifest import build_manifest, write_manifest
 from elenchos.parser.result import ParserResult
@@ -36,7 +40,7 @@ def _add_parser_result_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--timeout-seconds",
         type=int,
-        default=900,
+        default=DEFAULT_PARSER_TIMEOUT_SECONDS,
         help="Parser timeout in seconds",
     )
 
@@ -177,7 +181,7 @@ def _build_parser() -> argparse.ArgumentParser:
     tui_parser.add_argument(
         "--refresh-seconds",
         type=float,
-        default=1.0,
+        default=DEFAULT_TUI_REFRESH_SECONDS,
         help="Console refresh interval in seconds",
     )
     tui_parser.add_argument(

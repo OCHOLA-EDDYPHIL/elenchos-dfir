@@ -86,6 +86,7 @@ def test_write_run_context_records_prompt_and_command_shape(tmp_path: Path):
     stored = json.loads((output_dir / "run_context.json").read_text(encoding="utf-8"))
     assert context["analyst_prompt"] == "Triage this case."
     assert stored["wrapped_prompt"] == wrapped
+    assert stored["prepare_case_timeout_seconds"] is None
     assert stored["openclaw_command_shape"] == [
         "openclaw",
         "agent",
@@ -94,6 +95,28 @@ def test_write_run_context_records_prompt_and_command_shape(tmp_path: Path):
         "--message",
         "<prompt>",
     ]
+
+
+def test_write_run_context_records_configured_prepare_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    output_dir = tmp_path / "runs" / "case"
+    wrapped = build_wrapped_prompt("Triage this case.", output_dir)
+    monkeypatch.setenv("ELENCHOS_PREPARE_TIMEOUT_SECONDS", "456")
+
+    write_run_context(
+        output_dir=output_dir,
+        case_id="case",
+        agent="main",
+        runs_root=tmp_path / "runs",
+        source_root=None,
+        analyst_prompt="Triage this case.",
+        wrapped_prompt=wrapped,
+    )
+
+    stored = json.loads((output_dir / "run_context.json").read_text(encoding="utf-8"))
+    assert stored["prepare_case_timeout_seconds"] == 456
 
 
 def test_active_lock_blocks_when_pid_is_alive(tmp_path: Path):

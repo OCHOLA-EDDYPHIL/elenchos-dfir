@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from elenchos.config.runtime import get_prepare_case_timeout_seconds
+
 DEFAULT_AGENT = "main"
 ACTIVE_RUN_FILENAME = ".elenchos-active-run.json"
 OPENCLAW_LOG_FILENAME = "openclaw-console.log"
@@ -128,6 +130,9 @@ def write_run_context(
         "policy_boundary": (
             "TUI text and model rationale are operational display only, not forensic "
             "evidence. Deterministic Elenchos outputs remain the forensic authority."
+        ),
+        "prepare_case_timeout_seconds": get_prepare_case_timeout_seconds(
+            environ=os.environ,
         ),
         "openclaw_command_shape": [
             "openclaw",

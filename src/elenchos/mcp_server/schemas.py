@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from elenchos.config.runtime import DEFAULT_PARSER_TIMEOUT_SECONDS
+
 TOOL_NAMES = [
     "create_case",
     "hash_evidence",
@@ -51,7 +53,7 @@ def _timeout_schema() -> dict[str, object]:
     return {
         "type": "integer",
         "minimum": 1,
-        "default": 900,
+        "default": DEFAULT_PARSER_TIMEOUT_SECONDS,
         "description": "Maximum parser runtime in seconds.",
     }
 

@@ -87,10 +87,12 @@ When the selected output directory is under an ignored generated-output root,
 the console may write `case_console_transcript.md`. That transcript mirrors the
 TUI-visible rationale and policy stream and is not forensic evidence.
 
-`prepare_case` may take time on large evidence sets. The adapter keeps parser
-execution bounded, but case preparation has a long configurable timeout and
-writes `prepare_case` progress records so the console can show activity instead
-of looking frozen.
+`prepare_case` may take time on large evidence sets. It does not use a short
+artificial adapter timeout by default; set
+`ELENCHOS_PREPARE_TIMEOUT_SECONDS` in constrained environments when a prepare
+runtime cap is required. Parser execution remains separately bounded, and
+prepare writes `prepare_case` progress records so the console can show activity
+instead of looking frozen.
 
 Synthetic self-correction smoke check:
 

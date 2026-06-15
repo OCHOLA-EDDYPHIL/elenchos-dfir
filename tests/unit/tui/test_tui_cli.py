@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from elenchos.cli import main
+from elenchos.config.runtime import DEFAULT_TUI_REFRESH_SECONDS
 from elenchos.tui import console
 
 
@@ -213,13 +214,13 @@ def test_prompt_input_buffer_handles_keys_without_refresh_side_effects():
 
 
 def test_refresh_clock_respects_cadence_and_forced_refresh():
-    clock = console.RefreshClock(1.0)
+    clock = console.RefreshClock(DEFAULT_TUI_REFRESH_SECONDS)
 
     assert clock.should_refresh(0.0) is True
     clock.mark_refreshed(0.0)
     assert clock.should_refresh(0.5) is False
     assert clock.should_refresh(0.5, forced=True) is True
-    assert clock.should_refresh(1.0) is True
+    assert clock.should_refresh(DEFAULT_TUI_REFRESH_SECONDS) is True
 
 
 def test_prompt_entry_loop_does_not_sleep_read_state_or_create_output_dir(
@@ -251,7 +252,7 @@ def test_prompt_entry_loop_does_not_sleep_read_state_or_create_output_dir(
         runs_root=tmp_path / "runs",
         source_root=None,
         watch_only=False,
-        refresh_seconds=1.0,
+        refresh_seconds=DEFAULT_TUI_REFRESH_SECONDS,
     )
 
     assert exit_code == 130
@@ -288,7 +289,7 @@ def test_watch_mode_reads_state_on_cadence_and_r_forces_refresh(
         runs_root=tmp_path / "runs",
         source_root=None,
         watch_only=True,
-        refresh_seconds=1.0,
+        refresh_seconds=DEFAULT_TUI_REFRESH_SECONDS,
     )
 
     assert exit_code == 130

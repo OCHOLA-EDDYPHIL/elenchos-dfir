@@ -347,6 +347,9 @@ Elenchos artifacts.
 For readability it collapses adjacent duplicate visible policy-gate messages in
 the display only; raw JSONL audit records remain complete. It also surfaces
 self-correction artifacts when deterministic workflows generate them.
+`prepare_case` has no short artificial adapter timeout by default; set
+`ELENCHOS_PREPARE_TIMEOUT_SECONDS` only when an operator needs a constrained
+prepare runtime cap. Parser execution remains separately bounded.
 
 ```bash
 elenchos tui

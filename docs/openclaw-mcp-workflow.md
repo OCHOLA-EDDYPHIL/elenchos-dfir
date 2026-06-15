@@ -267,9 +267,10 @@ The console does not inspect raw evidence. Its transcript is a generated
 display mirror only and is not forensic evidence.
 
 `prepare_case` can take longer than ordinary agent-tool calls on large evidence
-sets. The adapter uses a long configurable prepare timeout and writes
-`prepare_case` progress records; parser execution and deterministic triage keep
-their bounded workflow controls.
+sets. It does not use a short artificial adapter timeout by default. Set
+`ELENCHOS_PREPARE_TIMEOUT_SECONDS` in constrained environments when a prepare
+runtime cap is required. The adapter writes `prepare_case` progress records;
+parser execution and deterministic triage keep their bounded workflow controls.
 
 Example visible UI lines:
 

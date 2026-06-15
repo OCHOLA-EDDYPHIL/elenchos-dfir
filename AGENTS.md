@@ -86,6 +86,8 @@ Use `inspect_run_state` between actions. Use `start_case_run`, `poll_case_run`, 
 
 `prepare_case` produces a prepared manifest at `prepared_manifest_path`. Pass that exact field, or the `prepared_manifest_path` surfaced by `inspect_run_state`, into `start_case_run`. Do not pass `run_integrity_manifest.json`, `validation_summary.json`, model rationale files, policy decision files, or arbitrary manifest-looking files as the prepared manifest.
 
+`prepare_case` has no short artificial adapter timeout by default; use `ELENCHOS_PREPARE_TIMEOUT_SECONDS` only when a constrained environment needs a prepare runtime cap. Parser execution remains separately bounded.
+
 Example visible lines:
 
 ```text

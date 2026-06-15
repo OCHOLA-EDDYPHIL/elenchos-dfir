@@ -8,6 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from elenchos.config.runtime import (
+    DEFAULT_TUI_INPUT_POLL_SECONDS,
+    DEFAULT_TUI_REFRESH_SECONDS,
+    MIN_TUI_REFRESH_SECONDS,
+)
 from elenchos.policy.paths import (
     MOUNTED_EVIDENCE_ROOT,
     is_generated_output_path,
@@ -40,9 +45,9 @@ TERMINAL_JOB_STATUSES = {
     "not_found",
 }
 TRANSCRIPT_FILENAME = "case_console_transcript.md"
-INPUT_POLL_SECONDS = 0.02
+INPUT_POLL_SECONDS = DEFAULT_TUI_INPUT_POLL_SECONDS
 INPUT_TIMEOUT_MS = int(INPUT_POLL_SECONDS * 1000)
-MIN_REFRESH_SECONDS = 0.1
+MIN_REFRESH_SECONDS = MIN_TUI_REFRESH_SECONDS
 KEY_CTRL_C = 3
 KEY_ENTER = 10
 KEY_CARRIAGE_RETURN = 13
@@ -116,7 +121,7 @@ def run_tui(
     prompt: str | None = None,
     prompt_file: Path | None = None,
     watch_only: bool = False,
-    refresh_seconds: float = 1.0,
+    refresh_seconds: float = DEFAULT_TUI_REFRESH_SECONDS,
     once: bool = False,
 ) -> int:
     try:

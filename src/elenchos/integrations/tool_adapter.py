@@ -14,6 +14,10 @@ from pathlib import Path
 from typing import Any
 
 from elenchos.audit.execution_ledger import utc_now
+from elenchos.config.runtime import (
+    DEFAULT_PREPARE_CASE_TIMEOUT_SECONDS,
+    get_prepare_case_timeout_seconds,
+)
 from elenchos.integrations.job_runner import (
     finish_case_run as finish_case_run_job,
 )
@@ -58,7 +62,6 @@ from elenchos.validation.integrity import (
     validate_integrity_manifest,
 )
 
-DEFAULT_PREPARE_TIMEOUT_SECONDS = 7200
 DEFAULT_RUN_CASE_TIMEOUT_SECONDS = 1800
 DEFAULT_SUMMARY_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_ITERATIONS = 10
@@ -102,7 +105,7 @@ REDACTED_PATH = "<redacted_path>"
 POSIX_PATH_PATTERN = re.compile(r"(?<![:/])/[^\s\"'<>|;]+")
 PATH_TRAILING_PUNCTUATION = ".,:)]}"
 
-CommandRunner = Callable[[list[str], int], subprocess.CompletedProcess[str]]
+CommandRunner = Callable[[list[str], int | None], subprocess.CompletedProcess[str]]
 SELF_POLICY_GATED_TOOLS = {
     "prepare_case",
     "run_case",
@@ -130,6 +133,17 @@ def _integer_schema(description: str, default: int, minimum: int = 1) -> dict[st
         "minimum": minimum,
         "default": default,
         "description": description,
+    }
+
+
+def _prepare_timeout_schema() -> dict[str, object]:
+    return {
+        "anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}],
+        "default": DEFAULT_PREPARE_CASE_TIMEOUT_SECONDS,
+        "description": (
+            "Maximum prepare runtime in seconds. Null or 0 disables the adapter-level "
+            "prepare timeout; parser subprocesses remain separately bounded."
+        ),
     }
 
 
@@ -163,10 +177,7 @@ TOOL_DEFINITIONS: dict[str, dict[str, object]] = {
                 "source_manifest_out": _optional_string_schema(
                     "Optional JSON source manifest output path for source-root mode."
                 ),
-                "timeout_seconds": _integer_schema(
-                    "Maximum prepare runtime in seconds.",
-                    DEFAULT_PREPARE_TIMEOUT_SECONDS,
-                ),
+                "timeout_seconds": _prepare_timeout_schema(),
             },
             "required": ["output_dir"],
         },
@@ -484,7 +495,7 @@ def get_tool_definitions() -> list[dict[str, object]]:
 
 def _default_command_runner(
     argv: list[str],
-    timeout_seconds: int,
+    timeout_seconds: int | None,
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         argv,
@@ -571,6 +582,15 @@ def _positive_int(request: Mapping[str, object], name: str, default: int) -> int
     value = request.get(name, default)
     if not isinstance(value, int) or value < 1:
         raise ValueError(f"{name} must be a positive integer")
+    return value
+
+
+def _optional_timeout_int(request: Mapping[str, object], name: str) -> int | None:
+    value = request.get(name)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be an integer, null, or omitted")
     return value
 
 
@@ -926,10 +946,8 @@ def prepare_case(
         _required_string(request, "output_dir"),
         forbidden_roots=forbidden_roots,
     )
-    timeout_seconds = _positive_int(
-        request,
-        "timeout_seconds",
-        DEFAULT_PREPARE_TIMEOUT_SECONDS,
+    timeout_seconds = get_prepare_case_timeout_seconds(
+        explicit=_optional_timeout_int(request, "timeout_seconds"),
     )
     argv = [
         sys.executable,
@@ -962,7 +980,8 @@ def prepare_case(
     except subprocess.TimeoutExpired as exc:
         duration_ms = round((time.monotonic() - started) * 1000)
         stdout = exc.stdout if isinstance(exc.stdout, str) else ""
-        stderr = exc.stderr if isinstance(exc.stderr, str) else f"timeout after {timeout_seconds}s"
+        timeout_label = str(timeout_seconds) if timeout_seconds is not None else "disabled"
+        stderr = exc.stderr if isinstance(exc.stderr, str) else f"timeout after {timeout_label}s"
         stdout_path, stderr_path = _write_trace(
             output_dir=output_dir,
             operation_name="prepare_case",
@@ -983,7 +1002,7 @@ def prepare_case(
             "duration_ms": duration_ms,
             "trace_stdout": display_path(stdout_path),
             "trace_stderr": display_path(stderr_path),
-            "error": f"prepare_case timed out after {timeout_seconds}s",
+            "error": f"prepare_case timed out after {timeout_label}s",
         }
     duration_ms = round((time.monotonic() - started) * 1000)
     stdout_path, stderr_path = _write_trace(
