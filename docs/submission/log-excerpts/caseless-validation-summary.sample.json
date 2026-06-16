@@ -1,0 +1,25 @@
+{
+  "claim_boundary_required": true,
+  "forbidden_wording_hits": [],
+  "integrity_violations": [],
+  "missing_files": [],
+  "output_dir": "$RUN_DIR/run",
+  "progress_event_count": 8,
+  "progress_trace": "$RUN_DIR/run/progress.jsonl",
+  "report_line_count": 91,
+  "self_correction_event_count": 0,
+  "traceability_files": {
+    "audit": "$RUN_DIR/run/audit.jsonl",
+    "case_questions": "$RUN_DIR/run/case_questions.json",
+    "decision_trace": "$RUN_DIR/run/decision_trace.json",
+    "findings": "$RUN_DIR/run/findings.json",
+    "gap_analysis": "$RUN_DIR/run/gap_analysis.json",
+    "normalized_events": "$RUN_DIR/run/normalized_events.json",
+    "progress": "$RUN_DIR/run/progress.jsonl",
+    "report": "$RUN_DIR/run/report.md",
+    "self_correction_events": "$RUN_DIR/run/self_correction_events.json"
+  },
+  "unsupported_question_violations": [],
+  "validation_status": "pass"
+}
+

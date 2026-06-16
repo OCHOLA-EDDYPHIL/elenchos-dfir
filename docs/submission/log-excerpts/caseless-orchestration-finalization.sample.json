@@ -1,0 +1,22 @@
+{
+  "created_at_utc": "2026-06-15T15:07:09Z",
+  "finalized": true,
+  "max_post_validation_actions": 3,
+  "output_dir": "$RUN_DIR/run",
+  "post_validation_action_count": 2,
+  "reason": "run completed, summary generated, validation passed, and claim boundary satisfied",
+  "schema_version": 1,
+  "status": "DONE",
+  "terminal_state": {
+    "claim_boundary_emitted": true,
+    "claim_boundary_required": true,
+    "claim_boundary_satisfied": true,
+    "reason": "run completed, summary generated, validation passed, and claim boundary satisfied",
+    "run_completed_ok": true,
+    "summary_completed": true,
+    "terminal_condition_met": true,
+    "validation_passed": true
+  },
+  "updated_at_utc": "2026-06-15T15:07:09Z"
+}
+
