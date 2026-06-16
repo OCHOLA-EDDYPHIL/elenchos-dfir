@@ -46,6 +46,27 @@ source .venv/bin/activate
 The package installs an `elenchos` console script. Examples use
 `.venv/bin/python -m elenchos` so they do not depend on shell `PATH`.
 
+## Demo Path: TUI / OpenClaw
+
+The submitted demo video uses the TUI/OpenClaw orchestration path.
+
+1. Install Elenchos as shown above.
+
+2. Download the FIND EVIL / SANS starter evidence from the official Devpost
+   Resources link and extract it outside this repository.
+
+3. Start the TUI:
+
+```bash
+elenchos tui
+```
+
+4. Follow the detailed workflow in [docs/tui.md](docs/tui.md).
+
+The deterministic CLI path below remains available as a reproducible fallback.
+Raw evidence must stay outside the repository. Generated outputs are written
+under ignored run directories such as `runs/`.
+
 ## Evidence and Outputs
 
 Stage evidence outside the repository and mount or copy it read-only.
