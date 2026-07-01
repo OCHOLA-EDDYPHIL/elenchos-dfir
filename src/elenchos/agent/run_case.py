@@ -451,6 +451,14 @@ def _write_sidecars(
             clock=clock,
         ),
     )
+    # Emit the report-claim -> finding -> event -> tool-execution -> artifact trace map.
+    # A pure join over already-written outputs; never blocks a run if inputs are absent.
+    try:
+        from elenchos.autonomy.trace_map import build_trace_map
+
+        _write_json(output_dir / "trace_map.json", build_trace_map(output_dir, clock=clock))
+    except Exception:  # noqa: BLE001 - trace map is derived, non-critical output
+        pass
     return (
         decision_trace_path,
         gap_analysis_path,

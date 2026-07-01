@@ -1,0 +1,173 @@
+{
+  "case_id": "case_positive-control",
+  "finding_count": 2,
+  "findings": [
+    {
+      "artifact_hashes": [],
+      "audit_event_refs": [],
+      "claim": "Timeline for C:/Users/analyst/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/updater.exe contains drop, execution, and persistence observations.",
+      "confidence": "medium",
+      "evidence_refs": [
+        {
+          "artifact_id": "EV-POS-MFT-001",
+          "description": "Normalized parser event parser_event_131a47796db413aedbe201dd.",
+          "evidence_id": null,
+          "parser": "mftecmd",
+          "raw_record_ref": "csv:mftecmd.csv:2",
+          "source": "mft",
+          "timestamp_field": "Created0x10"
+        },
+        {
+          "artifact_id": "EV-POS-AMCACHE-001",
+          "description": "Normalized parser event parser_event_592f1b492abaffcde14c68e5.",
+          "evidence_id": null,
+          "parser": "amcacheparser",
+          "raw_record_ref": "csv:amcache.csv:2",
+          "source": "amcache",
+          "timestamp_field": "LastModifiedTimeUtc"
+        },
+        {
+          "artifact_id": "EV-POS-REG-001",
+          "description": "Normalized parser event parser_event_482e7a8fab116427ea1c43b6.",
+          "evidence_id": null,
+          "parser": "recmd",
+          "raw_record_ref": "csv:runkeys.csv:2",
+          "source": "registry",
+          "timestamp_field": "LastWriteTime"
+        },
+        {
+          "artifact_id": "EV-POS-MFT-001",
+          "description": "Normalized parser event parser_event_938160a4c6bb0a533bec0a93.",
+          "evidence_id": null,
+          "parser": "mftecmd",
+          "raw_record_ref": "csv:mftecmd.csv:2",
+          "source": "mft",
+          "timestamp_field": null
+        }
+      ],
+      "finding_id": "F-TL-dae817dc4d06f910",
+      "kind": "conclusion",
+      "limitations": [],
+      "rationale": "Drop, execution, and persistence observations are present for the same non-ambiguous subject timeline.",
+      "raw_record_refs": [
+        "csv:mftecmd.csv:2",
+        "csv:amcache.csv:2",
+        "csv:runkeys.csv:2"
+      ],
+      "status": "inferred",
+      "supports_final_report": true
+    },
+    {
+      "artifact_hashes": [],
+      "audit_event_refs": [],
+      "claim": "Synthetic control proposes exfiltration of updater.exe without any transfer evidence.",
+      "confidence": "high",
+      "evidence_refs": [],
+      "finding_id": "F-SYN-UNSUPPORTED-EXFIL",
+      "kind": "conclusion",
+      "limitations": [
+        "finding lacks evidence support required for confirmed or inferred status"
+      ],
+      "rationale": "Synthetic induced claim intentionally lacks evidence support so verification can downgrade it.",
+      "raw_record_refs": [],
+      "status": "needs_review",
+      "supports_final_report": false
+    }
+  ],
+  "validation_results": [
+    {
+      "contradiction_evidence_refs": [],
+      "downgrade_reason": null,
+      "final_status": "inferred",
+      "finding": {
+        "artifact_hashes": [],
+        "audit_event_refs": [],
+        "claim": "Timeline for C:/Users/analyst/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/updater.exe contains drop, execution, and persistence observations.",
+        "confidence": "medium",
+        "evidence_refs": [
+          {
+            "artifact_id": "EV-POS-MFT-001",
+            "description": "Normalized parser event parser_event_131a47796db413aedbe201dd.",
+            "evidence_id": null,
+            "parser": "mftecmd",
+            "raw_record_ref": "csv:mftecmd.csv:2",
+            "source": "mft",
+            "timestamp_field": "Created0x10"
+          },
+          {
+            "artifact_id": "EV-POS-AMCACHE-001",
+            "description": "Normalized parser event parser_event_592f1b492abaffcde14c68e5.",
+            "evidence_id": null,
+            "parser": "amcacheparser",
+            "raw_record_ref": "csv:amcache.csv:2",
+            "source": "amcache",
+            "timestamp_field": "LastModifiedTimeUtc"
+          },
+          {
+            "artifact_id": "EV-POS-REG-001",
+            "description": "Normalized parser event parser_event_482e7a8fab116427ea1c43b6.",
+            "evidence_id": null,
+            "parser": "recmd",
+            "raw_record_ref": "csv:runkeys.csv:2",
+            "source": "registry",
+            "timestamp_field": "LastWriteTime"
+          },
+          {
+            "artifact_id": "EV-POS-MFT-001",
+            "description": "Normalized parser event parser_event_938160a4c6bb0a533bec0a93.",
+            "evidence_id": null,
+            "parser": "mftecmd",
+            "raw_record_ref": "csv:mftecmd.csv:2",
+            "source": "mft",
+            "timestamp_field": null
+          }
+        ],
+        "finding_id": "F-TL-dae817dc4d06f910",
+        "kind": "conclusion",
+        "limitations": [],
+        "rationale": "Drop, execution, and persistence observations are present for the same non-ambiguous subject timeline.",
+        "raw_record_refs": [
+          "csv:mftecmd.csv:2",
+          "csv:amcache.csv:2",
+          "csv:runkeys.csv:2"
+        ],
+        "status": "inferred",
+        "supports_final_report": true
+      },
+      "original_requested_status": "inferred",
+      "rule_name": "drop_execution_persistence_timeline",
+      "validation_notes": [
+        "requested_status=inferred",
+        "status retained as inferred",
+        "rule=drop_execution_persistence_timeline"
+      ]
+    },
+    {
+      "contradiction_evidence_refs": [],
+      "downgrade_reason": "finding lacks evidence support required for confirmed or inferred status",
+      "final_status": "needs_review",
+      "finding": {
+        "artifact_hashes": [],
+        "audit_event_refs": [],
+        "claim": "Synthetic control proposes exfiltration of updater.exe without any transfer evidence.",
+        "confidence": "high",
+        "evidence_refs": [],
+        "finding_id": "F-SYN-UNSUPPORTED-EXFIL",
+        "kind": "conclusion",
+        "limitations": [
+          "finding lacks evidence support required for confirmed or inferred status"
+        ],
+        "rationale": "Synthetic induced claim intentionally lacks evidence support so verification can downgrade it.",
+        "raw_record_refs": [],
+        "status": "needs_review",
+        "supports_final_report": false
+      },
+      "original_requested_status": "inferred",
+      "rule_name": "synthetic_control",
+      "validation_notes": [
+        "synthetic_control_induced_unsupported_claim",
+        "self_correction=finding lacks evidence support required for confirmed or inferred status"
+      ]
+    }
+  ]
+}

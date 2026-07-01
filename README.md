@@ -1,9 +1,11 @@
 # Elenchos
 
 Elenchos is a bounded autonomous DFIR triage agent for SIFT and Protocol SIFT.
-I use model-driven orchestration to choose safe next steps, deterministic
-forensic tooling to process evidence, and policy gates to prevent unsupported
-or unsafe actions.
+I use policy-gated agentic orchestration to choose safe next steps -- a bounded
+observe/decide/validate/execute/verify/reflect loop in which a model may only
+*propose* allow-listed actions -- deterministic forensic tooling to process
+evidence, and a policy gate plus verifier that reject unsafe actions and downgrade
+unsupported claims. The model never becomes evidence and never mutates a finding.
 
 Elenchos takes its name from the ancient Greek term associated with refutation
 and cross-examination. I use that idea operationally: every forensic claim must
@@ -123,6 +125,42 @@ Direct parser and correlation commands remain available; see
 [docs/parser-contracts.md](docs/parser-contracts.md),
 [docs/parser-tooling-matrix.md](docs/parser-tooling-matrix.md), and
 [docs/agent-workflow.md](docs/agent-workflow.md).
+
+## Policy-Gated Autonomy Loop
+
+`elenchos autonomy run` drives a bounded observe -> decide -> validate -> execute ->
+verify -> reflect -> stop loop over the deterministic engine. A decision provider may
+only *propose* one allow-listed action per step; every proposal passes the
+deterministic policy gate, the verifier owns all finding-status changes, and each step
+is recorded to an auditable bundle (`autonomy_decisions.jsonl`,
+`state_observations.jsonl`, `plan_revisions.jsonl`, `tool_executions.jsonl`,
+`self_correction_events.json`, `trace_map.json`).
+
+Providers sit behind one interface: `replay` (deterministic, offline, no model/key --
+the CI/demo driver) and `claude-code` (the preferred live provider, which shells out to
+the Claude Code headless CLI, `claude --bare -p ... --output-format json`, configured via
+`CLAUDE_CODE_BIN` / `CLAUDE_CODE_MODEL` / `CLAUDE_CODE_MCP_CONFIG` /
+`CLAUDE_CODE_ALLOWED_TOOLS`). **Claude Code proposes bounded decisions; Elenchos
+policy/verifier executes, gates, and corrects** -- the default is proposal-only, so the
+model has no tools and cannot touch evidence. A legacy openai-compatible provider remains
+in the code for back-compat. Reproduce the committed example with no model or evidence:
+
+```bash
+elenchos autonomy run \
+  --case-id case_positive-control \
+  --fixture tests/fixtures/positive_control/autonomy_demo.json \
+  --output-dir runs/autonomy-demo \
+  --provider replay \
+  --decisions docs/examples/autonomy-runs/case-autonomy-demo/decisions.jsonl \
+  --max-iterations 10
+```
+
+The run observes a finding that lacks deterministic support, records a plan revision,
+runs verifier-driven self-correction (downgrade to `needs_review`), re-verifies, and
+emits a `trace_map.json` that resolves every final claim to a normalized event and tool
+execution. See the sanitized bundle in
+[docs/examples/autonomy-runs/case-autonomy-demo/](docs/examples/autonomy-runs/case-autonomy-demo/)
+and the anchor mapping in [docs/autonomy-scorecard.md](docs/autonomy-scorecard.md).
 
 ## OpenClaw Runtime
 

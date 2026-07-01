@@ -1,0 +1,32 @@
+{
+  "case_id": "case_positive-control",
+  "event_count": 2,
+  "events": [
+    {
+      "correction": "recheck_inventory",
+      "correction_id": "correction_000002",
+      "event_id": "self-correction-001",
+      "human_intervention": false,
+      "model_output_used_as_evidence": false,
+      "phase": "verify",
+      "problem_detected": "Verification found missing evidence references.",
+      "result": "Inventory re-check was unavailable; findings remain needs_review.",
+      "source": "supervisor_verifier_self_correction",
+      "trigger": "missing_output"
+    },
+    {
+      "correction": "downgrade_finding",
+      "correction_id": "correction_000003",
+      "event_id": "self-correction-002",
+      "human_intervention": false,
+      "model_output_used_as_evidence": false,
+      "phase": "verify",
+      "problem_detected": "Finding F-SYN-UNSUPPORTED-EXFIL was inferred but failed verification: finding lacks evidence support required for confirmed or inferred status.",
+      "result": "Finding status changed to needs_review.",
+      "source": "supervisor_verifier_self_correction",
+      "trigger": "unsupported_finding"
+    }
+  ],
+  "generated_at_utc": "2026-06-20T12:00:57Z",
+  "mode": "supervisor_verifier_self_correction"
+}

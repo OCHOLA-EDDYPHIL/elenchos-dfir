@@ -434,6 +434,66 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Event selection policy for fixture validation runs.",
     )
 
+    autonomy_parser = subparsers.add_parser(
+        "autonomy",
+        help="Run the policy-gated agentic orchestration loop over the deterministic engine",
+    )
+    autonomy_subparsers = autonomy_parser.add_subparsers(dest="autonomy_command")
+    autonomy_run_parser = autonomy_subparsers.add_parser(
+        "run",
+        help="Drive a bounded observe/decide/verify/reflect autonomy run",
+    )
+    autonomy_run_parser.add_argument("--case-id", required=True, help="Case identifier")
+    autonomy_run_parser.add_argument(
+        "--source-manifest",
+        type=Path,
+        help="Evidence/parser-output manifest to analyze (mutually exclusive with --fixture)",
+    )
+    autonomy_run_parser.add_argument(
+        "--fixture",
+        type=Path,
+        help="Synthetic fixture descriptor JSON (mutually exclusive with --source-manifest)",
+    )
+    autonomy_run_parser.add_argument(
+        "--casebook",
+        type=Path,
+        help="Optional JSON casebook (accepted for parity; not required by the loop)",
+    )
+    autonomy_run_parser.add_argument(
+        "--output-dir",
+        type=Path,
+        required=True,
+        help=(
+            "Generated autonomy output directory under runs/, outputs/, analysis/, "
+            "or reports/generated/"
+        ),
+    )
+    autonomy_run_parser.add_argument(
+        "--provider",
+        choices=("replay", "claude-code"),
+        default="replay",
+        help=(
+            "replay: deterministic captured decisions (no model/key); "
+            "claude-code: live Claude Code headless CLI provider"
+        ),
+    )
+    autonomy_run_parser.add_argument(
+        "--decisions",
+        type=Path,
+        help="Replay decisions JSONL (required when --provider replay)",
+    )
+    autonomy_run_parser.add_argument(
+        "--max-iterations",
+        type=int,
+        default=10,
+        help="Hard cap on autonomy decision cycles",
+    )
+    autonomy_run_parser.add_argument(
+        "--max-normalized-events",
+        type=int,
+        help="Optional positive event cap for bounded triage on large parser outputs",
+    )
+
     return parser
 
 
@@ -592,6 +652,49 @@ def main(argv: list[str] | None = None) -> int:
             print(f"agent_run={args.output_dir.resolve() / 'agent_run.json'}")
             print(f"audit={args.output_dir.resolve() / 'audit.jsonl'}")
         return 1 if run.status is AgentRunStatus.FAILED else 0
+
+    if args.command == "autonomy":
+        if getattr(args, "autonomy_command", None) != "run":
+            print("error=autonomy subcommand is required", file=sys.stderr)
+            return 1
+        if args.source_manifest is not None and args.fixture is not None:
+            print("error=provide either --source-manifest or --fixture, not both", file=sys.stderr)
+            return 1
+
+        from elenchos.autonomy import run_autonomy
+        from elenchos.autonomy.providers import (
+            ClaudeCodeDecisionProvider,
+            DecisionProvider,
+            ReplayDecisionProvider,
+        )
+
+        try:
+            provider: DecisionProvider
+            if args.provider == "replay":
+                if args.decisions is None:
+                    raise ValueError("--decisions JSONL is required when --provider replay")
+                provider = ReplayDecisionProvider.from_jsonl(args.decisions)
+            else:
+                provider = ClaudeCodeDecisionProvider()
+            result = run_autonomy(
+                case_id=args.case_id,
+                output_dir=args.output_dir,
+                provider=provider,
+                fixture_path=args.fixture,
+                manifest_path=args.source_manifest,
+                max_iterations=args.max_iterations,
+                max_normalized_events=args.max_normalized_events,
+            )
+        except Exception as exc:  # noqa: BLE001 - surface a clean CLI error
+            print(f"error={exc}", file=sys.stderr)
+            return 1
+
+        for key, value in result.to_dict().items():
+            if key == "bundle_files":
+                continue
+            print(f"{key}={value}")
+        print(f"bundle_dir={result.agent_run_dir}")
+        return 0
 
     parser.print_help()
     return 0

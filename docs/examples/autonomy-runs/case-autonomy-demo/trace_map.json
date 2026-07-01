@@ -1,0 +1,83 @@
+{
+  "all_supported_claims_resolved": true,
+  "case_id": "case_positive-control",
+  "claims": [
+    {
+      "artifact_hashes": [],
+      "claim": "Timeline for C:/Users/analyst/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/updater.exe contains drop, execution, and persistence observations.",
+      "evidence_refs": [
+        {
+          "artifact_id": "EV-POS-MFT-001",
+          "description": "Normalized parser event parser_event_131a47796db413aedbe201dd.",
+          "evidence_id": null,
+          "parser": "mftecmd",
+          "raw_record_ref": "csv:mftecmd.csv:2",
+          "source": "mft",
+          "timestamp_field": "Created0x10"
+        },
+        {
+          "artifact_id": "EV-POS-AMCACHE-001",
+          "description": "Normalized parser event parser_event_592f1b492abaffcde14c68e5.",
+          "evidence_id": null,
+          "parser": "amcacheparser",
+          "raw_record_ref": "csv:amcache.csv:2",
+          "source": "amcache",
+          "timestamp_field": "LastModifiedTimeUtc"
+        },
+        {
+          "artifact_id": "EV-POS-REG-001",
+          "description": "Normalized parser event parser_event_482e7a8fab116427ea1c43b6.",
+          "evidence_id": null,
+          "parser": "recmd",
+          "raw_record_ref": "csv:runkeys.csv:2",
+          "source": "registry",
+          "timestamp_field": "LastWriteTime"
+        },
+        {
+          "artifact_id": "EV-POS-MFT-001",
+          "description": "Normalized parser event parser_event_938160a4c6bb0a533bec0a93.",
+          "evidence_id": null,
+          "parser": "mftecmd",
+          "raw_record_ref": "csv:mftecmd.csv:2",
+          "source": "mft",
+          "timestamp_field": null
+        }
+      ],
+      "finding_id": "F-TL-dae817dc4d06f910",
+      "normalized_event_ids": [
+        "parser_event_938160a4c6bb0a533bec0a93",
+        "parser_event_131a47796db413aedbe201dd",
+        "parser_event_689273ac7862fcef40c007f4",
+        "parser_event_01f37d7b52d7ea455c666a67",
+        "parser_event_592f1b492abaffcde14c68e5",
+        "parser_event_482e7a8fab116427ea1c43b6"
+      ],
+      "resolved": true,
+      "status": "inferred",
+      "supports_final_report": true,
+      "tool_execution_ids": [
+        "evt_000005",
+        "evt_000006"
+      ]
+    },
+    {
+      "artifact_hashes": [],
+      "claim": "Synthetic control proposes exfiltration of updater.exe without any transfer evidence.",
+      "evidence_refs": [],
+      "finding_id": "F-SYN-UNSUPPORTED-EXFIL",
+      "normalized_event_ids": [],
+      "resolved": false,
+      "status": "needs_review",
+      "supports_final_report": false,
+      "tool_execution_ids": [
+        "evt_000005",
+        "evt_000006"
+      ]
+    }
+  ],
+  "generated_at_utc": "2026-06-20T12:00:07Z",
+  "reported_claim_count": 2,
+  "schema_version": 1,
+  "supported_claim_count": 1,
+  "unresolved_supported_claims": []
+}

@@ -1,0 +1,19 @@
+{
+  "case_id": "case_positive-control",
+  "fixture_id": "autonomy_demo",
+  "induced_findings": [
+    {
+      "claim": "Synthetic control proposes exfiltration of updater.exe without any transfer evidence.",
+      "confidence": "high",
+      "evidence_refs": [],
+      "finding_id": "F-SYN-UNSUPPORTED-EXFIL",
+      "kind": "conclusion",
+      "limitations": [],
+      "rationale": "Synthetic induced claim intentionally lacks evidence support so verification can downgrade it.",
+      "status": "inferred"
+    }
+  ],
+  "input_source": "synthetic_self_correction_control",
+  "manifest": "positive_chain/manifest.json",
+  "schema_version": 1
+}

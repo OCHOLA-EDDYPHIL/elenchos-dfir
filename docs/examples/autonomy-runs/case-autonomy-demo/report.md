@@ -1,0 +1,59 @@
+# Case Report
+
+## Case Summary
+- Case ID: `case_positive-control`
+- Subject timelines: 2
+- Confirmed findings: 0
+- Inferred findings: 1
+- Rejected claims: 0
+- Needs-review items: 1
+
+## Evidence Coverage
+- Coverage summary was not provided.
+
+## Subject Timeline
+- Subject: `C:/Program Files/Vendor/ordinary.txt`
+  - Ambiguous: no
+  - `2026-01-01T00:00:02Z` drop source=`mftecmd` evidence=`EV-POS-MFT-001` details=`{"artifact_id":"EV-POS-MFT-001","artifact_type":"mft","confidence":"tool_reported","metadata.entry_number":1002,"parser_event_id":"parser_event_01f37d7b52d7ea455c666a67","parser_event_type":"file_created","status":"normalized","timestamp_description":"Created0x10"}`
+  - `unknown` observation source=`mftecmd` evidence=`EV-POS-MFT-001` details=`{"artifact_id":"EV-POS-MFT-001","artifact_type":"mft","confidence":"tool_reported","metadata.entry_number":1002,"parser_event_id":"parser_event_689273ac7862fcef40c007f4","parser_event_type":"file_record","status":"normalized"}`
+- Subject: `C:/Users/analyst/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/updater.exe`
+  - Ambiguous: no
+  - `2026-01-01T00:00:01Z` drop source=`mftecmd` evidence=`EV-POS-MFT-001` details=`{"artifact_id":"EV-POS-MFT-001","artifact_type":"mft","confidence":"tool_reported","metadata.entry_number":1001,"parser_event_id":"parser_event_131a47796db413aedbe201dd","parser_event_type":"file_created","sha256":"1111111111111111111111111111111111111111111111111111111111111111","status":"normalized","timestamp_description":"Created0x10"}`
+  - `2026-01-01T00:00:03Z` execution source=`amcacheparser` evidence=`EV-POS-AMCACHE-001` details=`{"artifact_id":"EV-POS-AMCACHE-001","artifact_type":"amcache","confidence":"tool_reported","metadata.artifact_family":"amcache","metadata.parser":"amcacheparser","metadata.program_name":"updater.exe","metadata.source_timestamp_column":"LastModifiedTimeUtc","parser_event_id":"parser_event_592f1b492abaffcde14c68e5","parser_event_type":"amcache_execution","sha256":"1111111111111111111111111111111111111111111111111111111111111111","status":"normalized","timestamp_description":"LastModifiedTimeUtc"}`
+  - `2026-01-01T00:00:04Z` persistence source=`recmd` evidence=`EV-POS-REG-001` details=`{"artifact_id":"EV-POS-REG-001","artifact_type":"registry","confidence":"tool_reported","key_path":"Software\\Microsoft\\Windows\\CurrentVersion\\Run","metadata.hive":"NTUSER.DAT","metadata.parser":"recmd","metadata.value_data_present":true,"parser_event_id":"parser_event_482e7a8fab116427ea1c43b6","parser_event_type":"registry_run_key","status":"normalized","timestamp_description":"LastWriteTime","value_data":"C:\\Users\\analyst\\AppData\\Roaming\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\updater.exe","value_name":"SyntheticUpdater"}`
+  - `unknown` observation source=`mftecmd` evidence=`EV-POS-MFT-001` details=`{"artifact_id":"EV-POS-MFT-001","artifact_type":"mft","confidence":"tool_reported","metadata.entry_number":1001,"parser_event_id":"parser_event_938160a4c6bb0a533bec0a93","parser_event_type":"file_record","sha256":"1111111111111111111111111111111111111111111111111111111111111111","status":"normalized"}`
+
+## Confirmed Findings
+- No confirmed findings.
+
+## Inferred Findings
+- `F-TL-dae817dc4d06f910` Timeline for C:/Users/analyst/AppData/Roaming/Microsoft/Windows/Start Menu/Programs/Startup/updater.exe contains drop, execution, and persistence observations.
+  - Status: `inferred`; confidence=`medium`; kind=`conclusion`
+  - Rationale: Drop, execution, and persistence observations are present for the same non-ambiguous subject timeline.
+  - Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:2` timestamp_field=`Created0x10` description=Normalized parser event parser_event_131a47796db413aedbe201dd.
+  - Evidence: `EV-POS-AMCACHE-001` parser=`amcacheparser` source=`amcache` raw=`csv:amcache.csv:2` timestamp_field=`LastModifiedTimeUtc` description=Normalized parser event parser_event_592f1b492abaffcde14c68e5.
+  - Evidence: `EV-POS-REG-001` parser=`recmd` source=`registry` raw=`csv:runkeys.csv:2` timestamp_field=`LastWriteTime` description=Normalized parser event parser_event_482e7a8fab116427ea1c43b6.
+  - Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:2` description=Normalized parser event parser_event_938160a4c6bb0a533bec0a93.
+  - Raw records: `csv:mftecmd.csv:2`, `csv:amcache.csv:2`, `csv:runkeys.csv:2`
+
+## Rejected Claims
+- No rejected claims.
+
+## Needs Review
+- `F-SYN-UNSUPPORTED-EXFIL` Synthetic control proposes exfiltration of updater.exe without any transfer evidence.
+  - Status: `needs_review`; confidence=`high`; kind=`conclusion`
+  - Rationale: Synthetic induced claim intentionally lacks evidence support so verification can downgrade it.
+  - Limitations: finding lacks evidence support required for confirmed or inferred status
+
+## Limitations
+- finding lacks evidence support required for confirmed or inferred status
+- Generated by the deterministic Elenchos agent runner.
+- Self-correction policy reviewed generated findings and report output.
+
+## Evidence References
+- Evidence: `EV-POS-AMCACHE-001` parser=`amcacheparser` source=`amcache` raw=`csv:amcache.csv:2` timestamp_field=`LastModifiedTimeUtc` description=Normalized parser event parser_event_592f1b492abaffcde14c68e5.
+- Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:2` timestamp_field=`Created0x10` description=Normalized parser event parser_event_131a47796db413aedbe201dd.
+- Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:2` description=Normalized parser event parser_event_938160a4c6bb0a533bec0a93.
+- Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:3` timestamp_field=`Created0x10` description=Normalized parser event parser_event_01f37d7b52d7ea455c666a67.
+- Evidence: `EV-POS-MFT-001` parser=`mftecmd` source=`mft` raw=`csv:mftecmd.csv:3` description=Normalized parser event parser_event_689273ac7862fcef40c007f4.
+- Evidence: `EV-POS-REG-001` parser=`recmd` source=`registry` raw=`csv:runkeys.csv:2` timestamp_field=`LastWriteTime` description=Normalized parser event parser_event_482e7a8fab116427ea1c43b6.

@@ -892,6 +892,7 @@ def _traceability_files(output_dir: Path) -> dict[str, str | None]:
         "decision_trace": output_dir / "decision_trace.json",
         "gap_analysis": output_dir / "gap_analysis.json",
         "self_correction_events": output_dir / "self_correction_events.json",
+        "trace_map": output_dir / "trace_map.json",
         "performance_summary": output_dir / "performance_summary.json",
         "findings": output_dir / "findings.json",
         "case_questions": output_dir / "case_questions.json",

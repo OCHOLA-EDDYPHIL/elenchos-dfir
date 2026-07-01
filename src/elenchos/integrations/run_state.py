@@ -45,6 +45,7 @@ GENERATED_STATE_FILES = (
     "decision_trace.json",
     "gap_analysis.json",
     "self_correction_events.json",
+    "trace_map.json",
     "performance_summary.json",
     "validation_summary.json",
     "run_integrity.json",
