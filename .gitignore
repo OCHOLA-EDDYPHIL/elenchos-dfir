@@ -15,6 +15,7 @@ dist/
 
 cases/
 runs/
+logs/
 outputs/
 analysis/
 reports/generated/

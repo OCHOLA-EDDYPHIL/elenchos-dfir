@@ -1,5 +1,15 @@
 # Elenchos
 
+> [!IMPORTANT]
+> **Archived experimental project.** The FIND EVIL submission was not selected
+> as a finalist. This branch preserves post-submission autonomy experiments; it
+> is not the judged `v0.0.1` snapshot and is not a validated forensic product.
+> The original evidence and SIFT environment are no longer available, so the
+> historical real-case results cannot be reproduced from this repository.
+> Read the [postmortem](docs/FIND-EVIL-POSTMORTEM.md) and
+> [revival conditions](docs/REVIVAL.md) before reusing the project. The final
+> local checks are recorded in [archive validation](docs/ARCHIVE-VALIDATION.md).
+
 Elenchos is a bounded autonomous DFIR triage agent for SIFT and Protocol SIFT.
 I use policy-gated agentic orchestration to choose safe next steps -- a bounded
 observe/decide/validate/execute/verify/reflect loop in which a model may only
@@ -33,8 +43,8 @@ and full enterprise IR remain out of scope unless explicitly implemented.
 Use Python 3.10 or newer in a Linux/SIFT-compatible shell.
 
 ```bash
-git clone <repository-url>
-cd <repository-directory>
+git clone git@github.com:OCHOLA-EDDYPHIL/elenchos-dfir.git
+cd elenchos-dfir
 
 python -m venv .venv
 source .venv/bin/activate
